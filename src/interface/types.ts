@@ -10,6 +10,7 @@ export interface LiquidityEvent {
   export interface Token {
     map: any;
     id: string;
+    chainId: number;
     address: string;
     creatorAddress: string;
     name: string;
