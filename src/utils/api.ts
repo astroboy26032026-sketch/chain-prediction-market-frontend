@@ -8,26 +8,26 @@ import { ethers } from 'ethers';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 export async function getAllTokens(page: number = 1, pageSize: number = 13): Promise<PaginatedResponse<Token>> {
-  const response = await axios.get(`${API_BASE_URL}/api/tokens`, {
+  const response = await axios.get('/api/ports/getAllTokens', {
     params: { page, pageSize }
   });
   return response.data;
 }
 
 export async function getAllTokensTrends(): Promise<Token[]> {
-  const response = await axios.get(`${API_BASE_URL}/api/tokens/trending`);
+  const response = await axios.get('/api/ports/getAllTokensTrends');
   return response.data;
 }
 
 //GET /api/volume/total
 export async function getTotalVolume(): Promise<{ totalVolume: number }> {
-  const response = await axios.get(`${API_BASE_URL}/api/volume/total`);
+  const response = await axios.get('/api/ports/getTotalVolume');
   return response.data;
 }
 
 //GET /api/volume/range?hours=24
 export async function getVolumeRange(hours: number): Promise<{ totalVolume: number }> {
-  const response = await axios.get(`${API_BASE_URL}/api/volume/range`, {
+  const response = await axios.get('/api/ports/getVolumeRange', {
     params: { hours }
   });
   return response.data;
@@ -35,14 +35,14 @@ export async function getVolumeRange(hours: number): Promise<{ totalVolume: numb
 
 //GET /api/tokens/total-count
 export async function getTotalTokenCount(): Promise<{ totalTokens: number }> {
-  const response = await axios.get(`${API_BASE_URL}/api/tokens/total-count`);
+  const response = await axios.get('/api/ports/getTotalTokenCount');
   return response.data;
 }
 
 
-export async function getRecentTokens(page: number = 1, pageSize: number = 20, hours: number = 1): Promise<PaginatedResponse<Token> | null> {
+export async function getRecentTokens(page: number = 1, pageSize: number = 20, hours: number = 24): Promise<PaginatedResponse<Token> | null> {
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/tokens/recent`, {
+    const response = await axios.get('/api/ports/getRecentTokens', {
       params: { page, pageSize, hours }
     });
     return response.data;
@@ -61,7 +61,7 @@ export async function searchTokens(
   pageSize: number = 20
 ): Promise<PaginatedResponse<Token>> {
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/tokens/search`, {
+    const response = await axios.get('/api/ports/searchTokens', {
       params: { q: query, page, pageSize }
     });
     return response.data;
@@ -72,20 +72,22 @@ export async function searchTokens(
 }
 
 export async function getTokensWithLiquidity(page: number = 1, pageSize: number = 20): Promise<PaginatedResponse<TokenWithLiquidityEvents>> {
-  const response = await axios.get(`${API_BASE_URL}/api/tokens/with-liquidityEvent`, {
+  const response = await axios.get('/api/ports/getTokensWithLiquidity', {
     params: { page, pageSize }
   });
   return response.data;
 }
 
 export async function getTokenByAddress(address: string): Promise<Token> {
-  const response = await axios.get(`${API_BASE_URL}/api/tokens/address/${address}`);
+  const response = await axios.get('/api/ports/getTokenByAddress', {
+    params: { address }
+  });
   return response.data;
 }
 
 export async function getTokenLiquidityEvents(tokenId: string, page: number = 1, pageSize: number = 20): Promise<PaginatedResponse<LiquidityEvent>> {
-  const response = await axios.get(`${API_BASE_URL}/api/liquidity/token/${tokenId}`, {
-    params: { page, pageSize }
+  const response = await axios.get('/api/ports/getTokenLiquidityEvents', {
+    params: { tokenId, page, pageSize }
   });
   return response.data;
 }
@@ -95,23 +97,36 @@ export async function getTokenInfoAndTransactions(
   transactionPage: number = 1,
   transactionPageSize: number = 10
 ): Promise<TokenWithTransactions> {
-  const response = await axios.get(`${API_BASE_URL}/api/tokens/address/${address}/info-and-transactions`, {
-    params: { transactionPage, transactionPageSize }
-  });
-  return response.data;
+  try {
+    const baseUrl = typeof window === 'undefined' 
+      ? process.env.NEXT_VERCEL_URL
+        ? `https://${process.env.NEXT_VERCEL_URL}`
+        : 'http://localhost:3000'
+      : '';
+
+    const response = await axios.get(`${baseUrl}/api/ports/getTokenInfoAndTransactions`, {
+      params: { address, transactionPage, transactionPageSize }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error in getTokenInfoAndTransactions:', error);
+    throw error;
+  }
 }
 
 
 //historical price
 export async function getHistoricalPriceData(address: string): Promise<Token> {
-  const response = await axios.get(`${API_BASE_URL}/api/tokens/address/${address}/historical-prices`);
+  const response = await axios.get('/api/ports/getHistoricalPriceData', {
+    params: { address }
+  });
   return response.data;
 }
 
 //eth price usd
 export async function getCurrentPrice(): Promise<string> {
   try {
-    const response = await axios.get<PriceResponse>(`${API_BASE_URL}/api/price`);
+    const response = await axios.get<PriceResponse>('/api/ports/getCurrentPrice');
     return response.data.price;
   } catch (error) {
     console.error('Error fetching current price:', error);
@@ -157,7 +172,10 @@ export async function updateToken(
   }
 ): Promise<Token> {
   try {
-    const response = await axios.patch(`${API_BASE_URL}/api/tokens/update/${address}`, data);
+    const response = await axios.patch('/api/ports/updateToken', {
+      address,
+      data
+    });
     return response.data;
   } catch (error) {
     console.error('Error updating token:', error);
@@ -172,8 +190,8 @@ export async function getTransactionsByAddress(
   pageSize: number = 10
 ): Promise<TransactionResponse> {
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/transactions/address/${address}`, {
-      params: { page, pageSize }
+    const response = await axios.get('/api/ports/getTransactionsByAddress', {
+      params: { address, page, pageSize }
     });
     return response.data;
   } catch (error) {
@@ -190,7 +208,7 @@ export async function addChatMessage(
   replyTo?: number
 ): Promise<{ id: number }> {
   try {
-    const response = await axios.post(`${API_BASE_URL}/chats`, {
+    const response = await axios.post('/api/ports/addChatMessage', {
       user,
       token,
       message,
@@ -213,7 +231,7 @@ export async function getChatMessages(token: string): Promise<Array<{
   timestamp: string;
 }>> {
   try {
-    const response = await axios.get(`${API_BASE_URL}/chats`, {
+    const response = await axios.get('/api/ports/getChatMessages', {
       params: { token }
     });
     return response.data;
@@ -226,7 +244,7 @@ export async function getChatMessages(token: string): Promise<Array<{
 //get all token address
 export async function getAllTokenAddresses(): Promise<Array<{address: string, symbol: string}>> {
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/tokens/addresses`);
+    const response = await axios.get('/api/ports/getAllTokenAddresses');
     return response.data;
   } catch (error) {
     console.error('Error fetching token addresses and symbols:', error);
@@ -240,10 +258,10 @@ export async function getTokensByCreator(
   pageSize: number = 20
 ): Promise<PaginatedResponse<Token>> {
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/tokens/creator/${creatorAddress}`, {
-      params: { page, pageSize }
+    const response = await axios.get('/api/ports/getTokensByCreator', {
+      params: { creatorAddress, page, pageSize }
     });
-    console.log('getTokensByCreator', response.data);
+    // console.log('getTokensByCreator', response.data);
     return response.data;
   } catch (error) {
     console.error('Error fetching tokens by creator:', error);

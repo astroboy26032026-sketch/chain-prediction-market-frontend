@@ -51,7 +51,7 @@ export function useTotalSupply(tokenAddress: `0x${string}`) {
 
 export function useMarketCap(tokenAddress: `0x${string}` | null) {
   const bondingCurveAddress = getBondingCurveAddress(tokenAddress);
-  console.log('bondingCurveAddress', bondingCurveAddress);
+  // console.log('bondingCurveAddress', bondingCurveAddress);
   const { data, refetch } = useReadContract({
     address: bondingCurveAddress,
     abi: BondingCurveManagerABI,

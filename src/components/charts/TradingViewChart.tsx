@@ -93,16 +93,25 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, liquidityEvents, tokenInf
       });
 
       // Remove duplicates by slightly incrementing timestamps
-      const processedData = sortedData.reduce((acc: ChartDataPoint[], curr, idx) => {
-        if (idx > 0 && curr.time === acc[acc.length - 1].time) {
-          // Add 1 second to duplicate timestamps
-          curr = { ...curr, time: curr.time + 1 };
+      // const processedData = sortedData.reduce((acc: ChartDataPoint[], curr, idx) => {
+      //   if (idx > 0 && curr.time === acc[acc.length - 1].time) {
+      //     // Add 1 second to duplicate timestamps
+      //     curr = { ...curr, time: curr.time + 1 };
+      //   }
+      //   acc.push(curr);
+      //   return acc;
+      // }, []);
+
+    // Remove duplicates and ensure timestamps are unique
+      const uniqueData = sortedData.reduce((acc: ChartDataPoint[], curr) => {
+        const lastItem = acc[acc.length - 1];
+        if (!lastItem || lastItem.time !== curr.time) {
+          acc.push(curr);
         }
-        acc.push(curr);
         return acc;
       }, []);
 
-      const enhancedChartData = enhanceSmallCandles(processedData);
+      const enhancedChartData = enhanceSmallCandles(uniqueData);
       // TODO: add different chart types (bars, line, area, etc)
 
     
