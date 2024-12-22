@@ -19,6 +19,11 @@ export async function getAllTokensTrends(): Promise<Token[]> {
   return response.data;
 }
 
+export async function getAllTokensWithoutLiquidity(): Promise<Token[]> { //chewyswap aggregator use
+  const response = await axios.get('/api/ports/getAllTokensWithoutLiquidity');
+  return response.data;
+}
+
 //GET /api/volume/total
 export async function getTotalVolume(): Promise<{ totalVolume: number }> {
   const response = await axios.get('/api/ports/getTotalVolume');
