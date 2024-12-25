@@ -5,8 +5,6 @@ import { Token, TokenWithLiquidityEvents, PaginatedResponse, LiquidityEvent, Tok
 import { ethers } from 'ethers';
 
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
-
 export async function getAllTokens(page: number = 1, pageSize: number = 13): Promise<PaginatedResponse<Token>> {
   const response = await axios.get('/api/ports/getAllTokens', {
     params: { page, pageSize }
