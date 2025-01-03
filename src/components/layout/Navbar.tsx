@@ -153,7 +153,7 @@ const Navbar: React.FC = () => {
                 </button>
                 <button 
                   onClick={() => setShowHowItWorks(true)}
-                  className="text-gray-300 hover:text-white px-3 py-2 text-sm"
+                  className="bg-white text-black px-3 py-1.5 rounded-full hover:bg-gray-100 transition-colors text-sm"
                 >
                   How it works
                 </button>
@@ -167,7 +167,10 @@ const Navbar: React.FC = () => {
               <Link href="https://x.com/bondlexyz" target="_blank" className="text-gray-300 hover:text-white">
                 Twitter
               </Link>
-              <button className="bg-[var(--primary)] text-black px-4 py-2 rounded-lg font-medium hover:bg-[var(--primary-hover)]">
+              <button 
+                onClick={() => router.push('/create')}
+                className="bg-[var(--primary)] text-black px-4 py-2 rounded-lg font-medium hover:bg-[var(--primary-hover)]"
+              >
                 Launch Token
               </button>
               <CustomConnectButton />
@@ -195,25 +198,28 @@ const Navbar: React.FC = () => {
             <div className="px-2 pt-2 pb-3 space-y-1">
               <button
                 onClick={handleProfileClick}
-                className="text-gray-300 hover:text-white hover:bg-[var(--card-hover)] block px-3 py-2 text-base w-full text-left rounded-lg transition-colors"
+                className="text-gray-300 hover:text-white block px-2 py-1.5 text-sm"
               >
                 My Profile
               </button>
               <button
                 onClick={() => setShowHowItWorks(true)}
-                className="text-gray-300 hover:text-white hover:bg-[var(--card-hover)] block px-3 py-2 text-base w-full text-left rounded-lg transition-colors"
+                className="bg-white text-black px-2 py-1.5 rounded-full hover:bg-gray-100 transition-colors text-sm inline-block"
               >
                 How it works
               </button>
-              <Link href="https://t.me/bondle_xyz" target="_blank" className="text-gray-300 hover:text-white hover:bg-[var(--card-hover)] block px-3 py-2 text-base rounded-lg transition-colors">
+              <Link href="https://t.me/bondle_xyz" target="_blank" className="text-gray-300 hover:text-white hover:bg-[var(--card-hover)] block px-2 py-1.5 text-sm rounded-lg transition-colors">
                 Telegram
               </Link>
-              <Link href="https://x.com/bondlexyz" target="_blank" className="text-gray-300 hover:text-white hover:bg-[var(--card-hover)] block px-3 py-2 text-base rounded-lg transition-colors">
+              <Link href="https://x.com/bondlexyz" target="_blank" className="text-gray-300 hover:text-white hover:bg-[var(--card-hover)] block px-2 py-1.5 text-sm rounded-lg transition-colors">
                 Twitter
               </Link>
               <div className="pt-4 pb-3 border-t border-[var(--card-boarder)]">
                 <div className="flex items-center px-5">
-                  <button className="bg-[var(--primary)] text-black px-4 py-2 rounded-lg font-medium hover:bg-[var(--primary-hover)] w-full">
+                  <button 
+                    onClick={() => router.push('/create')}
+                    className="bg-[var(--primary)] text-black px-4 py-2 rounded-lg font-medium hover:bg-[var(--primary-hover)] w-full"
+                  >
                     Launch Token
                   </button>
                 </div>

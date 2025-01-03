@@ -11,7 +11,7 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   return (
     <div className="flex flex-col min-h-screen bg-[#111111] text-white">
-      <ChristmasEvent />
+      {/* <ChristmasEvent /> */}
       <LiveNotifications />
       <Navbar />
       <main className="flex-grow w-full px-4 lg:px-12 xl:px-24 py-8">

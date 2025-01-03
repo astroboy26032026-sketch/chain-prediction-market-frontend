@@ -5,6 +5,7 @@ import { useTokenLiquidity, formatTimestampV1, formatTimestamp, formatAmountV2, 
 import { useRouter } from 'next/router';
 import { Globe, Twitter, Send as Telegram, Clock, Youtube, MessageCircle as Discord } from 'lucide-react';
 import LoadingBar from '@/components/ui/LoadingBar';
+import LdSpinner from '@/components/ui/ldspinner';
 
 interface TokenCardProps {
   token: Token | TokenWithLiquidityEvents;
@@ -207,9 +208,12 @@ const TokenCard: React.FC<TokenCardProps> = ({ token, isEnded, onTokenClick, onL
                   : liquidityData && liquidityData[2] 
                     ? `${calculateProgress(liquidityData[2].toString()).toFixed(3)}%` 
                     : '0%'}
+
               </span>
-              <span className="text-sm text-gray-400 text-center">
-                MC: ${marketCapData ? formatAmountV2(marketCapData.toString()) : '0'}
+              <span className="text-sm text-gray-400 text-center flex items-center justify-center h-full">
+                {marketCapData 
+                  ? `MC: $${formatAmountV2(marketCapData.toString())}` 
+                  : <LdSpinner size="small" />}
               </span>
               <div className="flex items-center text-sm text-gray-400 justify-end">
                 <Clock size={16} className="mr-2" />

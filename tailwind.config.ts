@@ -16,6 +16,7 @@ const config: Config = {
       animation: {
         crawl: 'crawl 20s linear infinite',
         'loading-bar': 'loading-bar 1.5s ease-in-out infinite',
+        ldspinner: 'ldspinner 2.5s linear infinite',
       },
       keyframes: {
         crawl: {
@@ -26,6 +27,10 @@ const config: Config = {
           '0%': { transform: 'translateX(-100%)' },
           '50%': { transform: 'translateX(100%)' },
           '100%': { transform: 'translateX(-100%)' },
+        },
+        ldspinner: {
+          '0%': { transform: 'rotate(0deg)' },
+          '100%': { transform: 'rotate(360deg)' }
         },
       },
     },
