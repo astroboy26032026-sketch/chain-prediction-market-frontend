@@ -71,24 +71,23 @@ const TokenList: React.FC<TokenListProps> = ({
   }, [tokens, sortType, liquidityData, currentPage, itemsPerPage, isFullList]);
 
   return (
-    <>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-7xl mx-auto">
-         {displayTokens.map((token) => (
-          <TokenCard 
-            key={token.id} 
-            token={token} 
-            isEnded={isEnded} 
-            onTokenClick={handleTokenClick}
-            onLiquidityUpdate={(amount) => updateLiquidityData(token.address, amount)}
-          />
-        ))}
-      </div>
-      
+    <div className="space-y-6">
       {isLoading && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <LoadingBar size="large" />
         </div>
       )}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 xl:gap-6">
+         {displayTokens.map((token) => (
+          <TokenCard 
+            key={token.id} 
+            token={token} 
+            isEnded={isEnded} 
+            onTokenClick={() => handleTokenClick(token.address)}
+            onLiquidityUpdate={(amount) => updateLiquidityData(token.address, amount)}
+          />
+        ))}
+      </div>
       
       {totalPages > 1 && (
         <div className="flex justify-center items-center space-x-2 mt-8">
@@ -125,7 +124,7 @@ const TokenList: React.FC<TokenListProps> = ({
           </button>
         </div>
       )}
-    </>
+    </div>
   );
 };
 

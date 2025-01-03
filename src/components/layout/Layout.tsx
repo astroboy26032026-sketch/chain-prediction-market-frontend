@@ -14,7 +14,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <ChristmasEvent />
       <LiveNotifications />
       <Navbar />
-      <main className="flex-grow container mx-auto px-4 sm:px-6 lg:px-8 py-8 max-w-7xl">
+      <main className="flex-grow w-full px-4 lg:px-12 xl:px-24 py-8">
         {children}
       </main>
       <Footer />

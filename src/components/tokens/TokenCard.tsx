@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Token, TokenWithLiquidityEvents } from '@/interface/types';
-import { useTokenLiquidity, formatTimestampV1, formatTimestamp, formatAmountV2 } from '@/utils/blockchainUtils';
+import { useTokenLiquidity, formatTimestampV1, formatTimestamp, formatAmountV2, useMarketCap } from '@/utils/blockchainUtils';
 import { useRouter } from 'next/router';
 import { Globe, Twitter, Send as Telegram, Clock, Youtube, MessageCircle as Discord } from 'lucide-react';
 import LoadingBar from '@/components/ui/LoadingBar';
@@ -18,6 +18,7 @@ const TokenCard: React.FC<TokenCardProps> = ({ token, isEnded, onTokenClick, onL
   const tokenAddress = token.address as `0x${string}`;
   const shouldFetchLiquidity = !token._count?.liquidityEvents;
   const { data: liquidityData } = useTokenLiquidity(shouldFetchLiquidity ? tokenAddress : null);
+  const { data: marketCapData } = useMarketCap(tokenAddress);
   const router = useRouter();
 
   useEffect(() => {
@@ -199,28 +200,28 @@ const TokenCard: React.FC<TokenCardProps> = ({ token, isEnded, onTokenClick, onL
           </div>
 
           <div className="space-y-3">
-            <div className="flex items-center text-sm text-gray-400">
-              <Clock size={16} className="mr-2" />
-              <span>{formatTimestampV1(token.createdAt)}</span>
+            <div className="grid grid-cols-3 items-center">
+              <span className={`text-sm ${isCompleted ? 'text-[var(--primary)]' : 'text-white'}`}>
+                {isCompleted 
+                  ? 'Completed' 
+                  : liquidityData && liquidityData[2] 
+                    ? `${calculateProgress(liquidityData[2].toString()).toFixed(3)}%` 
+                    : '0%'}
+              </span>
+              <span className="text-sm text-gray-400 text-center">
+                MC: ${marketCapData ? formatAmountV2(marketCapData.toString()) : '0'}
+              </span>
+              <div className="flex items-center text-sm text-gray-400 justify-end">
+                <Clock size={16} className="mr-2" />
+                <span>{formatTimestampV1(token.createdAt)}</span>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-400">Progress to DEX</span>
-                <span className={`${isCompleted ? 'text-[var(--primary)]' : 'text-white'}`}>
-                  {isCompleted 
-                    ? 'Completed' 
-                    : liquidityData && liquidityData[2] 
-                      ? `${calculateProgress(liquidityData[2].toString()).toFixed(2)}%` 
-                      : '0%'}
-                </span>
-              </div>
-              <div className="w-full bg-[var(--card-boarder)] rounded-full h-2">
-                <div
-                  className="bg-[var(--primary)] h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
+            <div className="w-full bg-[var(--card-boarder)] rounded-full h-2">
+              <div
+                className="bg-[var(--primary)] h-2 rounded-full transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
             </div>
           </div>
         </div>
