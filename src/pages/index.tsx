@@ -148,9 +148,15 @@ const Home: React.FC = () => {
             break;
 
           case 'new':
-            fetchedTokens = await getRecentTokens(currentPage, TOKENS_PER_PAGE, 1);
-            if (fetchedTokens === null) {
-              setNoRecentTokens(true);
+            try {
+              fetchedTokens = await getRecentTokens(currentPage, TOKENS_PER_PAGE, 1);
+              if (fetchedTokens === null) {
+                setNoRecentTokens(true);
+                fetchedTokens = { data: [], totalCount: 0, currentPage: 1, totalPages: 1 };
+              }
+            } catch (error) {
+              console.error('Error fetching recent tokens:', error);
+              setError('Failed to fetch tokens. Please try again later.');
               fetchedTokens = { data: [], totalCount: 0, currentPage: 1, totalPages: 1 };
             }
             break;

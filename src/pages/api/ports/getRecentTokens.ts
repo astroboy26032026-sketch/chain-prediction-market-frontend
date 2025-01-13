@@ -21,15 +21,18 @@ export default async function handler(
         hours: Number(hours)
       }
     });
+    
+    // If we get an empty array of tokens, return 404
+    if (!response.data.tokens || response.data.tokens.length === 0) {
+      return res.status(404).json(null);
+    }
+    
     res.status(200).json(response.data);
   } catch (error) {
     console.error('Error in getRecentTokens:', error);
-    res.status(500).json({
-      tokens: [],
-      data: [],
-      totalCount: 0,
-      currentPage: 1,
-      totalPages: 0
-    });
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      return res.status(404).json(null);
+    }
+    res.status(500).json(null);
   }
 }
