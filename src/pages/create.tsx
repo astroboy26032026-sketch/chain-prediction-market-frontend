@@ -49,7 +49,7 @@ const CreateToken: React.FC = () => {
     formData.append('file', file);
 
     try {
-      console.log('Uploading image to IPFS...');
+      console.log('Uploading image...');
       const response = await axios.post('/api/upload-to-ipfs', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -59,13 +59,13 @@ const CreateToken: React.FC = () => {
       if (response.data.url) {
         console.log('Image uploaded successfully:', response.data.url);
         setTokenImageUrl(response.data.url);
-        toast.success('Image uploaded to IPFS successfully!');
+        toast.success('Image uploaded successfully!');
         return response.data.url;
       } else {
         throw new Error('No URL returned from server');
       }
     } catch (error) {
-      console.error('Error uploading to IPFS:', error);
+      console.error('Error uploading:', error);
       if (axios.isAxiosError(error) && error.response) {
         toast.error(`Failed to upload image: ${error.response.data.error || error.message}`);
       } else {
@@ -321,7 +321,7 @@ const CreateToken: React.FC = () => {
                 </div>
               </div>
             </div>
-            {isUploading && <p className="text-sm text-gray-400 mt-2">Uploading image to IPFS...</p>}
+            {isUploading && <p className="text-sm text-gray-400 mt-2">Uploading image...</p>}
           </div>
 
           {/* Token Image preview */}
