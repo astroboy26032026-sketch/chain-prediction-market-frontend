@@ -37,6 +37,7 @@
     "react-hot-toast": "^2.4.1",
     "react-toastify": "^10.0.5",
     "recharts": "^2.12.7",
+    "sharp": "^0.33.5",
     "siwe": "^2.3.2",
     "styled-components": "^6.1.13",
     "typewriter-effect": "^2.21.0",
