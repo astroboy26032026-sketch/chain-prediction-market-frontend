@@ -23,6 +23,10 @@ interface ChatsProps {
   tokenInfo: TokenWithTransactions;
 }
 
+/**
+ * Token chat UI with threaded replies. Uses glass containers and thin borders.
+ * Requires SIWE authentication before sending messages.
+ */
 const Chats: React.FC<ChatsProps> = ({ tokenAddress, tokenInfo }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -116,10 +120,10 @@ const Chats: React.FC<ChatsProps> = ({ tokenAddress, tokenInfo }) => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
-                className={`bg-[var(--card2)] rounded-lg p-2 sm:p-3 ${message.reply_to ? 'ml-2 sm:ml-4 border-l-2 border-[var(--card-boarder)]' : ''}`}
+                className={`bg-[var(--card2)] rounded-lg p-2 sm:p-3 border-thin ${message.reply_to ? 'ml-2 sm:ml-4 border-l-2 border-[var(--card-boarder)]' : ''}`}
               >
                 {parentMessage && (
-                  <div className="mb-1 sm:mb-2 text-[10px] sm:text-xs text-gray-400 bg-[var(--card)] p-1.5 sm:p-2 rounded">
+                  <div className="mb-1 sm:mb-2 text-[10px] sm:text-xs text-gray-400 bg-[var(--card)] p-1.5 sm:p-2 rounded border-thin">
                     <span className="font-medium">{shortenAddress(parentMessage.user)}</span>: 
                     <span className="line-clamp-1">{parentMessage.message}</span>
                   </div>
@@ -160,7 +164,7 @@ const Chats: React.FC<ChatsProps> = ({ tokenAddress, tokenInfo }) => {
 
       <form onSubmit={handleSendMessage} className="mt-2 sm:mt-4 space-y-1 sm:space-y-2 p-2">
         {replyingTo && (
-          <div className="flex items-center justify-between bg-[var(--card)] p-1.5 sm:p-2 rounded-lg text-xs sm:text-sm">
+          <div className="flex items-center justify-between bg-[var(--card)] p-1.5 sm:p-2 rounded-lg text-xs sm:text-sm border-thin">
             <span className="text-gray-400">
               Replying to <span className="text-[var(--primary)]">{shortenAddress(replyingTo.user)}</span>
             </span>
@@ -179,12 +183,12 @@ const Chats: React.FC<ChatsProps> = ({ tokenAddress, tokenInfo }) => {
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             placeholder="Type a message..."
-            className="flex-grow bg-[var(--card2)] text-white rounded-lg px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+            className="flex-grow bg-[var(--card2)] text-white rounded-lg px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-[var(--primary)] border-thin"
           />
           <button
             type="submit"
             disabled={!newMessage.trim()}
-            className="bg-[var(--primary)] text-black px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-medium hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-50"
+            className="btn btn-primary text-xs sm:text-sm disabled:opacity-50"
           >
             Send
           </button>

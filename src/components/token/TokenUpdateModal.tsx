@@ -14,6 +14,11 @@ interface TokenUpdateModalProps {
   onUpdate: (token: Token) => void;
 }
 
+/**
+ * Modal for updating token metadata (logo, description, socials).
+ * Applies the Aurora Glass aesthetic with glass cards and gradient borders.
+ * Only renders fields that are missing on the current token to guide completion.
+ */
 export const TokenUpdateModal: React.FC<TokenUpdateModalProps> = ({
   token,
   isOpen,
@@ -137,8 +142,8 @@ export const TokenUpdateModal: React.FC<TokenUpdateModalProps> = ({
 
   if (!needsUpdate) {
     return (
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
-        <div className="bg-[#111111] rounded-xl w-full max-w-sm mx-auto p-4">
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="card gradient-border rounded-xl w-full max-w-sm mx-auto">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-semibold text-white">Token Information Complete</h2>
             <button
@@ -155,7 +160,7 @@ export const TokenUpdateModal: React.FC<TokenUpdateModalProps> = ({
           <div className="flex justify-end">
             <button
               onClick={onClose}
-              className="px-3 py-1.5 text-xs bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200"
+              className="btn btn-primary text-xs"
             >
               Close
             </button>
@@ -166,8 +171,8 @@ export const TokenUpdateModal: React.FC<TokenUpdateModalProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
-      <div className="bg-[#111111] rounded-xl w-full max-w-sm mx-auto p-4">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="card gradient-border rounded-xl w-full max-w-sm mx-auto">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-semibold text-white">Update Token Information</h2>
           <button
@@ -193,8 +198,8 @@ export const TokenUpdateModal: React.FC<TokenUpdateModalProps> = ({
               {!token.logo && (
                 <>
                   <div
-                    className={`border border-dashed rounded-lg p-3 text-center cursor-pointer ${
-                      isDragging ? 'border-blue-500 bg-[var(--card2)]' : 'border-gray-600'
+                    className={`rounded-lg p-3 text-center cursor-pointer border-dashed border-thin ${
+                      isDragging ? 'bg-[var(--card2)] border-[var(--primary)]' : 'bg-transparent'
                     }`}
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
@@ -238,7 +243,7 @@ export const TokenUpdateModal: React.FC<TokenUpdateModalProps> = ({
                   <textarea
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    className="w-full bg-[var(--card2)] text-white text-sm rounded-lg border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm resize-none"
+                    className="w-full bg-[var(--card2)] text-white text-sm rounded-lg border-thin focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] shadow-sm resize-none"
                     rows={3}
                     placeholder="Enter your token's description..."
                   />
@@ -255,7 +260,7 @@ export const TokenUpdateModal: React.FC<TokenUpdateModalProps> = ({
                     type="text"
                     value={twitter}
                     onChange={(e) => setTwitter(e.target.value)}
-                    className="w-full bg-[var(--card2)] text-white text-sm h-9 rounded-lg border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm"
+                    className="w-full bg-[var(--card2)] text-white text-sm h-9 rounded-lg border-thin focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] shadow-sm"
                     placeholder="https://twitter.com/username"
                   />
                 </div>
@@ -270,7 +275,7 @@ export const TokenUpdateModal: React.FC<TokenUpdateModalProps> = ({
                     type="text"
                     value={telegram}
                     onChange={(e) => setTelegram(e.target.value)}
-                    className="w-full bg-[var(--card2)] text-white text-sm h-9 rounded-lg border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm"
+                    className="w-full bg-[var(--card2)] text-white text-sm h-9 rounded-lg border-thin focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] shadow-sm"
                     placeholder="https://t.me/username"
                   />
                 </div>
@@ -285,7 +290,7 @@ export const TokenUpdateModal: React.FC<TokenUpdateModalProps> = ({
                     type="text"
                     value={website}
                     onChange={(e) => setWebsite(e.target.value)}
-                    className="w-full bg-[var(--card2)] text-white text-sm h-9 rounded-lg border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm"
+                    className="w-full bg-[var(--card2)] text-white text-sm h-9 rounded-lg border-thin focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] shadow-sm"
                     placeholder="https://example.com"
                   />
                 </div>
@@ -300,7 +305,7 @@ export const TokenUpdateModal: React.FC<TokenUpdateModalProps> = ({
                     type="text"
                     value={discord}
                     onChange={(e) => setDiscord(e.target.value)}
-                    className="w-full bg-[var(--card2)] text-white text-sm h-9 rounded-lg border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm"
+                    className="w-full bg-[var(--card2)] text-white text-sm h-9 rounded-lg border-thin focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] shadow-sm"
                     placeholder="https://discord.gg/invite"
                   />
                 </div>
@@ -311,14 +316,14 @@ export const TokenUpdateModal: React.FC<TokenUpdateModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3 py-1.5 text-xs text-gray-400 hover:text-white transition-colors duration-200"
+                className="btn-secondary text-xs"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isLoading}
-                className="px-3 py-1.5 text-xs bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-[#111111] disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                className="btn btn-primary text-xs disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isLoading ? 'Updating...' : 'Update'}
               </button>

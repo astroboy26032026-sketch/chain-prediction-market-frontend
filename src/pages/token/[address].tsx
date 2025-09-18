@@ -41,15 +41,17 @@ import TokenInfo from '@/components/TokenDetails/TokenInfo';
 import Chats from '@/components/TokenDetails/Chats';
 // import OGPreview from '@/components/OGPreview'
 
-
 interface TokenDetailProps {
   initialTokenInfo: TokenWithTransactions;
   initialPriceHistory: any[];
   initialHolders: any[];
 }
 
-// const TokenDetail: React.FC = () => {
-  const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
+/**
+ * Token detail page showing price chart, swap panel, trades/chat, and holders.
+ * Styled with Aurora Glass: section cards, thin borders, and neon-accent CTAs.
+ */
+const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
   const router = useRouter();
   const { address } = router.query;
@@ -358,21 +360,19 @@ interface TokenDetailProps {
           {/* Left Column (2 cols wide) */}
           <div className="lg:col-span-2 space-y-6">
             {/* Price Chart Section */}
-            <div className="bg-[var(--card)] rounded-lg p-4">
-              <h2 className="text-sm font-semibold mb-4 text-gray-400">Price Chart (USD)</h2>
-              <div className="bg-[var(--card2)] rounded-lg p-2">
-                <TradingViewChart 
-                  data={chartData} 
-                  liquidityEvents={liquidityEvents} 
-                  tokenInfo={tokenInfo}
-                />
-              </div>
+            <div className="space-y-2">
+              <h2 className="text-sm font-semibold text-gray-300">Price Chart (USD)</h2>
+              <TradingViewChart 
+                data={chartData} 
+                liquidityEvents={liquidityEvents} 
+                tokenInfo={tokenInfo}
+              />
             </div>
 
             {/* Quick Actions Section - Mobile Only */}
-            <div className="lg:hidden bg-[var(--card)] rounded-lg p-4">
+            <div className="lg:hidden card gradient-border p-4">
               <h2 className="text-sm font-semibold mb-4 text-gray-400">Quick Actions</h2>
-              <div className="bg-[var(--card2)] rounded-lg p-4">
+              <div className="bg-[var(--card2)] rounded-lg p-4 border-thin">
                 {/* From Input */}
                 <div className="mb-4">
                   <div className="flex justify-between text-sm mb-2">
@@ -381,7 +381,7 @@ interface TokenDetailProps {
                       Balance: {isSwapped ? tokenBalance : ethBalance}
                     </span>
                   </div>
-                  <div className="flex items-center bg-[var(--card)] rounded-lg p-3">
+                  <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
                     <input
                       type="number"
                       value={fromToken.amount}
@@ -416,7 +416,7 @@ interface TokenDetailProps {
                       Balance: {isSwapped ? ethBalance : tokenBalance}
                     </span>
                   </div>
-                  <div className="flex items-center bg-[var(--card)] rounded-lg p-3">
+                  <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
                     <input
                       type="text"
                       value={isCalculating ? 'Calculating...' : toToken.amount}
@@ -432,8 +432,7 @@ interface TokenDetailProps {
                 <button
                   onClick={handleAction}
                   disabled={!fromToken.amount || isCalculating || isTransacting}
-                  className="w-full py-3 bg-[var(--primary)] text-black rounded-lg font-medium hover:bg-[var(--primary-hover)] 
-                    transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="btn btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isTransacting ? 'Processing...' : actionButtonText}
                 </button>
@@ -441,9 +440,9 @@ interface TokenDetailProps {
             </div>
 
             {/* Trades and Chat Tabs */}
-            <div className="bg-[var(--card)] rounded-lg p-4">
+            <div className="card gradient-border p-4">
               <Tab.Group>
-                <Tab.List className="flex space-x-1 rounded-lg bg-[var(--card2)] p-1 mb-4">
+                <Tab.List className="flex space-x-1 rounded-lg bg-[var(--card2)] p-1 mb-4 border-thin">
                   <Tab
                     className={({ selected }) =>
                       `w-full rounded-md py-2.5 text-sm font-medium leading-5 transition-colors
@@ -490,7 +489,7 @@ interface TokenDetailProps {
           {/* Right Column */}
           <div className="space-y-6">
             {/* Token Info Header (shown only on desktop) */}
-            <div className="hidden lg:block bg-[var(--card)] rounded-lg p-4">
+            <div className="hidden lg:block card gradient-border p-4">
               <TokenInfo 
                 tokenInfo={tokenInfo} 
                 showHeader={true} 
@@ -500,9 +499,9 @@ interface TokenDetailProps {
             </div>
 
             {/* Quick Actions (Swap) Section - Desktop Only */}
-            <div className="hidden lg:block bg-[var(--card)] rounded-lg p-4">
+            <div className="hidden lg:block card gradient-border p-4">
               <h2 className="text-sm font-semibold mb-4 text-gray-400">Quick Actions</h2>
-              <div className="bg-[var(--card2)] rounded-lg p-4">
+              <div className="bg-[var(--card2)] rounded-lg p-4 border-thin">
                 {/* From Input */}
                 <div className="mb-4">
                   <div className="flex justify-between text-sm mb-2">
@@ -511,7 +510,7 @@ interface TokenDetailProps {
                       Balance: {isSwapped ? tokenBalance : ethBalance} {fromToken.symbol}
                     </span>
                   </div>
-                  <div className="flex items-center bg-[var(--card)] rounded-lg p-3">
+                  <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
                     <input
                       type="number"
                       value={fromToken.amount}
@@ -546,7 +545,7 @@ interface TokenDetailProps {
                       Balance: {isSwapped ? ethBalance : tokenBalance} {toToken.symbol}
                     </span>
                   </div>
-                  <div className="flex items-center bg-[var(--card)] rounded-lg p-3">
+                  <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
                     <input
                       type="text"
                       value={isCalculating ? 'Calculating...' : toToken.amount}
@@ -562,18 +561,18 @@ interface TokenDetailProps {
                 <button
                   onClick={handleAction}
                   disabled={!fromToken.amount || isCalculating || isTransacting}
-                  className="w-full py-3 bg-[var(--primary)] text-black rounded-lg font-medium hover:bg-[var(--primary-hover)] 
-                    transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="btn btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isTransacting ? 'Processing...' : actionButtonText}
                 </button>
               </div>
             </div>
           </div>
+
         </div>
 
         {/* Token Holders Section (Full Width) */}
-        <div className="mt-6 bg-[var(--card)] rounded-lg p-4">
+        <div className="mt-6 card gradient-border p-4">
           <h2 className="text-sm font-semibold mb-4 text-gray-400">Token Holders</h2>
           <TokenHolders
             tokenHolders={currentHolders}
@@ -586,6 +585,7 @@ interface TokenDetailProps {
             allHolders={tokenHolders}
           />
         </div>
+
          {/* Share Button */}
          <ShareButton tokenInfo={tokenInfo} />
       </div>

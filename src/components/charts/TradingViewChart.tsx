@@ -14,12 +14,24 @@ interface ChartDataPoint {
   close: number;
 }
 
+/**
+ * Glass-styled candlestick chart with transparent background and subtle grid.
+ * Renders a listing info card if the token has liquidity events instead of the chart.
+ */
 interface PriceChartProps {
   data: ChartDataPoint[];
   liquidityEvents: any;
   tokenInfo: any;
 }
 
+/**
+ * Renders the token price chart as a glass-styled candlestick chart.
+ * If a liquidity event exists (listed on a DEX), renders a listing info card instead.
+ *
+ * @param data - Array of candlestick data points (unix seconds, OHLC)
+ * @param liquidityEvents - Liquidity event data used to detect DEX listing
+ * @param tokenInfo - Token metadata (name, symbol, logo)
+ */
 const PriceChart: React.FC<PriceChartProps> = ({ data, liquidityEvents, tokenInfo }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const [chart, setChart] = useState<IChartApi | null>(null);
@@ -37,15 +49,15 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, liquidityEvents, tokenInf
         width: chartContainerRef.current.clientWidth,
         height: 500,
         layout: {
-          background: { color: '#1f2937' },
-          textColor: '#d1d5db',
+          background: { color: 'transparent' },
+          textColor: '#d7e1ec',
         },
         grid: {
-          vertLines: { color: 'rgba(255, 255, 255, 0.1)' },
-          horzLines: { color: 'rgba(255, 255, 255, 0.1)' },
+          vertLines: { color: 'rgba(255, 255, 255, 0.08)' },
+          horzLines: { color: 'rgba(255, 255, 255, 0.08)' },
         },
         rightPriceScale: {
-          borderColor: 'rgba(255, 255, 255, 0.2)',
+          borderColor: 'rgba(255, 255, 255, 0.14)',
           visible: true,
           borderVisible: true,
           alignLabels: true,
@@ -56,7 +68,7 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, liquidityEvents, tokenInf
           autoScale: false,
         },
         timeScale: {
-          borderColor: 'rgba(255, 255, 255, 0.2)',
+          borderColor: 'rgba(255, 255, 255, 0.14)',
           timeVisible: true,
           secondsVisible: false,
         },
@@ -64,7 +76,7 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, liquidityEvents, tokenInf
           mode: CrosshairMode.Normal,
         },
         watermark: {
-          color: 'rgba(255, 255, 255, 0.1)',
+          color: 'rgba(255, 255, 255, 0.06)',
           visible: true,
           text: 'Bondle.xyz',
           fontSize: 28,
@@ -74,10 +86,10 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, liquidityEvents, tokenInf
       });
 
       const candleSeries = newChart.addCandlestickSeries({
-        upColor: '#26a69a',
+        upColor: '#7dd3fc',
         downColor: '#ef5350',
         borderVisible: false,
-        wickUpColor: '#26a69a',
+        wickUpColor: '#7dd3fc',
         wickDownColor: '#ef5350'
       });
 
@@ -177,7 +189,7 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, liquidityEvents, tokenInf
 
   if (showUniswapInfo === null) {
     return (
-      <div className="w-full h-[500px] bg-gray-800 rounded-lg overflow-hidden flex items-center justify-center">
+      <div className="w-full h-[500px] card gradient-border rounded-lg overflow-hidden flex items-center justify-center">
         <Spinner size="medium" />
       </div>
     );
@@ -186,8 +198,8 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, liquidityEvents, tokenInf
   if (showUniswapInfo && liquidityEvents.liquidityEvents.length > 0) {
     const event = liquidityEvents.liquidityEvents[0];
     return (
-      <div className="w-full h-[500px] bg-gray-800 rounded-lg overflow-hidden flex flex-col items-center justify-center p-6">
-        <Image src={tokenInfo.logo} alt={tokenInfo.name} width={64} height={64} className="rounded-full mb-4" />
+      <div className="w-full h-[500px] card gradient-border rounded-lg overflow-hidden flex flex-col items-center justify-center p-6">
+        <Image src={tokenInfo.logo} alt={tokenInfo.name} width={64} height={64} className="rounded-full mb-4 border-thin" />
         <h2 className="text-lg font-bold text-white mb-2">{tokenInfo.name} Listed on Chewyswap</h2>
         <br/>
         <div className="grid grid-cols-2 gap-4 mb-6">
@@ -205,7 +217,7 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, liquidityEvents, tokenInf
             href={`https://www.shibariumscan.io/tx/${event.txHash}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
+            className="btn btn-secondary"
           >
             View TXID
           </a>
@@ -213,7 +225,7 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, liquidityEvents, tokenInf
             href={`https://chewyswap.dog/swap/?outputCurrency=${tokenInfo.address}&chain=shibarium`}
             target="_blank"
             rel="noopener noreferrer"
-            className="bg-red-500 hover:bg-pink-600 text-white font-bold py-2 px-4 rounded"
+            className="btn btn-primary"
           >
             Buy on Chewy
           </a>
@@ -224,14 +236,14 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, liquidityEvents, tokenInf
 
   if (data.length < 2) {
     return (
-      <div className="w-full h-[500px] bg-gray-800 rounded-lg overflow-hidden flex items-center justify-center">
-        <p className="text-white text-lg">Not enough data to display chart</p>
+      <div className="w-full h-[500px] card gradient-border rounded-lg overflow-hidden flex items-center justify-center">
+        <p className="text-white/90 text-lg">Not enough data to display chart</p>
       </div>
     );
   }
 
   return (
-    <div ref={chartContainerRef} className="w-full h-[500px] bg-gray-800 rounded-lg overflow-hidden" />
+    <div ref={chartContainerRef} className="w-full h-[500px] card gradient-border rounded-lg overflow-hidden" />
   );
 };
 

@@ -14,6 +14,10 @@ interface TokenHoldersProps {
   allHolders: TokenHolder[];
 }
 
+/**
+ * Token holders table with pagination. Excludes the token contract and bonding curve from the list.
+ * Styled with Minimal Prime glass (thin borders and muted surfaces).
+ */
 const TokenHolders: React.FC<TokenHoldersProps> = ({
   tokenHolders,
   currentPage,
@@ -24,6 +28,7 @@ const TokenHolders: React.FC<TokenHoldersProps> = ({
   onPageChange,
   allHolders,
 }) => {
+
   const bondingCurveAddress = getBondingCurveAddress(tokenAddress as `0x${string}`);
 
   // Calculate total supply excluding only the token contract
@@ -78,14 +83,14 @@ const TokenHolders: React.FC<TokenHoldersProps> = ({
     <div className="w-full">
       <table className="w-full text-left">
         <thead>
-          <tr className="bg-[var(--card2)]">
+          <tr className="bg-[var(--card2)] border-thin">
             <th className="px-4 py-2 text-sm text-gray-400">Holder</th>
             <th className="px-4 py-2 text-sm text-gray-400">Percentage</th>
           </tr>
         </thead>
         <tbody>
           {/* Bonding Curve Manager as the first entry */}
-          <tr className="border-b border-[var(--card-hover)]">
+          <tr className="border-b border-[var(--card-hover)] hover:bg-[var(--card-hover)] transition-colors">
             <td className="px-4 py-2">
               <a
                 href={`${process.env.NEXT_PUBLIC_BLOCKSCOUT_URL}/address/${bondingCurveAddress}`}
@@ -101,7 +106,7 @@ const TokenHolders: React.FC<TokenHoldersProps> = ({
             </td>
           </tr>
           {paginatedHolders.map((holder, index) => (
-            <tr key={index} className="border-b border-[var(--card-hover)]">
+            <tr key={index} className="border-b border-[var(--card-hover)] hover:bg-[var(--card-hover)] transition-colors">
               <td className="px-4 py-2">
                 {holder.address === creatorAddress ? (
                   <a
@@ -142,7 +147,7 @@ const TokenHolders: React.FC<TokenHoldersProps> = ({
           <button
             onClick={() => onPageChange(currentPage - 1)}
             disabled={currentPage === 1}
-            className="p-1 rounded bg-[var(--card2)] text-gray-400 hover:bg-[var(--card-hover)] disabled:opacity-50"
+            className="btn-secondary p-1 rounded disabled:opacity-50"
           >
             <ChevronLeftIcon size={20} />
           </button>
@@ -152,8 +157,8 @@ const TokenHolders: React.FC<TokenHoldersProps> = ({
               onClick={() => onPageChange(page)}
               className={`px-3 py-1 rounded text-sm ${
                 currentPage === page
-                  ? 'bg-[var(--primary)] text-black'
-                  : 'bg-[var(--card2)] text-gray-400 hover:bg-[var(--card-hover)]'
+                  ? 'btn btn-primary'
+                  : 'btn-secondary'
               }`}
             >
               {page}
@@ -162,7 +167,7 @@ const TokenHolders: React.FC<TokenHoldersProps> = ({
           <button
             onClick={() => onPageChange(currentPage + 1)}
             disabled={currentPage === actualTotalPages}
-            className="p-1 rounded bg-[var(--card2)] text-gray-400 hover:bg-[var(--card-hover)] disabled:opacity-50"
+            className="btn-secondary p-1 rounded disabled:opacity-50"
           >
             <ChevronRightIcon size={20} />
           </button>

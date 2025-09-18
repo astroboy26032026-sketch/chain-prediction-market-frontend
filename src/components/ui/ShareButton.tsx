@@ -15,12 +15,18 @@ interface TokenInfo {
   logo: string;
 }
 
+/**
+ * Share modal props interface.
+ */
 interface ShareModalProps {
   tokenInfo: TokenInfo;
   isOpen: boolean;
   onClose: () => void;
 }
 
+/**
+ * Social platform interface.
+ */
 interface SocialPlatform {
   name: string;
   icon: React.ElementType;
@@ -28,6 +34,9 @@ interface SocialPlatform {
   getShareUrl: (shareText: string, shareUrl: string, logoUrl: string) => string;
 }
 
+/**
+ * Glass-styled share modal with social network shortcuts.
+ */
 const ShareModal: React.FC<ShareModalProps> = ({ tokenInfo, isOpen, onClose }) => {
   const [mounted, setMounted] = useState(false);
 
@@ -80,8 +89,8 @@ const ShareModal: React.FC<ShareModalProps> = ({ tokenInfo, isOpen, onClose }) =
   ];
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-xs sm:max-w-sm md:max-w-md">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="card gradient-border rounded-lg p-4 sm:p-6 w-full max-w-xs sm:max-w-sm md:max-w-md">
         <div className="flex justify-between items-center mb-4 sm:mb-6">
           <h3 className="text-xs sm:text-sm font-bold text-white">Share {tokenInfo.name} on</h3>
           <button 
@@ -96,7 +105,7 @@ const ShareModal: React.FC<ShareModalProps> = ({ tokenInfo, isOpen, onClose }) =
           <img 
             src={tokenInfo.logo || '/chats/noimg.svg'} 
             alt={`${tokenInfo.name} logo`} 
-            className="w-12 h-12 sm:w-16 sm:h-16 rounded-full"
+            className="w-12 h-12 sm:w-16 sm:h-16 rounded-full border-thin"
           />
         </div>
         <div className="grid grid-cols-3 gap-3 sm:gap-4">
@@ -106,7 +115,7 @@ const ShareModal: React.FC<ShareModalProps> = ({ tokenInfo, isOpen, onClose }) =
               href={platform.getShareUrl(shareText, shareUrl, tokenInfo.logo)}
               target="_blank"
               rel="noopener noreferrer"
-              className={`${platform.color} text-white p-2 sm:p-3 rounded-full flex items-center justify-center hover:opacity-80 transition-opacity`}
+              className={`${platform.color} border-thin text-white p-2 sm:p-3 rounded-full flex items-center justify-center hover:opacity-90 transition-opacity`}
               aria-label={`Share on ${platform.name}`}
             >
               <platform.icon size={20} />
@@ -118,11 +127,17 @@ const ShareModal: React.FC<ShareModalProps> = ({ tokenInfo, isOpen, onClose }) =
   );
 };
 
+/**
+ * Share button props interface.
+ */
 interface ShareButtonProps {
   tokenInfo: TokenInfo;
   className?: string; 
 }
 
+/**
+ * Floating share button (FAB) that opens the ShareModal.
+ */
 const ShareButton: React.FC<ShareButtonProps> = ({ tokenInfo, className }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -131,12 +146,13 @@ const ShareButton: React.FC<ShareButtonProps> = ({ tokenInfo, className }) => {
       <div className="fixed bottom-4 right-4 z-40">
         <button 
           onClick={() => setIsModalOpen(true)} 
-          className="bg-blue-500 text-white p-3 rounded-full shadow-lg hover:bg-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-50"
+          className="btn btn-primary p-3 rounded-full shadow-lg focus:outline-none"
           aria-label="Share"
         >
           <Share2Icon size={24} />
         </button>
       </div>
+
       <ShareModal 
         tokenInfo={tokenInfo} 
         isOpen={isModalOpen} 

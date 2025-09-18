@@ -8,9 +8,20 @@ interface LayoutProps {
   children: React.ReactNode
 }
 
+/**
+ * Layout shell for the app, rendering global chrome (Navbar, Footer),
+ * live notifications, and the animated Aurora background.
+ */
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   return (
-    <div className="flex flex-col min-h-screen bg-[#111111] text-white">
+    <div className="relative flex flex-col min-h-screen text-white">
+      {/* Aurora background layer */}
+      <div className="aurora">
+        <div className="aurora-blob aurora-1" />
+        <div className="aurora-blob aurora-2" />
+        <div className="aurora-blob aurora-3" />
+        <div className="noise-overlay" />
+      </div>
       {/* <ChristmasEvent /> */}
       <LiveNotifications />
       <Navbar />

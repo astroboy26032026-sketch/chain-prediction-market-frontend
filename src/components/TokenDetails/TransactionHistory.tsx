@@ -11,6 +11,10 @@ interface TransactionHistoryProps {
   handlePageChange: (page: number) => void;
 }
 
+/**
+ * Paginated transaction history for a token.
+ * Uses glass-styled tables and compact mobile cards with thin borders.
+ */
 const TransactionHistory: React.FC<TransactionHistoryProps> = ({
   transactions,
   transactionPage,
@@ -18,6 +22,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
   tokenSymbol,
   handlePageChange,
 }) => {
+
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   const getPaginationRange = (current: number, total: number) => {
@@ -44,9 +49,9 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
 
   // Desktop view table
   const DesktopTable = () => (
-    <table className="w-full text-left hidden md:table">
+    <table className="w-full text-left hidden md:table glass">
       <thead>
-        <tr className="bg-[var(--card2)]">
+        <tr className="bg-[var(--card2)] border-thin">
           <th className="px-4 py-2 text-sm text-gray-400">Maker</th>
           <th className="px-4 py-2 text-sm text-gray-400">Type</th>
           <th className="px-4 py-2 text-sm text-gray-400">BONE</th>
@@ -56,8 +61,8 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
         </tr>
       </thead>
       <tbody>
-        {transactions.map((tx) => (
-          <tr key={tx.id} className="border-b border-[var(--card-hover)]">
+        {transactions.map((tx: Transaction) => (
+          <tr key={tx.id} className="border-b border-[var(--card-hover)] hover:bg-[var(--card-hover)] transition-colors">
             <td className="px-4 py-2">
               <a 
                 href={`https://shibariumscan.io/address/${tx.senderAddress}`}
@@ -91,10 +96,10 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
   // Mobile view table
   const MobileTable = () => (
     <div className="md:hidden">
-      {transactions.map((tx) => (
+      {transactions.map((tx: Transaction) => (
         <div key={tx.id} className="mb-2">
           <div 
-            className="bg-[var(--card2)] p-3 rounded-lg cursor-pointer"
+            className="bg-[var(--card2)] p-3 rounded-lg cursor-pointer border-thin glass"
             onClick={() => setExpandedRow(expandedRow === tx.id ? null : tx.id)}
           >
             <div className="flex items-center justify-between">
@@ -167,7 +172,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
           <button
             onClick={() => handlePageChange(transactionPage - 1)}
             disabled={transactionPage === 1}
-            className="p-1 rounded bg-[var(--card2)] text-gray-400 hover:bg-[var(--card-hover)] disabled:opacity-50"
+            className="btn-secondary p-1 rounded disabled:opacity-50"
           >
             <ChevronLeftIcon size={20} />
           </button>
@@ -180,8 +185,8 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
                   onClick={() => handlePageChange(page as number)}
                   className={`px-3 py-1 rounded text-sm ${
                     transactionPage === page
-                      ? 'bg-[var(--primary)] text-black'
-                      : 'bg-[var(--card2)] text-gray-400 hover:bg-[var(--card-hover)]'
+                      ? 'btn btn-primary'
+                      : 'btn-secondary'
                   }`}
                 >
                   {page}
@@ -192,7 +197,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
           <button
             onClick={() => handlePageChange(transactionPage + 1)}
             disabled={transactionPage === totalTransactionPages}
-            className="p-1 rounded bg-[var(--card2)] text-gray-400 hover:bg-[var(--card-hover)] disabled:opacity-50"
+            className="btn-secondary p-1 rounded disabled:opacity-50"
           >
             <ChevronRightIcon size={20} />
           </button>
