@@ -61,11 +61,14 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, liquidityEvents, tokenInf
           visible: true,
           borderVisible: true,
           alignLabels: true,
+          entireTextOnly: true,
           scaleMargins: {
             top: 0.1,
             bottom: 0.1,
           },
-          autoScale: false,
+          // let the library compute price range and label widths
+          // so long values (many decimals) don't get clipped
+          // autoScale defaults to true
         },
         timeScale: {
           borderColor: 'rgba(255, 255, 255, 0.14)',
@@ -138,7 +141,8 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, liquidityEvents, tokenInf
       candleSeries.applyOptions({
         priceFormat: {
           type: 'custom',
-          formatter: formatPrice,
+          // show full price with up to 9 decimals
+          formatter: formatPriceLabel,
           minMove: 1e-9,
         },
       });
@@ -153,7 +157,9 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, liquidityEvents, tokenInf
       const zoomedMaxPrice = maxPrice + priceRange * (1 - zoomFactor) / 2;
 
       newChart.priceScale('right').applyOptions({
-        autoScale: false,
+        // allow auto-scaling for better label layout
+        autoScale: true,
+        entireTextOnly: true,
         scaleMargins: {
           top: 0.1,
           bottom: 0.1,
@@ -243,7 +249,9 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, liquidityEvents, tokenInf
   }
 
   return (
-    <div ref={chartContainerRef} className="w-full h-[500px] card gradient-border rounded-lg overflow-hidden" />
+    <div className="w-full h-[500px] card gradient-border rounded-lg overflow-visible">
+      <div ref={chartContainerRef} className="w-full h-full mr-10" />
+    </div>
   );
 };
 
@@ -266,8 +274,17 @@ function enhanceSmallCandles(data: ChartDataPoint[]): ChartDataPoint[] {
   });
 }
 
-function formatPrice(price: number) {
-  return price.toFixed(9);
+/**
+ * Format price labels dynamically to keep them readable and prevent overflow.
+ * Shows fewer decimals for larger values, up to 8 decimals for micro prices.
+ */
+function formatPriceLabel(price: number): string {
+  const abs = Math.abs(price);
+  if (abs >= 1) return price.toFixed(4);
+  if (abs >= 0.1) return price.toFixed(5);
+  if (abs >= 0.01) return price.toFixed(6);
+  if (abs >= 0.001) return price.toFixed(7);
+  return price.toFixed(8);
 }
 
 export default PriceChart;
