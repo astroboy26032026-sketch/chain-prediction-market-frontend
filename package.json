@@ -9,9 +9,6 @@
     "lint": "next lint",
     "typechain": "typechain --target ethers-v5 --out-dir src/types/contracts './src/abis/*.json'"
   },
-  "engines": {
-    "node": ">=20"
-  },
   "dependencies": {
     "@headlessui/react": "^2.1.2",
     "@heroicons/react": "^2.1.4",
