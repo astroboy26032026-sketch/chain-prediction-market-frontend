@@ -21,6 +21,11 @@ interface TokenInfoProps {
 const CACHE_DURATION = 5 * 60 * 1000;
 let priceCache: PriceCache | null = null;
 
+/**
+ * Token information panel.
+ * Displays contract address, deployer, created date, current price, and market cap.
+ * When used as a header, it also shows the progress-to-DEX indicator.
+ */
 const TokenInfo: React.FC<TokenInfoProps> = ({ tokenInfo, showHeader = false, refreshTrigger = 0, liquidityEvents }) => {
   const [flrPrice, setFlrPrice] = useState<string>('0');
   const tokenAddress = tokenInfo?.address as `0x${string}`;
@@ -126,7 +131,7 @@ const TokenInfo: React.FC<TokenInfoProps> = ({ tokenInfo, showHeader = false, re
       </div>
 
       {/* Updated Market Cap to show only USD value */}
-      <div className="bg-[var(--card2)] p-3 rounded-lg text-center">
+      <div className="bg-[var(--card2)] p-3 rounded-lg text-center border-thin">
         <div className="text-xs text-gray-400 mb-1">Market Cap</div>
           <div className="text-sm text-white">
             {marketCap ? (
@@ -288,7 +293,7 @@ const TokenInfo: React.FC<TokenInfoProps> = ({ tokenInfo, showHeader = false, re
         </div>
 
         {/* Progress Bar (shared between mobile and desktop) */}
-        <div className="bg-[var(--card2)] p-4 rounded-lg">
+        <div className="bg-[var(--card2)] p-4 rounded-lg border-thin">
           <div className="flex justify-between text-sm mb-2">
             <span className="text-gray-400">Progress to DEX</span>
             <span className={isCompleted ? "text-[var(--primary)]" : "text-white"}>

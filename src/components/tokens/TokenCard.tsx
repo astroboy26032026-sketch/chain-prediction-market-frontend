@@ -6,6 +6,10 @@ import { useRouter } from 'next/router';
 import { Globe, Twitter, Send as Telegram, Clock, Youtube, MessageCircle as Discord } from 'lucide-react';
 import LoadingBar from '@/components/ui/LoadingBar';
 
+/**
+ * Token card used in lists and galleries. Shows logo, name, description, progress to DEX,
+ * and social links. Uses Aurora Glass card with gradient border and neon-accent CTAs.
+ */
 interface TokenCardProps {
   token: Token | TokenWithLiquidityEvents;
   isEnded: boolean;
@@ -14,6 +18,7 @@ interface TokenCardProps {
 }
 
 const TokenCard: React.FC<TokenCardProps> = ({ token, isEnded, onTokenClick, onLiquidityUpdate }) => {
+
   const [currentLiquidity, setCurrentLiquidity] = useState<string>('0');
   const tokenAddress = token.address as `0x${string}`;
   const shouldFetchLiquidity = !token._count?.liquidityEvents;
