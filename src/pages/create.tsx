@@ -74,6 +74,7 @@ const CreateToken: React.FC = () => {
   const [distCommunity, setDistCommunity] = useState(40);
   const [distLiquidity, setDistLiquidity] = useState(20);
   const distSum = distCreator + distCommunity + distLiquidity;
+
   const [mintAuthority, setMintAuthority] = useState('');
   const [renounceMint, setRenounceMint] = useState(false);
   const [freezeEnabled, setFreezeEnabled] = useState<boolean | null>(null);
@@ -158,35 +159,44 @@ const CreateToken: React.FC = () => {
         tokenAddress = await createToken(tokenName, symbol, purchaseLamports);
 
         setCreationStep('updating');
+        // giả lập chờ indexer/back-end cập nhật
         await new Promise((r) => setTimeout(r, 4000));
 
         if (tokenAddress && tokenImageUrl) {
+          // Chuẩn hoá payload tokenomics để tránh lỗi type (và không gửi field rỗng)
+          const tokenomicsPayload = {
+            ...(initialSupply !== '' ? { initialSupply: Number(initialSupply) } : {}),
+            distribution: {
+              creator: distCreator,
+              community: distCommunity,
+              liquidity: distLiquidity,
+            },
+            ...(mintAuthority.trim() ? { mintAuthority: mintAuthority.trim() } : {}),
+            renounceMint,
+            ...(freezeEnabled !== null ? { freezeEnabled } : {}),
+            lpLockMonths,
+            ...(lockedUntil ? { lockedUntil } : {}),
+            ...(badge ? { trustBadge: badge } : {}),
+          } as const;
+
           await updateToken(tokenAddress, {
             logo: tokenImageUrl,
             description: tokenDescription,
-            website,
-            telegram,
-            discord,
-            twitter,
-            youtube,
-            tokenomics: {
-              initialSupply,
-              distribution: { creator: distCreator, community: distCommunity, liquidity: distLiquidity },
-              mintAuthority,
-              renounceMint,
-              freezeEnabled,
-              lpLockMonths,
-              lockedUntil,
-              trustBadge: badge,
-            },
-          });
+            ...(website ? { website } : {}),
+            ...(telegram ? { telegram } : {}),
+            ...(discord ? { discord } : {}),
+            ...(twitter ? { twitter } : {}),
+            ...(youtube ? { youtube } : {}),
+            // Nếu api.ts CHƯA khai báo `tokenomics`, cast tạm để không lỗi TS.
+            tokenomics: tokenomicsPayload as any,
+          } as any);
+
+          setCreationStep('completed');
+          toast.success('Token created successfully!');
+          router.push(`/token/${tokenAddress}`);
         } else {
           throw new Error('Token address or image URL missing');
         }
-
-        setCreationStep('completed');
-        toast.success('Token created successfully!');
-        router.push(`/token/${tokenAddress}`);
       } catch (error: any) {
         setCreationStep('idle');
         if (error instanceof UserRejectedRequestError) toast.error('Transaction was cancelled.');
@@ -260,7 +270,7 @@ const CreateToken: React.FC = () => {
               Deployment Cost Info
             </button>
 
-            {/* Setting button redesigned */}
+            {/* Setting button */}
             <button
               type="button"
               onClick={() => setShowLiquidity(true)}
@@ -631,7 +641,7 @@ const CreateToken: React.FC = () => {
           />
         )}
 
-        {/* Liquidity Settings Modal – redesigned */}
+        {/* Liquidity Settings Modal */}
         {showLiquidity && (
           <Modal isOpen={showLiquidity} onClose={() => setShowLiquidity(false)}>
             <div className="p-4 sm:p-6">
