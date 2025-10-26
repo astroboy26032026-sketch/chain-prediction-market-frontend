@@ -1,4 +1,4 @@
-// api.ts
+// src/utils/api.ts
 import axios from 'axios';
 import {
   Token,
@@ -10,7 +10,7 @@ import {
   HistoricalPrice,
   USDHistoricalPrice,
   TokenHolder,
-  TransactionResponse
+  TransactionResponse,
 } from '@/interface/types';
 import { ethers } from 'ethers';
 
@@ -19,9 +19,14 @@ import { ethers } from 'ethers';
 // =====================
 const PROXY_BASE = '/api/proxy';
 const isServer = typeof window === 'undefined';
-// Dùng biến môi trường này khi SSR (nhớ tạo .env.local)
-// NEXT_PUBLIC_SITE_URL=http://localhost:3000
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+
+// Ưu tiên NEXT_PUBLIC_SITE_URL; nếu thiếu, dùng VERCEL_URL; cuối cùng fallback localhost (dev)
+const computeSiteUrl = () => {
+  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return 'http://localhost:3000';
+};
+const SITE_URL = computeSiteUrl();
 
 // Trả về URL đầy đủ. SSR cần absolute, CSR để nguyên relative.
 const absProxy = (path: string) =>
@@ -35,6 +40,7 @@ const getViaProxy = async <T = any>(path: string, params?: any) => {
 // =====================
 // API calls (qua proxy)
 // =====================
+
 export async function getAllTokens(page = 1, pageSize = 13): Promise<PaginatedResponse<Token>> {
   const { data } = await getViaProxy<PaginatedResponse<Token>>('/ports/getAllTokens', { page, pageSize });
   return data;
@@ -74,7 +80,7 @@ export async function getRecentTokens(
     const { data } = await getViaProxy<PaginatedResponse<Token>>('/ports/getRecentTokens', {
       page,
       pageSize,
-      hours
+      hours,
     });
     return data;
   } catch (error: any) {
@@ -91,7 +97,7 @@ export async function searchTokens(
   const { data } = await getViaProxy<PaginatedResponse<Token>>('/ports/searchTokens', {
     q: query,
     page,
-    pageSize
+    pageSize,
   });
   return data;
 }
@@ -102,7 +108,7 @@ export async function getTokensWithLiquidity(
 ): Promise<PaginatedResponse<TokenWithLiquidityEvents>> {
   const { data } = await getViaProxy<PaginatedResponse<TokenWithLiquidityEvents>>('/ports/getTokensWithLiquidity', {
     page,
-    pageSize
+    pageSize,
   });
   return data;
 }
@@ -120,7 +126,7 @@ export async function getTokenLiquidityEvents(
   const { data } = await getViaProxy<PaginatedResponse<LiquidityEvent>>('/ports/getTokenLiquidityEvents', {
     tokenId,
     page,
-    pageSize
+    pageSize,
   });
   return data;
 }
@@ -133,7 +139,7 @@ export async function getTokenInfoAndTransactions(
   const { data } = await getViaProxy<TokenWithTransactions>('/ports/getTokenInfoAndTransactions', {
     address,
     transactionPage,
-    transactionPageSize
+    transactionPageSize,
   });
   return data;
 }
@@ -150,10 +156,7 @@ export async function getCurrentPrice(): Promise<string> {
 
 export async function getTokenUSDPriceHistory(address: string): Promise<USDHistoricalPrice[]> {
   try {
-    const [ethPrice, historicalPrices] = await Promise.all([
-      getCurrentPrice(),
-      getHistoricalPriceData(address)
-    ]);
+    const [ethPrice, historicalPrices] = await Promise.all([getCurrentPrice(), getHistoricalPriceData(address)]);
 
     return (historicalPrices as any as HistoricalPrice[]).map((price) => {
       const tokenPriceInWei = ethers.BigNumber.from(price.tokenPrice);
@@ -161,7 +164,7 @@ export async function getTokenUSDPriceHistory(address: string): Promise<USDHisto
       const tokenPriceUSD = parseFloat(tokenPriceInETH) * parseFloat(ethPrice);
       return {
         tokenPriceUSD: tokenPriceUSD.toFixed(9),
-        timestamp: price.timestamp
+        timestamp: price.timestamp,
       };
     });
   } catch (error) {
@@ -169,6 +172,42 @@ export async function getTokenUSDPriceHistory(address: string): Promise<USDHisto
     throw new Error('Failed to calculate USD price history');
   }
 }
+
+// ---- NEW: getAllTokenAddresses (phù hợp với pages/api/ports/getAllTokenAddresses.ts)
+export async function getAllTokenAddresses(): Promise<string[]> {
+  const { data } = await getViaProxy<string[]>('/ports/getAllTokenAddresses');
+  return data;
+}
+
+// ---- NEW: getTokensByCreator (phù hợp với pages/api/ports/getTokensByCreator.ts)
+export async function getTokensByCreator(
+  creator: string,
+  page = 1,
+  pageSize = 20
+): Promise<PaginatedResponse<Token>> {
+  const { data } = await getViaProxy<PaginatedResponse<Token>>('/ports/getTokensByCreator', {
+    creator,
+    page,
+    pageSize,
+  });
+  return data;
+}
+
+// Mở rộng để nhận tokenomics (optional) cho phù hợp Create page
+type TokenomicsUpdate = {
+  initialSupply?: number | string;
+  distribution?: {
+    creator?: number;
+    community?: number;
+    liquidity?: number;
+  };
+  mintAuthority?: string | null;
+  renounceMint?: boolean;
+  freezeEnabled?: boolean | null;
+  lpLockMonths?: number;
+  lockedUntil?: string | null;
+  trustBadge?: 'Bronze' | 'Silver' | 'Gold';
+};
 
 export async function updateToken(
   address: string,
@@ -180,6 +219,7 @@ export async function updateToken(
     discord?: string;
     twitter?: string;
     youtube?: string;
+    tokenomics?: TokenomicsUpdate; // <- thêm để tránh lỗi TS khi gọi từ trang Create
   }
 ): Promise<Token> {
   const url = absProxy('/ports/updateToken');
@@ -195,7 +235,7 @@ export async function getTransactionsByAddress(
   const { data } = await getViaProxy<TransactionResponse>('/ports/getTransactionsByAddress', {
     address,
     page,
-    pageSize
+    pageSize,
   });
   return data;
 }
@@ -211,14 +251,16 @@ export async function addChatMessage(
   return data;
 }
 
-export async function getChatMessages(token: string): Promise<Array<{
-  id: number;
-  user: string;
-  token: string;
-  message: string;
-  reply_to: number | null;
-  timestamp: string;
-}>> {
+export async function getChatMessages(token: string): Promise<
+  Array<{
+    id: number;
+    user: string;
+    token: string;
+    message: string;
+    reply_to: number | null;
+    timestamp: string;
+  }>
+> {
   const { data } = await getViaProxy('/ports/getChatMessages', { token });
   return data as any;
 }
@@ -230,7 +272,7 @@ export async function getTokenHolders(tokenAddress: string): Promise<TokenHolder
     const data = response.data;
     return data.items.map((item: any) => ({
       address: item.address.hash,
-      balance: item.value
+      balance: item.value,
     }));
   } catch (error) {
     console.error('Error fetching token holders:', error);
