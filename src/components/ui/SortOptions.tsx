@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 
 export type SortOption = 'trending' | 'new' | 'finalized' | 'marketcap';
 
@@ -51,6 +51,14 @@ const SortOptions: React.FC<SortOptionsProps> = ({ onSort, currentSort }) => {
     return 'finalized';
   }, [currentSort]);
 
+  // Helper ref setter để đảm bảo ref callback trả về void
+  const setBtnRef = useCallback(
+    (key: string) => (node: HTMLButtonElement | null) => {
+      btnRefs.current[key] = node;
+    },
+    []
+  );
+
   // Cập nhật vị trí/width của highlight indicator
   useEffect(() => {
     const el = btnRefs.current[activeKey];
@@ -97,10 +105,8 @@ const SortOptions: React.FC<SortOptionsProps> = ({ onSort, currentSort }) => {
         style={{
           left: indicator.left,
           width: indicator.width,
-          background:
-            'linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%)',
-          boxShadow:
-            '0 6px 18px rgba(201,142,107,0.35), inset 0 0 6px rgba(255,255,255,0.12)',
+          background: 'linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%)',
+          boxShadow: '0 6px 18px rgba(201,142,107,0.35), inset 0 0 6px rgba(255,255,255,0.12)',
         }}
         aria-hidden="true"
       />
@@ -112,7 +118,7 @@ const SortOptions: React.FC<SortOptionsProps> = ({ onSort, currentSort }) => {
           return (
             <button
               key={item.key}
-              ref={(node) => (btnRefs.current[item.key] = node)}
+              ref={setBtnRef(item.key)}
               onClick={item.onClick}
               role="tab"
               aria-selected={isActive}
