@@ -15,14 +15,14 @@ const nextConfig = {
   },
   async rewrites() {
     return [
+        {
+          source: '/api/proxy/:path*',
+          destination: 'https://bondle.xyz/api/:path*',
+        },
       // {
-      //   source: '/api/:path*',
-      //   destination: '/api/proxy',
+      //   source: '/api/proxy/:path*',
+      //   destination: `${process.env.NEXT_PUBLIC_API_BASE_URL}/:path*`,
       // },
-      {
-        source: '/api/proxy/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_BASE_URL}/:path*`,
-      },
       {
         source: '/robots.txt',
         destination: '/api/robots',

@@ -35,7 +35,7 @@ const HowItWorksPopup: React.FC<HowItWorksPopupProps> = ({ isVisible, onClose })
         </button>
         
         <div className="p-6">
-          <h2 className="text-xl font-bold text-white mb-6 text-center">How It Works</h2>
+          <h2 className="text-xl font-bold text-orange mb-6 text-center">How It Works</h2>
           
           <div className="space-y-6">
             {steps.map((step, index) => (

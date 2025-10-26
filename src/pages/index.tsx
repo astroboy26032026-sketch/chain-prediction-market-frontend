@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Layout from '@/components/layout/Layout';
 import TokenList from '@/components/tokens/TokenList';
 import SearchFilter from '@/components/ui/SearchFilter';
@@ -10,24 +10,61 @@ import SEO from '@/components/seo/SEO';
 import { useWebSocket } from '@/components/providers/WebSocketProvider';
 import { Switch } from '@/components/ui/switch';
 import Spinner from '@/components/ui/Spinner';
+import LoadingBar from '@/components/ui/LoadingBar';
 import { useRouter } from 'next/router';
+import Link from 'next/link';
+import Image from 'next/image';
 
-const TOKENS_PER_PAGE = 100;
+const TOKENS_PER_PAGE = 50;
+const TOKEN_BASE_PATH = '/token';
 
-const TYPEWRITER_TEXTS = [
-  {
-    heading: "Discover the next trending token,",
-    subheading: "before everyone else!"
-  },
-  {
-    heading: "Warning: may cause laughter",
-    subheading: "and potential profits"
-  },
-  {
-    heading: "Be the first to ride the Meme wave",
-    subheading: "fuel your fun, find the future"
+// ===== Helpers link token =====
+const isLikelySolanaAddress = (s: string) => /^[1-9A-HJ-NP-Za-km-z]{32,48}$/.test(s);
+const isLikelyEvmAddress = (s: string) => /^0x[a-fA-F0-9]{40}$/.test(s);
+const normalizeCandidate = (raw: any): string | null => {
+  if (!raw) return null;
+  let s = String(raw).trim();
+  if (!s) return null;
+  if (/^https?:\/\//i.test(s)) return s;
+  s = s.replace(/^(sol|eth|bsc|arb|op|base|poly|matic|shibarium):/i, '');
+  s = s.replace(/^\/+/, '');
+  return s || null;
+};
+const getTokenIdentifier = (t: any): string | null => {
+  const cands = [t?.address, t?.mint, t?.tokenAddress, t?.ca, t?.id];
+  for (const raw of cands) {
+    const s = normalizeCandidate(raw);
+    if (!s) continue;
+    if (/^https?:\/\//i.test(s)) return s;
+    if (isLikelyEvmAddress(s) || isLikelySolanaAddress(s)) return s;
   }
-];
+  return null;
+};
+const getTokenHref = (t: any): string => {
+  const ident = getTokenIdentifier(t);
+  if (!ident) return TOKEN_BASE_PATH;
+  if (/^https?:\/\//i.test(ident)) return ident;
+  return `${TOKEN_BASE_PATH}/${encodeURIComponent(ident)}`;
+};
+
+// ===== Filter helpers =====
+const DEFAULTS = { mcapMin: 1_000, mcapMax: 50_000_000, volMin: 0, volMax: 500_000 };
+const parseAbbrev = (s: string | number | null | undefined) => {
+  if (s === null || s === undefined) return NaN;
+  if (typeof s === 'number') return s;
+  const raw = String(s).trim().toLowerCase().replace(/[\$,]/g, '');
+  if (!raw) return NaN;
+  const mult = raw.endsWith('k') ? 1e3 : raw.endsWith('m') ? 1e6 : raw.endsWith('b') ? 1e9 : 1;
+  const num = parseFloat(raw.replace(/[kmb]$/, ''));
+  return isNaN(num) ? NaN : num * mult;
+};
+const fmtAbbrev = (n: number) => (n >= 1e9 ? `$${(n/1e9).toFixed(1)}B` :
+                                  n >= 1e6 ? `$${(n/1e6).toFixed(1)}M` :
+                                  n >= 1e3 ? `$${(n/1e3).toFixed(1)}K` : `$${Math.max(0, n|0)}`);
+const getMcap = (t: any): number =>
+  Number(t?.mcapUsd ?? t?.marketcapUsd ?? t?.marketCapUsd ?? t?.marketcap ?? t?.marketCap ?? t?.mcap ?? t?.mc ?? 0);
+const getVol24h = (t: any): number =>
+  Number(t?.vol24hUsd ?? t?.volume24hUsd ?? t?.volume24h ?? t?.vol24h ?? t?.vol ?? 0);
 
 const Home: React.FC = () => {
   const [tokens, setTokens] = useState<PaginatedResponse<Token | TokenWithLiquidityEvents> | null>(null);
@@ -44,422 +81,441 @@ const Home: React.FC = () => {
   const { newTokens } = useWebSocket();
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [allTrendingTokens, setAllTrendingTokens] = useState<Token[]>([]);
-  const [currentTextIndex, setCurrentTextIndex] = useState(0);
-  const [displayText, setDisplayText] = useState({ heading: "", subheading: "" });
-  const [isTyping, setIsTyping] = useState(true);
+  const [isMarqueeLoading, setIsMarqueeLoading] = useState(false);
+
+  // Filter state
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [pending, setPending] = useState({
+    mcapMin: DEFAULTS.mcapMin, mcapMax: DEFAULTS.mcapMax,
+    volMin: DEFAULTS.volMin,   volMax: DEFAULTS.volMax,
+    mcapMinText: '', mcapMaxText: '', volMinText: '', volMaxText: '',
+  });
+  const [activeFilter, setActiveFilter] =
+    useState<{ mcapMin:number; mcapMax:number; volMin:number; volMax:number } | null>(null);
+
   const router = useRouter();
+  useEffect(() => {
+    const done = () => setIsMarqueeLoading(false);
+    router.events.on('routeChangeComplete', done);
+    router.events.on('routeChangeError', done);
+    return () => {
+      router.events.off('routeChangeComplete', done);
+      router.events.off('routeChangeError', done);
+    };
+  }, [router.events]);
+
+  useEffect(() => { fetchTokens(); /* eslint-disable-next-line */ }, [currentPage, sort, searchQuery]);
 
   useEffect(() => {
-    console.log('Effect triggered. Current sort:', sort, 'Current page:', currentPage, 'Search:', searchQuery);
-    fetchTokens();
-  }, [currentPage, sort, searchQuery]);
-
-  useEffect(() => {
-    // console.log('New tokens received:', newTokens);
-    if (newTokens.length > 0) {
-      if (showNewTokens) {
-        setTokens(prevTokens => {
-          if (!prevTokens) return null;
-          const newUniqueTokens = newTokens.filter(newToken =>
-            !prevTokens.data.some(existingToken => existingToken.id === newToken.id) &&
-            !displayedNewTokens.some(displayedToken => displayedToken.id === newToken.id)
-          );
-          // console.log('New unique tokens to add:', newUniqueTokens);
-          setDisplayedNewTokens(prev => [...prev, ...newUniqueTokens]);
-          return {
-            ...prevTokens,
-            data: [...newUniqueTokens, ...prevTokens.data],
-            totalCount: prevTokens.totalCount + newUniqueTokens.length
-          };
-        });
-      } else {
-        setNewTokensBuffer(prev => {
-          const uniqueNewTokens = newTokens.filter(newToken =>
-            !prev.some(bufferToken => bufferToken.id === newToken.id)
-          );
-          // console.log('New tokens added to buffer:', uniqueNewTokens);
-          return [...uniqueNewTokens, ...prev];
-        });
-      }
+    if (!newTokens?.length) return;
+    if (showNewTokens) {
+      setTokens(prev => {
+        if (!prev) return null;
+        const add = newTokens.filter(n =>
+          !prev.data.some((e: any) => e?.id === n.id) &&
+          !displayedNewTokens.some(d => d.id === n.id)
+        );
+        if (!add.length) return prev;
+        setDisplayedNewTokens(p => [...p, ...add]);
+        return { ...prev, data: [...add, ...prev.data], totalCount: (prev.totalCount || 0) + add.length };
+      });
+    } else {
+      setNewTokensBuffer(prev => {
+        const add = newTokens.filter(n => !prev.some(p => p.id === n.id));
+        return add.length ? [...add, ...prev] : prev;
+      });
     }
-  }, [newTokens, showNewTokens]);
+  }, [newTokens, showNewTokens, displayedNewTokens]);
 
   const fetchTokens = async () => {
     setIsLoading(true);
     setNoRecentTokens(false);
     setNoLiquidityTokens(false);
     setError(null);
-    let fetchedTokens;
-
     try {
+      let fetched: any;
       if (searchQuery.trim()) {
-        fetchedTokens = await searchTokens(searchQuery, currentPage, TOKENS_PER_PAGE);
+        fetched = await searchTokens(searchQuery, currentPage, TOKENS_PER_PAGE);
       } else {
         switch (sort) {
           case 'trending':
-          case 'marketcap':
-            // Handle both trending and marketcap cases
-            if (allTrendingTokens.length === 0) {
-              const trendingTokens = await getAllTokensTrends();
-              setAllTrendingTokens(trendingTokens);
-              
-              if (sort === 'marketcap') {
-                fetchedTokens = {
-                  data: trendingTokens,
-                  totalCount: trendingTokens.length,
-                  currentPage: currentPage,
-                  totalPages: Math.ceil(trendingTokens.length / TOKENS_PER_PAGE),
-                  fullList: true
-                };
-              } else {
-                const startIndex = (currentPage - 1) * TOKENS_PER_PAGE;
-                const endIndex = startIndex + TOKENS_PER_PAGE;
-                const paginatedTokens = trendingTokens.slice(startIndex, endIndex);
-                
-                fetchedTokens = {
-                  data: paginatedTokens,
-                  totalCount: trendingTokens.length,
-                  currentPage: currentPage,
-                  totalPages: Math.ceil(trendingTokens.length / TOKENS_PER_PAGE)
-                };
-              }
+          case 'marketcap': {
+            if (!allTrendingTokens.length) {
+              const trending = await getAllTokensTrends();
+              setAllTrendingTokens(trending);
+              const start = (currentPage - 1) * TOKENS_PER_PAGE;
+              const end = start + TOKENS_PER_PAGE;
+              fetched = {
+                data: sort === 'marketcap' ? trending : trending.slice(start, end),
+                totalCount: trending.length,
+                currentPage,
+                totalPages: Math.ceil(trending.length / TOKENS_PER_PAGE),
+                fullList: sort === 'marketcap',
+              };
             } else {
-              if (sort === 'marketcap') {
-                fetchedTokens = {
-                  data: allTrendingTokens,
-                  totalCount: allTrendingTokens.length,
-                  currentPage: currentPage,
-                  totalPages: Math.ceil(allTrendingTokens.length / TOKENS_PER_PAGE),
-                  fullList: true
-                };
-              } else {
-                const startIndex = (currentPage - 1) * TOKENS_PER_PAGE;
-                const endIndex = startIndex + TOKENS_PER_PAGE;
-                const paginatedTokens = allTrendingTokens.slice(startIndex, endIndex);
-                
-                fetchedTokens = {
-                  data: paginatedTokens,
-                  totalCount: allTrendingTokens.length,
-                  currentPage: currentPage,
-                  totalPages: Math.ceil(allTrendingTokens.length / TOKENS_PER_PAGE)
-                };
-              }
+              const start = (currentPage - 1) * TOKENS_PER_PAGE;
+              const end = start + TOKENS_PER_PAGE;
+              fetched = {
+                data: sort === 'marketcap' ? allTrendingTokens : allTrendingTokens.slice(start, end),
+                totalCount: allTrendingTokens.length,
+                currentPage,
+                totalPages: Math.ceil(allTrendingTokens.length / TOKENS_PER_PAGE),
+                fullList: sort === 'marketcap',
+              };
             }
             break;
-
-          case 'new':
-            try {
-              fetchedTokens = await getRecentTokens(currentPage, TOKENS_PER_PAGE, 1);
-              if (fetchedTokens === null) {
-                setNoRecentTokens(true);
-                fetchedTokens = { data: [], totalCount: 0, currentPage: 1, totalPages: 1 };
-              }
-            } catch (error) {
-              console.error('Error fetching recent tokens:', error);
-              setError('Failed to fetch tokens. Please try again later.');
-              fetchedTokens = { data: [], totalCount: 0, currentPage: 1, totalPages: 1 };
-            }
+          }
+          case 'new': {
+            const r = await getRecentTokens(currentPage, TOKENS_PER_PAGE, 1);
+            if (r === null) {
+              setNoRecentTokens(true);
+              fetched = { data: [], totalCount: 0, currentPage: 1, totalPages: 1 };
+            } else fetched = r;
             break;
-          case 'finalized':
+          }
+          case 'finalized': {
             try {
-              fetchedTokens = await getTokensWithLiquidity(currentPage, TOKENS_PER_PAGE);
-            } catch (liquidityError) {
-              if (liquidityError instanceof Error && 'response' in liquidityError && (liquidityError.response as any).status === 404) {
+              fetched = await getTokensWithLiquidity(currentPage, TOKENS_PER_PAGE);
+            } catch (e: any) {
+              if (e?.response?.status === 404) {
                 setNoLiquidityTokens(true);
-                fetchedTokens = { data: [], totalCount: 0, currentPage: 1, totalPages: 1 };
-              } else {
-                throw liquidityError;
-              }
+                fetched = { data: [], totalCount: 0, currentPage: 1, totalPages: 1 };
+              } else throw e;
             }
             break;
+          }
           default:
-            fetchedTokens = { data: [], totalCount: 0, currentPage: 1, totalPages: 1 };
+            fetched = { data: [], totalCount: 0, currentPage: 1, totalPages: 1 };
         }
       }
 
-      const adjustedTokens: PaginatedResponse<Token | TokenWithLiquidityEvents> = {
-        data: fetchedTokens.data || fetchedTokens.tokens || [],
-        totalCount: fetchedTokens.totalCount,
-        currentPage: fetchedTokens.currentPage || 1,
-        totalPages: fetchedTokens.totalPages || 1,
+      const adjusted: PaginatedResponse<Token | TokenWithLiquidityEvents> = {
+        data: fetched?.data || fetched?.tokens || [],
+        totalCount: fetched?.totalCount ?? 0,
+        currentPage: fetched?.currentPage || 1,
+        totalPages: fetched?.totalPages || 1,
         tokens: [],
-        fullList: fetchedTokens.fullList
+        fullList: fetched?.fullList,
       };
-
-      setTokens(adjustedTokens);
-    } catch (error) {
-      console.error('Error fetching tokens:', error);
+      setTokens(adjusted);
+    } catch (e) {
+      console.error('fetchTokens error:', e);
       setError('Failed to fetch tokens. Please try again later.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const filteredTokens = useMemo(() => {
-    if (!tokens || !tokens.data) return [];
-    return tokens.data.filter(token =>
-      token.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      token.symbol.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [tokens, searchQuery]);
-
-  const handleSearch = (query: string) => {
-    console.log('Search query updated:', query);
-    if (query !== searchQuery) {
-      setSearchQuery(query);
-      if (query.trim()) {
-        setCurrentPage(1);
-      }
-      if (!query.trim()) {
-        fetchTokens();
-      }
-    }
-  };
-
-  const handleSort = async (option: SortOption) => {
-    console.log('Sort option changed:', option);
-    setIsLoading(true);
-    
-    try {
-      // If switching to marketcap and we don't have trending tokens, fetch them
-      if (option === 'marketcap' && allTrendingTokens.length === 0) {
-        const trendingTokens = await getAllTokensTrends();
-        setAllTrendingTokens(trendingTokens);
-      }
-      
-      // Only clear trending tokens when switching to 'new' or 'finalized'
-      if (option === 'new' || option === 'finalized') {
-        setAllTrendingTokens([]);
-      }
-      
-      setSort(option);
-      setCurrentPage(1);
-      setSearchQuery('');
-    } catch (error) {
-      console.error('Error handling sort:', error);
-      setError('Failed to sort tokens. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handlePageChange = (page: number) => {
-    console.log('Page changed:', page);
-    setCurrentPage(page);
-  };
-
-  const toggleNewTokens = () => {
-    setShowNewTokens(prev => {
-      // console.log('Toggling new tokens. Current state:', prev);
-      if (prev) {
-        // Turning off
-        setTokens(oldTokens => {
-          if (!oldTokens) return null;
-          const updatedTokens = {
-            ...oldTokens,
-            data: oldTokens.data.filter(token => !displayedNewTokens.includes(token)),
-            totalCount: oldTokens.totalCount - displayedNewTokens.length
-          };
-          // console.log('Updated tokens after turning off:', updatedTokens);
-          return updatedTokens;
-        });
-        setNewTokensBuffer(displayedNewTokens);
-        setDisplayedNewTokens([]);
-      } else {
-        // Turning on
-        setTokens(oldTokens => {
-          if (!oldTokens) return null;
-          const updatedTokens = {
-            ...oldTokens,
-            data: [...newTokensBuffer, ...oldTokens.data],
-            totalCount: oldTokens.totalCount + newTokensBuffer.length
-          };
-          // console.log('Updated tokens after turning on:', updatedTokens);
-          return updatedTokens;
-        });
-        setDisplayedNewTokens(newTokensBuffer);
-        setNewTokensBuffer([]);
-      }
-      return !prev;
+  // ===== Filter handlers =====
+  const clearFilter = () => {
+    setPending({
+      mcapMin: DEFAULTS.mcapMin, mcapMax: DEFAULTS.mcapMax,
+      volMin: DEFAULTS.volMin,   volMax: DEFAULTS.volMax,
+      mcapMinText: '', mcapMaxText: '', volMinText: '', volMaxText: '',
     });
+    setActiveFilter(null);
+  };
+  const applyFilter = () => {
+    setActiveFilter({ mcapMin: pending.mcapMin, mcapMax: pending.mcapMax, volMin: pending.volMin, volMax: pending.volMax });
+    setIsFilterOpen(false);
   };
 
-  const handleLaunchToken = () => {
-    router.push('/create');
-  };
-
-  // Typewriter effect
-  useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-    
-    const typeText = async () => {
-      const currentText = TYPEWRITER_TEXTS[currentTextIndex];
-      
-      // Type heading
-      for (let i = 0; i <= currentText.heading.length; i++) {
-        await new Promise(resolve => {
-          timeoutId = setTimeout(resolve, 50);
-        });
-        setDisplayText(prev => ({
-          ...prev,
-          heading: currentText.heading.slice(0, i)
-        }));
-      }
-      
-      // Type subheading
-      for (let i = 0; i <= currentText.subheading.length; i++) {
-        await new Promise(resolve => {
-          timeoutId = setTimeout(resolve, 50);
-        });
-        setDisplayText(prev => ({
-          ...prev,
-          subheading: currentText.subheading.slice(0, i)
-        }));
-      }
-      
-      // Pause before deleting
-      await new Promise(resolve => {
-        timeoutId = setTimeout(resolve, 2000);
-      });
-      
-      // Delete text
-      for (let i = currentText.subheading.length; i >= 0; i--) {
-        await new Promise(resolve => {
-          timeoutId = setTimeout(resolve, 30);
-        });
-        setDisplayText(prev => ({
-          ...prev,
-          subheading: currentText.subheading.slice(0, i)
-        }));
-      }
-      
-      for (let i = currentText.heading.length; i >= 0; i--) {
-        await new Promise(resolve => {
-          timeoutId = setTimeout(resolve, 30);
-        });
-        setDisplayText(prev => ({
-          ...prev,
-          heading: currentText.heading.slice(0, i)
-        }));
-      }
-      
-      // Move to next text
-      setCurrentTextIndex((prev) => (prev + 1) % TYPEWRITER_TEXTS.length);
-    };
-
-    if (isTyping) {
-      typeText();
+  // ===== Compute list =====
+  const filteredTokens = useMemo(() => {
+    let list = tokens?.data ?? [];
+    if (!list.length) return [];
+    const q = (searchQuery || '').toLowerCase();
+    if (q) {
+      list = list.filter((t: any) => (t?.name || '').toLowerCase().includes(q) || (t?.symbol || '').toLowerCase().includes(q));
     }
+    if (activeFilter) {
+      const { mcapMin, mcapMax, volMin, volMax } = activeFilter;
+      list = list.filter((t: any) => {
+        const m = getMcap(t);
+        const v = getVol24h(t);
+        return m >= mcapMin && m <= mcapMax && v >= volMin && v <= volMax;
+      });
+    }
+    return list;
+  }, [tokens, searchQuery, activeFilter]);
 
-    return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    };
-  }, [currentTextIndex, isTyping]);
+  const handleSearch = (q: string) => { setSearchQuery(q); if (q.trim()) setCurrentPage(1); };
+  const handleSort = (opt: SortOption) => { setSort(opt); setCurrentPage(1); setSearchQuery(''); };
 
-  // console.log('Rendering component. isLoading:', isLoading, 'tokens:', tokens, 'filteredTokens:', filteredTokens);
+  // top 5 for marquee
+  const top5Trending = useMemo(() => {
+    const src = allTrendingTokens?.length ? allTrendingTokens : ((tokens?.data as Token[]) || []);
+    return src.slice(0, 5);
+  }, [allTrendingTokens, tokens]);
 
   return (
     <Layout>
-      <SEO
-        title="Create and Trade Memecoins Easily on Bondle."
-        description="The ultimate platform for launching and trading memecoins on Shibarium. Create your own tokens effortlessly and engage in fair, dynamic trading."
-        image="seo/home.jpg"
-      />
+      <SEO title="Create and Trade Memecoins Easily"
+           description="The best platform for launching and trading memecoins. Fair launch, anti-bot, community-driven."
+           image="seo/home.jpg" />
+
+      {isMarqueeLoading && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <LoadingBar size="large" />
+        </div>
+      )}
+
       <HowItWorksPopup isVisible={showHowItWorks} onClose={() => setShowHowItWorks(false)} />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+      <div className="max-w-7xl ml-0 mr-auto px-4 sm:px-6 lg:px-10 xl:px-16">
         <div className="text-center mb-4">
-          <div className="h-[80px]"> {/* Reduced height from 120px to 80px */}
-            <h1 className="text-3xl font-bold mb-1">{displayText.heading}</h1>
-            <h2 className="text-2xl mb-3">{displayText.subheading}</h2>
+          {/* Banner */}
+          <div className="relative mb-8">
+            <div className="banner-wrapper">
+              <div className="banner-logo">
+                <Image src="/logo-seed.png" alt="Logo" width={84} height={84} className="rounded-xl" priority />
+              </div>
+              <div className="banner-track">
+                <div className="banner-row">
+                  PUMP FUN CLONE • MAKE MONEY ON THE MEMECONOMY • MAX YOUR MEME KICKBACKS • FAIR LAUNCH • NO BOT DRAMA
+                </div>
+              </div>
+            </div>
           </div>
 
+          {/* Trending Marquee */}
+          <div className="relative mb-4">
+            <div className="marquee-container" aria-label="Top trending tokens">
+              <div className="marquee-fade" />
+              <div className="marquee-track">
+                {[...top5Trending, ...top5Trending].map((t, idx) => {
+                  const rawAddr = (t as any)?.address || (t as any)?.mint || (t as any)?.tokenAddress || (t as any)?.ca || null;
+                  const addr = rawAddr ? encodeURIComponent(String(rawAddr)) : null;
+                  const href = addr ? `${TOKEN_BASE_PATH}/${addr}` : getTokenHref(t);
+                  const isExternal = /^https?:\/\//i.test(href);
+                  const onClick = () => { setIsMarqueeLoading(true); if (isExternal) setTimeout(() => setIsMarqueeLoading(false), 300); };
+                  return (
+                    <Link key={`${(t as any)?.id ?? (t as any)?.address ?? 'token'}-${idx}`}
+                          href={href || TOKEN_BASE_PATH}
+                          target={isExternal ? '_blank' : undefined}
+                          rel={isExternal ? 'noopener noreferrer' : undefined}
+                          onClick={onClick}
+                          className="inline-flex items-center gap-3 px-3 py-2 rounded-2xl border border-[var(--card-border)]
+                                     bg-[var(--card)] hover:shadow-xl cursor-pointer"
+                          style={{ minWidth: 220, marginRight: 12 }}>
+                      <div className="w-12 h-12 rounded-xl overflow-hidden border border-[var(--card-border)] shrink-0">
+                        <Image src={(t as any)?.image || (t as any)?.logo || '/placeholder-token.png'}
+                               alt={(t as any)?.name || 'token'} width={48} height={48} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="text-left min-w-0">
+                        <div className="font-bold truncate">{(t as any)?.name || 'Unnamed'}</div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Search + Sort + Live + Filter */}
           <div className="mb-4">
             <SearchFilter onSearch={handleSearch} />
-            <div className="mb-4">
-              <div className="flex flex-col gap-2 md:hidden">
-                <div className="flex justify-center">
-                  <SortOptions onSort={handleSort} currentSort={sort} />
-                </div>
-                <div className="flex justify-center items-center gap-2">
-                  <span className="text-sm text-gray-400">Live Updates</span>
-                  <Switch
-                    checked={showNewTokens}
-                    onCheckedChange={toggleNewTokens}
-                    className={`${
-                      showNewTokens ? 'bg-[var(--primary)]' : 'bg-gray-600'
-                    } relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2 focus:ring-offset-gray-800`}
-                  >
-                    <span
-                      className={`${
-                        showNewTokens ? 'translate-x-6' : 'translate-x-1'
-                      } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
-                    />
-                  </Switch>
-                  {!showNewTokens && newTokensBuffer.length > 0 && (
-                    <span className="text-xs text-[var(--primary)]">
-                      {newTokensBuffer.length} new {newTokensBuffer.length === 1 ? 'token' : 'tokens'}
-                    </span>
-                  )}
-                </div>
-              </div>
+            <div className="mt-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <SortOptions onSort={handleSort} currentSort={sort} />
 
-              <div className="hidden md:flex md:items-center md:justify-between">
-                <div className="flex justify-center flex-grow">
-                  <SortOptions onSort={handleSort} currentSort={sort} />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-400">Live Updates</span>
-                  <Switch
-                    checked={showNewTokens}
-                    onCheckedChange={toggleNewTokens}
-                    className={`${
-                      showNewTokens ? 'bg-[var(--primary)]' : 'bg-gray-600'
-                    } relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2 focus:ring-offset-gray-800`}
-                  >
-                    <span
-                      className={`${
-                        showNewTokens ? 'translate-x-6' : 'translate-x-1'
-                      } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
-                    />
-                  </Switch>
-                  {!showNewTokens && newTokensBuffer.length > 0 && (
-                    <span className="text-xs text-[var(--primary)]">
-                      {newTokensBuffer.length} new {newTokensBuffer.length === 1 ? 'token' : 'tokens'}
-                    </span>
-                  )}
-                </div>
+              <div className="flex items-center gap-3 justify-center md:justify-end relative">
+                <span className="text-sm">NSFW</span>
+                <Switch
+                  checked={showNewTokens}
+                  onCheckedChange={() => setShowNewTokens(v => !v)}
+                  className={`${showNewTokens ? 'bg-[var(--primary)]' : 'bg-[var(--card-border)]'} relative inline-flex h-6 w-11 items-center rounded-full transition-colors`}
+                >
+                  <span className={`${showNewTokens ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`} />
+                </Switch>
+                {!showNewTokens && newTokensBuffer.length > 0 && (
+                  <span className="text-xs text-[var(--primary)]">{newTokensBuffer.length} new {newTokensBuffer.length === 1 ? 'token' : 'tokens'}</span>
+                )}
+
+                {/* Filter button */}
+                <button
+                  onClick={() => setIsFilterOpen(v => !v)}
+                  className={`px-3 py-2 rounded-md border border-[var(--card-border)] bg-[var(--card)] hover:shadow inline-flex items-center gap-2 text-sm ${activeFilter ? 'ring-1 ring-[var(--primary)]' : ''}`}
+                  aria-expanded={isFilterOpen}
+                >
+                  Filter
+                  <svg width="16" height="16" viewBox="0 0 24 24" className="opacity-80"><path fill="currentColor" d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>
+                </button>
+
+                {/* Filter Popover */}
+                {isFilterOpen && (
+                  <div className="absolute top-10 right-0 z-40 w-[420px] rounded-2xl border border-[var(--card-border)] bg-[var(--background)] text-[var(--foreground)] p-5 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
+                    {/* Mcap */}
+                    <div className="mb-6">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="font-semibold">Mcap</div>
+                        <div className="text-xs opacity-70">{fmtAbbrev(pending.mcapMin)} – {fmtAbbrev(pending.mcapMax)}</div>
+                      </div>
+                      <input
+                        type="range" min={DEFAULTS.mcapMin} max={DEFAULTS.mcapMax}
+                        value={pending.mcapMin}
+                        onChange={(e)=> setPending(p=>({...p, mcapMin: Math.min(Number(e.target.value), p.mcapMax-1)}))}
+                        className="w-full slider-accent"
+                      />
+                      <input
+                        type="range" min={DEFAULTS.mcapMin} max={DEFAULTS.mcapMax}
+                        value={pending.mcapMax}
+                        onChange={(e)=> setPending(p=>({...p, mcapMax: Math.max(Number(e.target.value), p.mcapMin+1)}))}
+                        className="w-full -mt-2 slider-accent"
+                      />
+                      <div className="mt-2 grid grid-cols-2 gap-3">
+                        <input
+                          placeholder="e.g., 10k, 1m"
+                          value={pending.mcapMinText}
+                          onChange={(e)=> setPending(p=>({...p, mcapMinText: e.target.value}))}
+                          onBlur={()=> {
+                            const v = parseAbbrev(pending.mcapMinText);
+                            if (!isNaN(v)) setPending(p=>({...p, mcapMin: Math.min(Math.max(v, DEFAULTS.mcapMin), p.mcapMax-1)}));
+                          }}
+                          className="px-3 py-2 rounded-md bg-[var(--input)] border border-[var(--card-border)] focus:bg-[var(--accent)] focus:text-black focus:placeholder-black focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition-colors"
+                        />
+                        <input
+                          placeholder="e.g., 10k, 1m"
+                          value={pending.mcapMaxText}
+                          onChange={(e)=> setPending(p=>({...p, mcapMaxText: e.target.value}))}
+                          onBlur={()=> {
+                            const v = parseAbbrev(pending.mcapMaxText);
+                            if (!isNaN(v)) setPending(p=>({...p, mcapMax: Math.max(Math.min(v, DEFAULTS.mcapMax), p.mcapMin+1)}));
+                          }}
+                          className="px-3 py-2 rounded-md bg-[var(--input)] border border-[var(--card-border)] focus:bg-[var(--accent)] focus:text-black focus:placeholder-black focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition-colors"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 24h Vol */}
+                    <div className="mb-6">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="font-semibold">24h Vol</div>
+                        <div className="text-xs opacity-70">{fmtAbbrev(pending.volMin)} – {fmtAbbrev(pending.volMax)}</div>
+                      </div>
+                      <input
+                        type="range" min={DEFAULTS.volMin} max={DEFAULTS.volMax}
+                        value={pending.volMin}
+                        onChange={(e)=> setPending(p=>({...p, volMin: Math.min(Number(e.target.value), p.volMax-1)}))}
+                        className="w-full slider-accent"
+                      />
+                      <input
+                        type="range" min={DEFAULTS.volMin} max={DEFAULTS.volMax}
+                        value={pending.volMax}
+                        onChange={(e)=> setPending(p=>({...p, volMax: Math.max(Number(e.target.value), p.volMin+1)}))}
+                        className="w-full -mt-2 slider-accent"
+                      />
+                      <div className="mt-2 grid grid-cols-2 gap-3">
+                        <input
+                          placeholder="e.g., 5k, 100k"
+                          value={pending.volMinText}
+                          onChange={(e)=> setPending(p=>({...p, volMinText: e.target.value}))}
+                          onBlur={()=> {
+                            const v = parseAbbrev(pending.volMinText);
+                            if (!isNaN(v)) setPending(p=>({...p, volMin: Math.min(Math.max(v, DEFAULTS.volMin), p.volMax-1)}));
+                          }}
+                          className="px-3 py-2 rounded-md bg-[var(--input)] border border-[var(--card-border)] focus:bg-[var(--accent)] focus:text-black focus:placeholder-black focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition-colors"
+                        />
+                        <input
+                          placeholder="e.g., 5k, 100k"
+                          value={pending.volMaxText}
+                          onChange={(e)=> setPending(p=>({...p, volMaxText: e.target.value}))}
+                          onBlur={()=> {
+                            const v = parseAbbrev(pending.volMaxText);
+                            if (!isNaN(v)) setPending(p=>({...p, volMax: Math.max(Math.min(v, DEFAULTS.volMax), p.volMin+1)}));
+                          }}
+                          className="px-3 py-2 rounded-md bg-[var(--input)] border border-[var(--card-border)] focus:bg-[var(--accent)] focus:text-black focus:placeholder-black focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition-colors"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <button
+                        onClick={clearFilter}
+                        className="flex-1 px-4 py-2 rounded-lg border border-[var(--card-border)] bg-[var(--card)]"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        onClick={applyFilter}
+                        className="flex-1 px-4 py-2 rounded-lg bg-[var(--primary)] text-white font-semibold hover:opacity-90"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
+          {/* Token list */}
           {isLoading ? (
-            <div className="flex justify-center items-center mt-10">
-              <Spinner size="medium" />
-            </div>
+            <div className="flex justify-center items-center mt-10"><Spinner size="medium" /></div>
           ) : error ? (
-            <div className="text-center text-red-500 text-xl mt-10">{error}</div>
+            <div className="text-center text-[var(--primary)] text-xl mt-10">{error}</div>
           ) : noRecentTokens ? (
-            <div className="text-center text-white text-xs mt-10">No tokens created in the last 24 hours. Check back soon.</div>
+            <div className="text-center text-[var(--primary)] text-xs mt-10">No tokens created in the last 24 hours. Check back soon.</div>
           ) : noLiquidityTokens ? (
-            <div className="text-center text-white text-xs mt-10">No tokens Listed Yet.</div>
-          ) : filteredTokens.length > 0 ? (
+            <div className="text-center text-[var(--primary)] text-xs mt-10">No tokens Listed Yet.</div>
+          ) : (tokens?.totalPages || 1) > 0 ? (
             <TokenList
               tokens={filteredTokens}
               currentPage={currentPage}
               totalPages={tokens?.totalPages || 1}
-              onPageChange={handlePageChange}
+              onPageChange={setCurrentPage}
               isEnded={sort === 'finalized'}
               sortType={sort}
               itemsPerPage={TOKENS_PER_PAGE}
               isFullList={tokens?.fullList}
             />
           ) : (
-            <div className="text-center text-white text-xs mt-10">No tokens found matching your criteria.</div>
+            <div className="text-center text-[var(--primary)] text-xs mt-10">No tokens found matching your criteria.</div>
           )}
         </div>
       </div>
+
+      {/* Local styles */}
+      <style jsx>{`
+        .marquee-container { position: relative; overflow: hidden; height: 84px; }
+        .marquee-fade {
+          position: absolute; inset: 0; pointer-events: none;
+          background: linear-gradient(90deg, var(--background) 0%, rgba(250,246,239,0) 8%, rgba(250,246,239,0) 92%, var(--background) 100%);
+        }
+        .marquee-track { display: inline-flex; align-items: center; white-space: nowrap; animation: marqueeX 22s linear infinite; }
+        .marquee-container:hover .marquee-track { animation-play-state: paused; }
+        @keyframes marqueeX { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+        /* ===== GREEN slider across browsers ===== */
+        .slider-accent { appearance: none; -webkit-appearance: none; width: 100%; height: 8px; background: transparent; }
+        /* WebKit track */
+        .slider-accent::-webkit-slider-runnable-track {
+          height: 8px; border-radius: 999px;
+          background: var(--accent);
+        }
+        /* WebKit thumb */
+        .slider-accent::-webkit-slider-thumb {
+          -webkit-appearance: none; width: 18px; height: 18px; margin-top: -5px;
+          border-radius: 50%; background: #fff; border: 2px solid var(--accent); cursor: pointer;
+        }
+        /* Firefox track */
+        .slider-accent::-moz-range-track {
+          height: 8px; border-radius: 999px; background: var(--accent);
+        }
+        /* Firefox progress (left of thumb) */
+        .slider-accent::-moz-range-progress {
+          height: 8px; border-radius: 999px; background: var(--accent);
+        }
+        /* Firefox thumb */
+        .slider-accent::-moz-range-thumb {
+          width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); cursor: pointer;
+        }
+        /* Edge/IE (fallback) */
+        .slider-accent::-ms-fill-lower { background: var(--accent); }
+        .slider-accent::-ms-fill-upper { background: var(--accent); }
+        .slider-accent::-ms-thumb {
+          width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 2px solid var(--accent);
+        }
+      `}</style>
     </Layout>
   );
 };

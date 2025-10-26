@@ -1,142 +1,152 @@
 // api.ts
-
 import axios from 'axios';
-import { Token, TokenWithLiquidityEvents, PaginatedResponse, LiquidityEvent, TokenWithTransactions, PriceResponse, HistoricalPrice, USDHistoricalPrice, TokenHolder, TransactionResponse } from '@/interface/types';
+import {
+  Token,
+  TokenWithLiquidityEvents,
+  PaginatedResponse,
+  LiquidityEvent,
+  TokenWithTransactions,
+  PriceResponse,
+  HistoricalPrice,
+  USDHistoricalPrice,
+  TokenHolder,
+  TransactionResponse
+} from '@/interface/types';
 import { ethers } from 'ethers';
 
+// =====================
+// Base & helpers
+// =====================
+const PROXY_BASE = '/api/proxy';
+const isServer = typeof window === 'undefined';
+// Dùng biến môi trường này khi SSR (nhớ tạo .env.local)
+// NEXT_PUBLIC_SITE_URL=http://localhost:3000
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
-export async function getAllTokens(page: number = 1, pageSize: number = 13): Promise<PaginatedResponse<Token>> {
-  const response = await axios.get('/api/ports/getAllTokens', {
-    params: { page, pageSize }
-  });
-  return response.data;
+// Trả về URL đầy đủ. SSR cần absolute, CSR để nguyên relative.
+const absProxy = (path: string) =>
+  isServer ? `${SITE_URL}${PROXY_BASE}${path}` : `${PROXY_BASE}${path}`;
+
+const getViaProxy = async <T = any>(path: string, params?: any) => {
+  const url = absProxy(path);
+  return axios.get<T>(url, { params });
+};
+
+// =====================
+// API calls (qua proxy)
+// =====================
+export async function getAllTokens(page = 1, pageSize = 13): Promise<PaginatedResponse<Token>> {
+  const { data } = await getViaProxy<PaginatedResponse<Token>>('/ports/getAllTokens', { page, pageSize });
+  return data;
 }
 
 export async function getAllTokensTrends(): Promise<Token[]> {
-  const response = await axios.get('/api/ports/getAllTokensTrends');
-  return response.data;
+  const { data } = await getViaProxy<Token[]>('/ports/getAllTokensTrends');
+  return data;
 }
 
-export async function getAllTokensWithoutLiquidity(): Promise<Token[]> { //chewyswap aggregator use
-  const response = await axios.get('/api/ports/getAllTokensWithoutLiquidity');
-  return response.data;
+export async function getAllTokensWithoutLiquidity(): Promise<Token[]> {
+  const { data } = await getViaProxy<Token[]>('/ports/getAllTokensWithoutLiquidity');
+  return data;
 }
 
-//GET /api/volume/total
 export async function getTotalVolume(): Promise<{ totalVolume: number }> {
-  const response = await axios.get('/api/ports/getTotalVolume');
-  return response.data;
+  const { data } = await getViaProxy<{ totalVolume: number }>('/ports/getTotalVolume');
+  return data;
 }
 
-//GET /api/volume/range?hours=24
 export async function getVolumeRange(hours: number): Promise<{ totalVolume: number }> {
-  const response = await axios.get('/api/ports/getVolumeRange', {
-    params: { hours }
-  });
-  return response.data;
+  const { data } = await getViaProxy<{ totalVolume: number }>('/ports/getVolumeRange', { hours });
+  return data;
 }
 
-//GET /api/tokens/total-count
 export async function getTotalTokenCount(): Promise<{ totalTokens: number }> {
-  const response = await axios.get('/api/ports/getTotalTokenCount');
-  return response.data;
+  const { data } = await getViaProxy<{ totalTokens: number }>('/ports/getTotalTokenCount');
+  return data;
 }
 
-
-export async function getRecentTokens(page: number = 1, pageSize: number = 20, hours: number = 24): Promise<PaginatedResponse<Token> | null> {
+export async function getRecentTokens(
+  page = 1,
+  pageSize = 20,
+  hours = 24
+): Promise<PaginatedResponse<Token> | null> {
   try {
-    const response = await axios.get('/api/ports/getRecentTokens', {
-      params: { page, pageSize, hours }
+    const { data } = await getViaProxy<PaginatedResponse<Token>>('/ports/getRecentTokens', {
+      page,
+      pageSize,
+      hours
     });
-    return response.data;
-  } catch (error) {
-    if (axios.isAxiosError(error) && error.response?.status === 404) {
-      // Return null to indicate no recent tokens found
-      return null;
-    }
-    throw error; // Re-throw other errors
+    return data;
+  } catch (error: any) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) return null;
+    throw error;
   }
 }
 
 export async function searchTokens(
   query: string,
-  page: number = 1,
-  pageSize: number = 20
+  page = 1,
+  pageSize = 20
 ): Promise<PaginatedResponse<Token>> {
-  try {
-    const response = await axios.get('/api/ports/searchTokens', {
-      params: { q: query, page, pageSize }
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error searching tokens:', error);
-    throw new Error('Failed to search tokens');
-  }
+  const { data } = await getViaProxy<PaginatedResponse<Token>>('/ports/searchTokens', {
+    q: query,
+    page,
+    pageSize
+  });
+  return data;
 }
 
-export async function getTokensWithLiquidity(page: number = 1, pageSize: number = 20): Promise<PaginatedResponse<TokenWithLiquidityEvents>> {
-  const response = await axios.get('/api/ports/getTokensWithLiquidity', {
-    params: { page, pageSize }
+export async function getTokensWithLiquidity(
+  page = 1,
+  pageSize = 20
+): Promise<PaginatedResponse<TokenWithLiquidityEvents>> {
+  const { data } = await getViaProxy<PaginatedResponse<TokenWithLiquidityEvents>>('/ports/getTokensWithLiquidity', {
+    page,
+    pageSize
   });
-  return response.data;
+  return data;
 }
 
 export async function getTokenByAddress(address: string): Promise<Token> {
-  const response = await axios.get('/api/ports/getTokenByAddress', {
-    params: { address }
-  });
-  return response.data;
+  const { data } = await getViaProxy<Token>('/ports/getTokenByAddress', { address });
+  return data;
 }
 
-export async function getTokenLiquidityEvents(tokenId: string, page: number = 1, pageSize: number = 20): Promise<PaginatedResponse<LiquidityEvent>> {
-  const response = await axios.get('/api/ports/getTokenLiquidityEvents', {
-    params: { tokenId, page, pageSize }
+export async function getTokenLiquidityEvents(
+  tokenId: string,
+  page = 1,
+  pageSize = 20
+): Promise<PaginatedResponse<LiquidityEvent>> {
+  const { data } = await getViaProxy<PaginatedResponse<LiquidityEvent>>('/ports/getTokenLiquidityEvents', {
+    tokenId,
+    page,
+    pageSize
   });
-  return response.data;
+  return data;
 }
 
 export async function getTokenInfoAndTransactions(
   address: string,
-  transactionPage: number = 1,
-  transactionPageSize: number = 10
+  transactionPage = 1,
+  transactionPageSize = 10
 ): Promise<TokenWithTransactions> {
-  try {
-    const baseUrl = typeof window === 'undefined' 
-      ? process.env.NEXT_VERCEL_URL
-        ? `https://${process.env.NEXT_VERCEL_URL}`
-        : 'http://localhost:3000'
-      : '';
-
-    const response = await axios.get(`${baseUrl}/api/ports/getTokenInfoAndTransactions`, {
-      params: { address, transactionPage, transactionPageSize }
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error in getTokenInfoAndTransactions:', error);
-    throw error;
-  }
-}
-
-
-//historical price
-export async function getHistoricalPriceData(address: string): Promise<Token> {
-  const response = await axios.get('/api/ports/getHistoricalPriceData', {
-    params: { address }
+  const { data } = await getViaProxy<TokenWithTransactions>('/ports/getTokenInfoAndTransactions', {
+    address,
+    transactionPage,
+    transactionPageSize
   });
-  return response.data;
+  return data;
 }
 
-//eth price usd
+export async function getHistoricalPriceData(address: string): Promise<Token> {
+  const { data } = await getViaProxy<Token>('/ports/getHistoricalPriceData', { address });
+  return data;
+}
+
 export async function getCurrentPrice(): Promise<string> {
-  try {
-    const response = await axios.get<PriceResponse>('/api/ports/getCurrentPrice');
-    return response.data.price;
-  } catch (error) {
-    console.error('Error fetching current price:', error);
-    throw new Error('Failed to fetch current price');
-  }
+  const { data } = await getViaProxy<PriceResponse>('/ports/getCurrentPrice');
+  return data.price;
 }
-
 
 export async function getTokenUSDPriceHistory(address: string): Promise<USDHistoricalPrice[]> {
   try {
@@ -145,13 +155,12 @@ export async function getTokenUSDPriceHistory(address: string): Promise<USDHisto
       getHistoricalPriceData(address)
     ]);
 
-    return historicalPrices.map((price: HistoricalPrice) => {
+    return (historicalPrices as any as HistoricalPrice[]).map((price) => {
       const tokenPriceInWei = ethers.BigNumber.from(price.tokenPrice);
       const tokenPriceInETH = ethers.utils.formatEther(tokenPriceInWei);
       const tokenPriceUSD = parseFloat(tokenPriceInETH) * parseFloat(ethPrice);
-
       return {
-        tokenPriceUSD: tokenPriceUSD.toFixed(9),  // Adjust decimal places as needed
+        tokenPriceUSD: tokenPriceUSD.toFixed(9),
         timestamp: price.timestamp
       };
     });
@@ -161,10 +170,9 @@ export async function getTokenUSDPriceHistory(address: string): Promise<USDHisto
   }
 }
 
-
 export async function updateToken(
-  address: string, 
-  data: {
+  address: string,
+  dataUpdate: {
     logo?: string;
     description?: string;
     website?: string;
@@ -174,57 +182,35 @@ export async function updateToken(
     youtube?: string;
   }
 ): Promise<Token> {
-  try {
-    const response = await axios.patch('/api/ports/updateToken', {
-      address,
-      data
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error updating token:', error);
-    throw new Error('Failed to update token');
-  }
+  const url = absProxy('/ports/updateToken');
+  const { data } = await axios.patch(url, { address, data: dataUpdate });
+  return data;
 }
 
-// get all transaction associated with a particular address
 export async function getTransactionsByAddress(
-  address: string, 
-  page: number = 1, 
-  pageSize: number = 10
+  address: string,
+  page = 1,
+  pageSize = 10
 ): Promise<TransactionResponse> {
-  try {
-    const response = await axios.get('/api/ports/getTransactionsByAddress', {
-      params: { address, page, pageSize }
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching transactions:', error);
-    throw new Error('Failed to fetch transactions');
-  }
+  const { data } = await getViaProxy<TransactionResponse>('/ports/getTransactionsByAddress', {
+    address,
+    page,
+    pageSize
+  });
+  return data;
 }
 
-// POST /chats: Add a new chat message with optional reply_to
 export async function addChatMessage(
-  user: string, 
-  token: string, 
-  message: string, 
+  user: string,
+  token: string,
+  message: string,
   replyTo?: number
 ): Promise<{ id: number }> {
-  try {
-    const response = await axios.post('/api/ports/addChatMessage', {
-      user,
-      token,
-      message,
-      reply_to: replyTo  // Optional: ID of the message being replied to
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error adding chat message:', error);
-    throw new Error('Failed to add chat message');
-  }
+  const url = absProxy('/ports/addChatMessage');
+  const { data } = await axios.post(url, { user, token, message, reply_to: replyTo });
+  return data;
 }
 
-// GET /chats: Get chat messages for a specific token
 export async function getChatMessages(token: string): Promise<Array<{
   id: number;
   user: string;
@@ -233,58 +219,19 @@ export async function getChatMessages(token: string): Promise<Array<{
   reply_to: number | null;
   timestamp: string;
 }>> {
-  try {
-    const response = await axios.get('/api/ports/getChatMessages', {
-      params: { token }
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching chat messages:', error);
-    throw new Error('Failed to fetch chat messages');
-  }
+  const { data } = await getViaProxy('/ports/getChatMessages', { token });
+  return data as any;
 }
 
-//get all token address
-export async function getAllTokenAddresses(): Promise<Array<{address: string, symbol: string}>> {
-  try {
-    const response = await axios.get('/api/ports/getAllTokenAddresses');
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching token addresses and symbols:', error);
-    throw new Error('Failed to fetch token addresses and symbols');
-  }
-}
-
-export async function getTokensByCreator(
-  creatorAddress: string,
-  page: number = 1,
-  pageSize: number = 20
-): Promise<PaginatedResponse<Token>> {
-  try {
-    const response = await axios.get('/api/ports/getTokensByCreator', {
-      params: { creatorAddress, page, pageSize }
-    });
-    // console.log('getTokensByCreator', response.data);
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching tokens by creator:', error);
-    throw new Error('Failed to fetch tokens by creator');
-  }
-}
-
-
-//blockexplorer Get token Holders
+// Gọi thẳng block explorer (không qua proxy)
 export async function getTokenHolders(tokenAddress: string): Promise<TokenHolder[]> {
   try {
     const response = await axios.get(`https://www.shibariumscan.io/api/v2/tokens/${tokenAddress}/holders`);
     const data = response.data;
-
-    return data.items.map((item: any) => {
-      return {
-        address: item.address.hash,
-        balance: item.value
-      };
-    });
+    return data.items.map((item: any) => ({
+      address: item.address.hash,
+      balance: item.value
+    }));
   } catch (error) {
     console.error('Error fetching token holders:', error);
     throw new Error('Failed to fetch token holders');

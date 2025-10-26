@@ -1,7 +1,7 @@
 import React from 'react';
 import { ChevronLeftIcon, ChevronRightIcon, ExternalLinkIcon } from 'lucide-react';
 import { TokenHolder } from '@/interface/types';
-import { formatAmountV3, shortenAddress, getBondingCurveAddress } from '@/utils/blockchainUtils';
+import { shortenAddress, getBondingCurveAddress } from '@/utils/blockchainUtils';
 
 interface TokenHoldersProps {
   tokenHolders: TokenHolder[];
@@ -14,10 +14,6 @@ interface TokenHoldersProps {
   allHolders: TokenHolder[];
 }
 
-/**
- * Token holders table with pagination. Excludes the token contract and bonding curve from the list.
- * Styled with Minimal Prime glass (thin borders and muted surfaces).
- */
 const TokenHolders: React.FC<TokenHoldersProps> = ({
   tokenHolders,
   currentPage,
@@ -28,56 +24,79 @@ const TokenHolders: React.FC<TokenHoldersProps> = ({
   onPageChange,
   allHolders,
 }) => {
+  // Safe inputs
+  const safeAllHolders: TokenHolder[] = Array.isArray(allHolders)
+    ? allHolders.filter((h) => !!h && typeof h.address === 'string' && typeof h.balance !== 'undefined')
+    : [];
 
-  const bondingCurveAddress = getBondingCurveAddress(tokenAddress as `0x${string}`);
+  const tokenAddrLower = typeof tokenAddress === 'string' ? tokenAddress.toLowerCase() : '';
+  const creatorAddrLower = typeof creatorAddress === 'string' ? creatorAddress.toLowerCase() : '';
 
-  // Calculate total supply excluding only the token contract
-  const totalSupply = allHolders.reduce((sum, holder) => {
-    if (holder.address.toLowerCase() === tokenAddress.toLowerCase()) {
+  const bondingCurveRaw = getBondingCurveAddress(tokenAddress as `0x${string}`) || '';
+  const bondingCurveLower = bondingCurveRaw ? bondingCurveRaw.toLowerCase() : '';
+
+  const blockscoutBase =
+    process.env.NEXT_PUBLIC_BLOCKSCOUT_URL || 'https://www.shibariumscan.io';
+
+  // Tổng supply: loại trừ chính contract token
+  const totalSupply = safeAllHolders.reduce((sum, holder) => {
+    const addrLower = holder.address?.toLowerCase?.() || '';
+    if (!addrLower || addrLower === tokenAddrLower) return sum; // bỏ qua token contract hoặc holder không hợp lệ
+
+    // holder.balance có thể là string/number/bigint -> chuyển sang BigInt an toàn
+    try {
+      const b = typeof holder.balance === 'bigint'
+        ? holder.balance
+        : BigInt(holder.balance as any);
+      return sum + b;
+    } catch {
       return sum;
     }
-    return sum + BigInt(holder.balance);
   }, BigInt(0));
 
-  // Calculate percentage for a holder
-  const calculatePercentage = (balance: string, address: string): string => {
-    if (address.toLowerCase() === tokenAddress.toLowerCase()) {
+  const calculatePercentage = (balance: string | number | bigint, address: string): string => {
+    const addrLower = address?.toLowerCase?.() || '';
+    if (!addrLower || addrLower === tokenAddrLower) return '0%';
+    if (totalSupply === BigInt(0)) return '0%';
+
+    let bal: bigint;
+    try {
+      bal = typeof balance === 'bigint' ? balance : BigInt(balance as any);
+    } catch {
       return '0%';
     }
-    
-    if (totalSupply === BigInt(0)) return '0%';
-    
-    const percentage = (BigInt(balance) * BigInt(10000) / totalSupply);
-    const percentageNumber = Number(percentage) / 100;
-    
-    if (percentageNumber < 0.001) {
-      return '<0.001%';
-    } else if (percentageNumber < 0.01) {
-      return percentageNumber.toFixed(3) + '%';
-    } else if (percentageNumber < 0.1) {
-      return percentageNumber.toFixed(2) + '%';
-    } else {
-      return percentageNumber.toFixed(2) + '%';
-    }
+
+    const pctTimes100 = (bal * BigInt(10000)) / totalSupply; // x100 để giữ 2 chữ số
+    const pct = Number(pctTimes100) / 100;
+
+    if (pct < 0.001) return '<0.001%';
+    if (pct < 0.01) return pct.toFixed(3) + '%';
+    if (pct < 0.1) return pct.toFixed(2) + '%';
+    return pct.toFixed(2) + '%';
   };
 
-  // Find bonding curve holder
-  const bondingCurveHolder = allHolders.find(
-    holder => holder.address.toLowerCase() === bondingCurveAddress.toLowerCase()
-  );
+  // Tìm holder là Bonding Curve (nếu có)
+  const bondingCurveHolder = bondingCurveLower
+    ? safeAllHolders.find(
+        (h) => h.address?.toLowerCase?.() === bondingCurveLower
+      )
+    : undefined;
 
-  // Filter holders (excluding token contract AND bonding curve address) and paginate
-  const filteredHolders = allHolders.filter(holder => 
-    holder.address.toLowerCase() !== tokenAddress.toLowerCase() && 
-    holder.address.toLowerCase() !== bondingCurveAddress.toLowerCase()
-  );
+  // Lọc bỏ token contract + bonding curve
+  const filteredHolders = safeAllHolders.filter((h) => {
+    const addrLower = h.address?.toLowerCase?.() || '';
+    if (!addrLower) return false;
+    if (addrLower === tokenAddrLower) return false;
+    if (bondingCurveLower && addrLower === bondingCurveLower) return false;
+    return true;
+  });
 
-  // Calculate pagination
+  // Phân trang
   const holdersPerPage = 10;
   const startIndex = (currentPage - 1) * holdersPerPage;
   const endIndex = startIndex + holdersPerPage;
   const paginatedHolders = filteredHolders.slice(startIndex, endIndex);
-  const actualTotalPages = Math.ceil(filteredHolders.length / holdersPerPage);
+  const actualTotalPages = Math.ceil(filteredHolders.length / holdersPerPage) || 1;
 
   return (
     <div className="w-full">
@@ -89,50 +108,52 @@ const TokenHolders: React.FC<TokenHoldersProps> = ({
           </tr>
         </thead>
         <tbody>
-          {/* Bonding Curve Manager as the first entry */}
-          <tr className="border-b border-[var(--card-hover)] hover:bg-[var(--card-hover)] transition-colors">
-            <td className="px-4 py-2">
-              <a
-                href={`${process.env.NEXT_PUBLIC_BLOCKSCOUT_URL}/address/${bondingCurveAddress}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-gray-400 hover:text-[var(--primary)] text-sm flex items-center gap-1 transition-colors"
-              >
-                Bonding Curve <ExternalLinkIcon size={14} />
-              </a>
-            </td>
-            <td className="px-4 py-2 text-gray-400 text-sm">
-              {bondingCurveHolder ? calculatePercentage(bondingCurveHolder.balance, bondingCurveHolder.address) : '0%'}
-            </td>
-          </tr>
-          {paginatedHolders.map((holder, index) => (
-            <tr key={index} className="border-b border-[var(--card-hover)] hover:bg-[var(--card-hover)] transition-colors">
+          {/* Bonding Curve Manager ở trên cùng (nếu có địa chỉ) */}
+          {bondingCurveLower && (
+            <tr className="border-b border-[var(--card-hover)] hover:bg-[var(--card-hover)] transition-colors">
               <td className="px-4 py-2">
-                {holder.address === creatorAddress ? (
-                  <a
-                    href={`${process.env.NEXT_PUBLIC_BLOCKSCOUT_URL}/address/${holder.address}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-gray-400 hover:text-[var(--primary)] text-sm flex items-center gap-1 transition-colors"
-                  >
-                    Creator <ExternalLinkIcon size={14} />
-                  </a>
-                ) : (
-                  <a
-                    href={`${process.env.NEXT_PUBLIC_BLOCKSCOUT_URL}/address/${holder.address}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-gray-400 hover:text-[var(--primary)] text-sm flex items-center gap-1 transition-colors"
-                  >
-                    {shortenAddress(holder.address)} <ExternalLinkIcon size={14} />
-                  </a>
-                )}
+                <a
+                  href={`${blockscoutBase}/address/${bondingCurveRaw}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-gray-400 hover:text-[var(--primary)] text-sm flex items-center gap-1 transition-colors"
+                >
+                  Bonding Curve <ExternalLinkIcon size={14} />
+                </a>
               </td>
               <td className="px-4 py-2 text-gray-400 text-sm">
-                {calculatePercentage(holder.balance, holder.address)}
+                {bondingCurveHolder
+                  ? calculatePercentage(bondingCurveHolder.balance, bondingCurveHolder.address)
+                  : '0%'}
               </td>
             </tr>
-          ))}
+          )}
+
+          {paginatedHolders.map((holder, index) => {
+            const addr = holder.address || '';
+            const isCreator = addr.toLowerCase?.() === creatorAddrLower;
+
+            return (
+              <tr
+                key={`${addr}-${index}`}
+                className="border-b border-[var(--card-hover)] hover:bg-[var(--card-hover)] transition-colors"
+              >
+                <td className="px-4 py-2">
+                  <a
+                    href={`${blockscoutBase}/address/${addr}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-gray-400 hover:text-[var(--primary)] text-sm flex items-center gap-1 transition-colors"
+                  >
+                    {isCreator ? 'Creator' : shortenAddress(addr)} <ExternalLinkIcon size={14} />
+                  </a>
+                </td>
+                <td className="px-4 py-2 text-gray-400 text-sm">
+                  {calculatePercentage(holder.balance, addr)}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 
@@ -156,9 +177,7 @@ const TokenHolders: React.FC<TokenHoldersProps> = ({
               key={page}
               onClick={() => onPageChange(page)}
               className={`px-3 py-1 rounded text-sm ${
-                currentPage === page
-                  ? 'btn btn-primary'
-                  : 'btn-secondary'
+                currentPage === page ? 'btn btn-primary' : 'btn-secondary'
               }`}
             >
               {page}
