@@ -1,4 +1,4 @@
-// src/pages/dashboard.tsx
+// Dashboard.tsx
 import React, { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { useRouter } from 'next/router';
@@ -14,8 +14,6 @@ interface TransactionResponse extends Omit<PaginatedResponse<Transaction>, 'data
   transactions: Transaction[];
 }
 
-type TokenItem = { address: string; symbol: string };
-
 const TokenBalanceItem: React.FC<{ 
   tokenAddress: string; 
   symbol: string; 
@@ -23,7 +21,7 @@ const TokenBalanceItem: React.FC<{
   onClick: () => void;
 }> = ({ tokenAddress, symbol, userAddress, onClick }) => {
   const { balance } = useERC20Balance(tokenAddress as `0x${string}`, (userAddress || '') as `0x${string}`);
-
+  
   if (!balance || balance.toString() === '0') {
     return null;
   }
@@ -113,8 +111,8 @@ const UserDashboard: React.FC = () => {
   const { address } = useAccount();
   const router = useRouter();
 
-  // === Dùng object để đồng bộ type với UI ===
-  const [tokenItems, setTokenItems] = useState<TokenItem[]>([]);
+  // === Changed: tokenAddresses is now string[] ===
+  const [tokenAddresses, setTokenAddresses] = useState<string[]>([]);
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -151,23 +149,14 @@ const UserDashboard: React.FC = () => {
     }
   };
 
-  // Lấy symbol từ danh sách token đã tạo (nếu có), fallback Unknown
-  const getTokenSymbol = (tokenAddress: string) => {
-    const m = createdTokens.find(t => t.address?.toLowerCase() === tokenAddress.toLowerCase());
-    return m?.symbol ?? 'Unknown';
-  };
-
   const fetchTokenAddresses = async () => {
     try {
+      // getAllTokenAddresses() is assumed to return string[]
       const addresses: string[] = await getAllTokenAddresses();
-      const items: TokenItem[] = (addresses ?? []).map(addr => ({
-        address: addr,
-        symbol: getTokenSymbol(addr),
-      }));
-      setTokenItems(items);
+      setTokenAddresses(Array.isArray(addresses) ? addresses : []);
     } catch (error) {
       console.error('Error fetching token addresses:', error);
-      setTokenItems([]);
+      setTokenAddresses([]);
     }
   };
 
@@ -187,6 +176,14 @@ const UserDashboard: React.FC = () => {
   };
 
   const handlePageChange = (newPage: number) => setCurrentPage(newPage);
+
+  // You may later enrich this to look up symbols from a cache or another API.
+  const getTokenSymbol = (tokenAddress: string) => {
+    // Try to infer from createdTokens first
+    const m = createdTokens.find(t => t.address?.toLowerCase() === tokenAddress.toLowerCase());
+    if (m?.symbol) return m.symbol;
+    return 'Unknown';
+  };
 
   const handleTokenClick = (tokenAddress: string) => {
     setIsTokenLoading(true);
@@ -226,13 +223,13 @@ const UserDashboard: React.FC = () => {
           
           {activeTab === 'held' && (
             <div>
-              {tokenItems.length > 0 ? (
+              {tokenAddresses.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {tokenItems.map(({ address: addr, symbol }) => (
+                  {tokenAddresses.map((addr) => (
                     <TokenBalanceItem
                       key={addr}
                       tokenAddress={addr}
-                      symbol={symbol}
+                      symbol={getTokenSymbol(addr)}
                       userAddress={address || ''}
                       onClick={() => handleTokenClick(addr)}
                     />
