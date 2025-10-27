@@ -198,7 +198,10 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
   useEffect(() => {
     if (tokenAllowance !== undefined && tokenAddr) {
-      setIsApproved(tokenAllowance > 0n);
+      setIsApproved(
+        typeof tokenAllowance === 'bigint' && tokenAllowance > BigInt(0)
+      );
+
     }
   }, [tokenAllowance, tokenAddr]);
 
