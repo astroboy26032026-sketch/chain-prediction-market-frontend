@@ -1,4 +1,3 @@
-// src/pages/profile/[address].tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { useAccount } from 'wagmi';
@@ -17,8 +16,6 @@ import TokenUpdateModal from '@/components/token/TokenUpdateModal';
 interface TransactionResponse extends Omit<PaginatedResponse<Transaction>, 'data'> {
   transactions: Transaction[];
 }
-
-type TokenItem = { address: string; symbol: string };
 
 interface TokenBalanceItemProps {
   tokenAddress: string;
@@ -151,72 +148,49 @@ const ProfilePage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
-
-  // ✅ Đổi sang TokenItem[] để tránh xung đột kiểu với getAllTokenAddresses() (string[])
-  const [tokenItems, setTokenItems] = useState<TokenItem[]>([]);
+  const [tokenAddresses, setTokenAddresses] = useState<Array<{ address: string; symbol: string }>>([]);
   const [isTokenLoading, setIsTokenLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'held' | 'created'>('held');
-
   const [createdTokens, setCreatedTokens] = useState<Token[]>([]);
   const [createdTokensPage, setCreatedTokensPage] = useState(1);
   const [createdTokensTotalPages, setCreatedTokensTotalPages] = useState(1);
-
   const [selectedToken, setSelectedToken] = useState<Token | null>(null);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
 
   const addressToUse = (profileAddress as string) || connectedAddress || '';
 
-  const fetchTransactions = useCallback(async (addr: string, page: number) => {
+  const fetchTransactions = useCallback(async (address: string, page: number) => {
     setIsLoading(true);
     try {
-      const response: TransactionResponse = await getTransactionsByAddress(addr, page);
-      setTransactions(response.transactions || []);
-      setTotalPages(response.totalPages || 1);
+      const response: TransactionResponse = await getTransactionsByAddress(address, page);
+      setTransactions(response.transactions);
+      setTotalPages(response.totalPages);
     } catch (error) {
       console.error('Error fetching transactions:', error);
       setTransactions([]);
-      setTotalPages(1);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // Lấy symbol từ createdTokens nếu có (fallback 'Unknown')
-  const inferSymbol = useCallback(
-    (tokenAddress: string): string => {
-      const hit = createdTokens.find(
-        (t) => t.address?.toLowerCase() === tokenAddress.toLowerCase()
-      );
-      return hit?.symbol || 'Unknown';
-    },
-    [createdTokens]
-  );
-
   const fetchTokenAddresses = useCallback(async () => {
     try {
-      const addresses: string[] = await getAllTokenAddresses();
-      // Map string[] -> TokenItem[]
-      const items: TokenItem[] = (addresses ?? []).map((addr) => ({
-        address: addr,
-        symbol: inferSymbol(addr), // enrich nếu đã có createdTokens
-      }));
-      setTokenItems(items);
+      const addresses = await getAllTokenAddresses();
+      setTokenAddresses(addresses);
     } catch (error) {
       console.error('Error fetching token addresses:', error);
-      setTokenItems([]);
     }
-  }, [inferSymbol]);
+  }, []);
 
   const fetchCreatedTokens = useCallback(async (creatorAddress: string, page: number) => {
     setIsLoading(true);
     try {
       const response = await getTokensByCreator(creatorAddress, page);
-      setCreatedTokens(response.tokens || []);
-      setCreatedTokensTotalPages(response.totalPages || 1);
+      setCreatedTokens(response.tokens);
+      setCreatedTokensTotalPages(response.totalPages);
     } catch (error) {
       console.error('Error fetching created tokens:', error);
       setCreatedTokens([]);
-      setCreatedTokensTotalPages(1);
     } finally {
       setIsLoading(false);
     }
@@ -228,50 +202,24 @@ const ProfilePage: React.FC = () => {
     }
   }, [addressToUse, createdTokensPage, fetchCreatedTokens]);
 
-  // Khi có address → fetch data
   useEffect(() => {
-    if (!addressToUse) return;
-    fetchTransactions(addressToUse, currentPage);
-    fetchCreatedTokens(addressToUse, createdTokensPage);
-    // fetchTokenAddresses phụ thuộc createdTokens (để infer symbol), nên gọi sau khi createdTokens đã về
-    // nhưng để lần đầu vẫn có dữ liệu, gọi luôn:
-    fetchTokenAddresses();
-  }, [
-    addressToUse,
-    currentPage,
-    createdTokensPage,
-    fetchTransactions,
-    fetchCreatedTokens,
-    fetchTokenAddresses,
-  ]);
-
-  // Khi createdTokens thay đổi, enrich lại symbol trong tokenItems
-  useEffect(() => {
-    if (tokenItems.length === 0 || createdTokens.length === 0) return;
-    setTokenItems((prev) =>
-      prev.map((it) => ({
-        ...it,
-        symbol: it.symbol === 'Unknown' ? inferSymbol(it.address) : it.symbol,
-      }))
-    );
-  }, [createdTokens, inferSymbol, tokenItems.length]);
+    if (addressToUse) {
+      fetchTransactions(addressToUse, currentPage);
+      fetchTokenAddresses();
+      fetchCreatedTokens(addressToUse, createdTokensPage);
+    }
+  }, [addressToUse, currentPage, createdTokensPage, fetchTransactions, fetchTokenAddresses, fetchCreatedTokens]);
 
   const handlePageChange = (newPage: number) => setCurrentPage(newPage);
-
-  const getTokenSymbolFromTables = (tokenAddress: string) => {
-    const inHeld = tokenItems.find((t) => t.address.toLowerCase() === tokenAddress.toLowerCase());
-    if (inHeld?.symbol) return inHeld.symbol;
-    const inCreated = createdTokens.find((t) => t.address?.toLowerCase() === tokenAddress.toLowerCase());
-    return inCreated?.symbol || 'Unknown';
-    };
-
+  const getTokenSymbol = (tokenAddress: string) => {
+    const token = tokenAddresses.find((t) => t.address.toLowerCase() === tokenAddress.toLowerCase());
+    return token ? token.symbol : 'Unknown';
+  };
   const handleTokenClick = (tokenAddress: string) => {
     setIsTokenLoading(true);
     router.push(`/token/${tokenAddress}`).finally(() => setIsTokenLoading(false));
   };
-
   const handleCreatedTokensPageChange = (newPage: number) => setCreatedTokensPage(newPage);
-
   const isTokenIncomplete = (token: Token) => {
     const socialCount = [token.website, token.telegram, token.discord, token.twitter, token.youtube].filter(Boolean).length;
     return !token.logo || !token.description || socialCount < 3;
@@ -305,9 +253,9 @@ const ProfilePage: React.FC = () => {
             {/* Tokens Held */}
             {activeTab === 'held' && (
               <div>
-                {tokenItems.length > 0 ? (
+                {tokenAddresses.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {tokenItems.map((token) => (
+                    {tokenAddresses.map((token) => (
                       <TokenBalanceItem
                         key={token.address}
                         tokenAddress={token.address}
@@ -414,18 +362,12 @@ const ProfilePage: React.FC = () => {
                     {transactions.map((tx) => (
                       <tr key={tx.id} className="hover:bg-[var(--card-hover)] transition-colors duration-150">
                         <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">{tx.type}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">
-                          {getTokenSymbolFromTables(tx.recipientAddress)}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">
-                          {formatAmountV3(tx.tokenAmount)}
-                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">{getTokenSymbol(tx.recipientAddress)}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">{formatAmountV3(tx.tokenAmount)}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">
                           {formatAmountV3(tx.ethAmount)} BONE
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">
-                          {formatTimestamp(tx.timestamp)}
-                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">{formatTimestamp(tx.timestamp)}</td>
                       </tr>
                     ))}
                   </tbody>
