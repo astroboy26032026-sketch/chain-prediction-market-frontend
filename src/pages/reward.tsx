@@ -31,7 +31,7 @@ function getTranslateY(el: HTMLElement): number {
   if (tr === 'none') return 0;
   const m = tr.match(/matrix\(([^)]+)\)/);
   if (!m) return 0;
-  const parts = m[1].split(',').map((n) => parseFloat(n.trim()));
+  const parts = m[1].split(',').map((n: string) => parseFloat(n.trim()));
   return parts.length === 6 ? parts[5] : 0; // matrix(a,b,c,d,tx,ty) -> ty
 }
 
