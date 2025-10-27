@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ExternalLinkIcon, Copy } from 'lucide-react';
 import { TokenWithTransactions, PriceCache } from '@/interface/types';
 import { formatTimestamp, shortenAddress, formatAddressV2, formatAmount } from '@/utils/blockchainUtils';
 import { Globe, Twitter, Send as Telegram, Youtube, MessageCircle as Discord } from 'lucide-react';
-import { useTokenLiquidity, useCurrentTokenPrice, useMarketCap, formatAmountV2 } from '@/utils/blockchainUtils';
+import { useTokenLiquidity, useCurrentTokenPrice, useMarketCap } from '@/utils/blockchainUtils';
 import { formatUnits } from 'viem';
 import { toast } from 'react-toastify';
 import { getCurrentPrice } from '@/utils/api';
@@ -20,23 +20,35 @@ interface TokenInfoProps {
 const CACHE_DURATION = 5 * 60 * 1000;
 let priceCache: PriceCache | null = null;
 
-// Helper USD formatter
 const fmtUSD = (n: number) =>
   new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(isFinite(n) ? n : 0);
+  }).format(Number.isFinite(n) ? n : 0);
 
-const TokenInfo: React.FC<TokenInfoProps> = ({ tokenInfo, showHeader = false, refreshTrigger = 0, liquidityEvents }) => {
+const TokenInfo: React.FC<TokenInfoProps> = ({
+  tokenInfo,
+  showHeader = false,
+  refreshTrigger = 0,
+  liquidityEvents,
+}) => {
   const [flrPrice, setFlrPrice] = useState<string>('0');
+
   const tokenAddress = tokenInfo?.address as `0x${string}`;
   const shouldFetchLiquidity = !liquidityEvents?.liquidityEvents?.length;
-  const { data: liquidityData, refetch: refetchLiquidity } = useTokenLiquidity(shouldFetchLiquidity ? tokenAddress : null);
-  const { data: currentPrice, refetch: refetchPrice } = useCurrentTokenPrice(tokenAddress);
-  const { refetch: refetchMarketCap } = useMarketCap(tokenAddress); // vẫn giữ hook để không phá logic, nhưng không render Market Cap
 
+  const { data: liquidityData, refetch: refetchLiquidity } =
+    useTokenLiquidity(shouldFetchLiquidity ? tokenAddress : null);
+
+  const { data: currentPrice, refetch: refetchPrice } =
+    useCurrentTokenPrice(tokenAddress);
+
+  // Giữ hook để không phá logic, nhưng không render Market Cap theo yêu cầu
+  const { refetch: refetchMarketCap } = useMarketCap(tokenAddress);
+
+  // ======== Fetch base token (FLR/BONE) USD price with cache ========
   useEffect(() => {
     const fetchFlrPrice = async () => {
       try {
@@ -47,19 +59,17 @@ const TokenInfo: React.FC<TokenInfoProps> = ({ tokenInfo, showHeader = false, re
         const price = await getCurrentPrice();
         priceCache = { price, timestamp: Date.now() };
         setFlrPrice(price);
-      } catch (error) {
-        console.error('Error fetching FLR price:', error);
+      } catch (err) {
+        console.error('Error fetching FLR price:', err);
       }
     };
     fetchFlrPrice();
-    const interval = setInterval(fetchFlrPrice, 60000);
-    return () => clearInterval(interval);
+    const id = setInterval(fetchFlrPrice, 60_000);
+    return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
-    if (shouldFetchLiquidity) {
-      refetchLiquidity();
-    }
+    if (shouldFetchLiquidity) refetchLiquidity();
     refetchPrice();
     refetchMarketCap();
   }, [refreshTrigger, refetchLiquidity, refetchPrice, refetchMarketCap, shouldFetchLiquidity]);
@@ -68,13 +78,15 @@ const TokenInfo: React.FC<TokenInfoProps> = ({ tokenInfo, showHeader = false, re
 
   const targetEth = useMemo(() => {
     const t = Number(process.env.NEXT_PUBLIC_DEX_TARGET);
-    return isFinite(t) && t > 0 ? t : 0;
+    return Number.isFinite(t) && t > 0 ? t : 0;
   }, []);
 
   const currentEth = useMemo(() => {
-    const liq = liquidityData && liquidityData[2] ? liquidityData[2] as bigint : 0n;
+    const rawLiq = liquidityData?.[2];
+    // ✅ Tránh BigInt literal (0n) để build khi target < ES2020
+    const liq: bigint = typeof rawLiq === 'bigint' ? rawLiq : BigInt(rawLiq ?? 0);
     try {
-      return parseFloat(formatUnits(liq, 18));
+      return Number(formatUnits(liq, 18));
     } catch {
       return 0;
     }
@@ -82,7 +94,7 @@ const TokenInfo: React.FC<TokenInfoProps> = ({ tokenInfo, showHeader = false, re
 
   const progressPct = useMemo(() => {
     if (isCompleted) return 100;
-    if (!targetEth || targetEth <= 0) return 0;
+    if (!targetEth) return 0;
     const pct = (currentEth / targetEth) * 100;
     return Math.min(Math.max(pct, 0), 100);
   }, [currentEth, targetEth, isCompleted]);
@@ -100,14 +112,14 @@ const TokenInfo: React.FC<TokenInfoProps> = ({ tokenInfo, showHeader = false, re
   const TokenDetails = () => (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
-        <InfoItem 
-          label="Contract" 
+        <InfoItem
+          label="Contract"
           value={tokenInfo?.address ? formatAddressV2(tokenInfo.address) : 'Loading...'}
           link={`https://shibariumscan.io/address/${tokenInfo?.address}`}
           isExternal={true}
         />
-        <InfoItem 
-          label="Deployer" 
+        <InfoItem
+          label="Deployer"
           value={tokenInfo?.creatorAddress ? shortenAddress(tokenInfo.creatorAddress) : 'Loading...'}
           link={`/profile/${tokenInfo?.creatorAddress}`}
           isExternal={false}
@@ -116,17 +128,17 @@ const TokenInfo: React.FC<TokenInfoProps> = ({ tokenInfo, showHeader = false, re
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <InfoItem 
-          label="Created" 
+        <InfoItem
+          label="Created"
           value={tokenInfo?.createdAt ? formatTimestamp(tokenInfo.createdAt) : 'Loading...'}
         />
-        <InfoItem 
-          label="Current Price" 
+        <InfoItem
+          label="Current Price"
           value={currentPrice ? `${formatAmount(currentPrice.toString())} BONE` : 'Loading...'}
         />
       </div>
 
-      {/* ⛔ Market Cap: đã xóa theo yêu cầu */}
+      {/* ⛔ Market Cap đã xóa theo yêu cầu */}
     </div>
   );
 
@@ -136,15 +148,15 @@ const TokenInfo: React.FC<TokenInfoProps> = ({ tokenInfo, showHeader = false, re
         {/* Mobile Header */}
         <div className="lg:hidden flex flex-col">
           <div className="w-full h-[200px] mb-4 bg-[var(--card2)] rounded-b-xl overflow-hidden">
-            <img 
-              src={tokenInfo.logo || '/chats/noimg.svg'} 
-              alt={tokenInfo.name} 
+            <img
+              src={tokenInfo.logo || '/chats/noimg.svg'}
+              alt={tokenInfo.name}
               className="w-full h-full object-cover"
             />
           </div>
 
           <div className="px-4">
-            {/* Name then Symbol (symbol dưới tên) */}
+            {/* Tên ở trên, symbol dưới tên */}
             <div className="text-center mb-3">
               <h1 className="text-2xl font-bold text-white">{tokenInfo.name}</h1>
               {tokenInfo.symbol && (
@@ -156,6 +168,7 @@ const TokenInfo: React.FC<TokenInfoProps> = ({ tokenInfo, showHeader = false, re
               {truncateDescription(tokenInfo.description)}
             </p>
 
+            {/* Socials */}
             <div className="flex justify-center gap-4 mb-6">
               {tokenInfo.website && (
                 <a href={tokenInfo.website} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)] transition-colors">
@@ -189,9 +202,9 @@ const TokenInfo: React.FC<TokenInfoProps> = ({ tokenInfo, showHeader = false, re
         {/* Desktop Header */}
         <div className="hidden lg:block">
           <div className="flex items-start gap-4">
-            <img 
-              src={tokenInfo.logo || '/chats/noimg.svg'} 
-              alt={tokenInfo.name} 
+            <img
+              src={tokenInfo.logo || '/chats/noimg.svg'}
+              alt={tokenInfo.name}
               className="w-24 h-24 rounded-lg"
             />
             <div className="flex-1">
@@ -203,9 +216,11 @@ const TokenInfo: React.FC<TokenInfoProps> = ({ tokenInfo, showHeader = false, re
                   )}
                 </div>
               </div>
+
               <p className="text-sm text-gray-400 mt-2">
                 {truncateDescription(tokenInfo.description)}
               </p>
+
               <div className="flex gap-3 mt-4">
                 {tokenInfo.website && (
                   <a href={tokenInfo.website} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]">
@@ -237,7 +252,7 @@ const TokenInfo: React.FC<TokenInfoProps> = ({ tokenInfo, showHeader = false, re
           </div>
         </div>
 
-        {/* Progress to DEX (Market Cap) — số tiền + thanh % */}
+        {/* Progress to DEX (Market Cap) — hiển thị tiền + progress bar */}
         <div className="bg-[var(--card2)] p-4 rounded-lg border-thin">
           <div className="flex justify-between text-sm mb-2">
             <span className="text-gray-300 font-medium">Progress to DEX (Market Cap)</span>
@@ -262,26 +277,26 @@ const TokenInfo: React.FC<TokenInfoProps> = ({ tokenInfo, showHeader = false, re
     );
   }
 
-  // When showHeader is false, only show the token details
+  // showHeader === false
   return <TokenDetails />;
 };
 
-const InfoItem: React.FC<{ 
-  label: string; 
-  value?: string; 
-  link?: string; 
+const InfoItem: React.FC<{
+  label: string;
+  value?: string;
+  link?: string;
   isExternal?: boolean;
   copyValue?: string;
 }> = ({ label, value, link, isExternal, copyValue }) => (
-  <div className="bg-[var(--card2)] p-3 rounded-lg">
+  <div className="bg-[var(--card2)] p-3 rounded-lg border-thin">
     <div className="text-xs text-gray-400 mb-1">{label}</div>
     <div className="text-sm text-white flex items-center gap-2">
       {link ? (
         <div className="flex items-center gap-2 flex-grow">
-          <a 
-            href={link} 
-            target={isExternal ? "_blank" : undefined}
-            rel={isExternal ? "noopener noreferrer" : undefined}
+          <a
+            href={link}
+            target={isExternal ? '_blank' : undefined}
+            rel={isExternal ? 'noopener noreferrer' : undefined}
             className="hover:text-[var(--primary)] transition-colors flex items-center gap-1"
           >
             {value}
@@ -291,6 +306,7 @@ const InfoItem: React.FC<{
             <button
               onClick={() => copyToClipboard(copyValue)}
               className="text-gray-400 hover:text-[var(--primary)] transition-colors"
+              title="Copy"
             >
               <Copy size={12} />
             </button>
@@ -306,7 +322,7 @@ const InfoItem: React.FC<{
 const copyToClipboard = (text: string) => {
   navigator.clipboard.writeText(text).then(() => {
     toast.success('Address copied to clipboard!', {
-      position: "top-right",
+      position: 'top-right',
       autoClose: 2000,
       hideProgressBar: false,
       closeOnClick: true,
