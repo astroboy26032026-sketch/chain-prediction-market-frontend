@@ -39,26 +39,20 @@ import TransactionHistory from '@/components/TokenDetails/TransactionHistory';
 import TokenHolders from '@/components/TokenDetails/TokenHolders';
 import TokenInfo from '@/components/TokenDetails/TokenInfo';
 import Chats from '@/components/TokenDetails/Chats';
-// import OGPreview from '@/components/OGPreview'
 
 interface TokenDetailProps {
-  initialTokenInfo: TokenWithTransactions;
-  initialPriceHistory: any[];
-  initialHolders: any[];
+  initialTokenInfo: TokenWithTransactions | null;
+  // Giữ lại các prop khác nếu cần dùng sau
 }
 
-/**
- * Token detail page showing price chart, swap panel, trades/chat, and holders.
- * Styled with Aurora Glass: section cards, thin borders, and neon-accent CTAs.
- */
+// Token detail page
 const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
-
   const router = useRouter();
   const { address } = router.query;
   const { address: userAddress } = useAccount();
 
   const [isApproved, setIsApproved] = useState(false);
-  const [tokenInfo, setTokenInfo] = useState<TokenWithTransactions>(initialTokenInfo);
+  const [tokenInfo, setTokenInfo] = useState<TokenWithTransactions | null>(initialTokenInfo);
 
   const [transactions, setTransactions] = useState<any[]>([]);
   const [transactionPage, setTransactionPage] = useState(1);
@@ -75,13 +69,12 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
   const [isTransacting, setIsTransacting] = useState(false);
   const [transactionHash, setTransactionHash] = useState<`0x${string}` | undefined>();
 
-
-  //holders
+  // holders
   const [tokenHolders, setTokenHolders] = useState<Awaited<ReturnType<typeof getTokenHolders>>>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [holdersPerPage] = useState(10);
 
-  //confirm
+  // confirm
   const { data: transactionReceipt, isError: transactionError, isLoading: isWaiting } = useWaitForTransactionReceipt({
     hash: transactionHash,
     confirmations: 2,
@@ -89,17 +82,23 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
   const [debouncedFromAmount] = useDebounce(fromToken.amount, 300);
 
-  const { data: currentPrice, refetch: refetchCurrentPrice } = useCurrentTokenPrice(address as `0x${string}`);
-  const { data: liquidityData, refetch: refetchLiquidity } = useTokenLiquidity(address as `0x${string}`);
+  const tokenAddr = (address as `0x${string}`) || undefined;
 
-  const { data: buyReturnData, isLoading: isBuyCalculating } = useCalcBuyReturn(address as `0x${string}`, parseUnits(debouncedFromAmount || '0', 18));
-  const { data: sellReturnData, isLoading: isSellCalculating } = useCalcSellReturn(address as `0x${string}`, parseUnits(debouncedFromAmount || '0', 18));
+  const { data: currentPrice, refetch: refetchCurrentPrice } = useCurrentTokenPrice(tokenAddr as `0x${string}`);
+  const { data: liquidityData, refetch: refetchLiquidity } = useTokenLiquidity(tokenAddr as `0x${string}`);
 
-  const { ethBalance: fetchedEthBalance, tokenBalance: fetchedTokenBalance, refetch: refetchUserBalance } = useUserBalance(userAddress as `0x${string}`, address as `0x${string}`);
+  const { data: buyReturnData, isLoading: isBuyCalculating } =
+    useCalcBuyReturn(tokenAddr as `0x${string}`, parseUnits(debouncedFromAmount || '0', 18));
+  const { data: sellReturnData, isLoading: isSellCalculating } =
+    useCalcSellReturn(tokenAddr as `0x${string}`, parseUnits(debouncedFromAmount || '0', 18));
+
+  const { ethBalance: fetchedEthBalance, tokenBalance: fetchedTokenBalance, refetch: refetchUserBalance } =
+    useUserBalance(userAddress as `0x${string}`, tokenAddr as `0x${string}`);
+
   const { data: tokenAllowance } = useTokenAllowance(
-    address as `0x${string}`, 
-    userAddress as `0x${string}`, 
-    getBondingCurveAddress(address as `0x${string}`)
+    tokenAddr as `0x${string}`,
+    userAddress as `0x${string}`,
+    getBondingCurveAddress(tokenAddr as `0x${string}`)
   );
 
   const { buyTokens } = useBuyTokens();
@@ -107,14 +106,13 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
   const { approveTokens } = useApproveTokens();
 
   const [liquidityEvents, setLiquidityEvents] = useState<any>(null);
-
   const [refreshCounter, setRefreshCounter] = useState(0);
-
 
   const fetchTokenData = useCallback(
     async (page: number) => {
+      if (!tokenAddr) return;
       try {
-        const data = await getTokenInfoAndTransactions(address as string, page, 10);
+        const data = await getTokenInfoAndTransactions(tokenAddr as string, page, 10);
         setTokenInfo(data);
         setTransactions(data.transactions.data);
         setTotalTransactionPages(data.transactions.pagination.totalPages);
@@ -122,12 +120,13 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
         console.error('Error fetching token data:', error);
       }
     },
-    [address]
+    [tokenAddr]
   );
 
   const fetchHistoricalPriceData = useCallback(async () => {
+    if (!tokenAddr) return;
     try {
-      const historicalData = await getTokenUSDPriceHistory(address as string);
+      const historicalData = await getTokenUSDPriceHistory(tokenAddr as string);
       if (Array.isArray(historicalData) && historicalData.length > 0) {
         const formattedData = historicalData.map((item, index, arr) => {
           const prevItem = arr[index - 1] || item;
@@ -145,54 +144,63 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
       console.error('Error fetching historical price data:', error);
       setChartError('Failed to load chart data');
     }
-  }, [address]);
+  }, [tokenAddr]);
 
   const fetchTokenHolders = async () => {
-    if (address) {
-      try {
-        const holders = await getTokenHolders(address as string);
-        setTokenHolders(holders);
-      } catch (error) {
-        console.error('Error fetching token holders:', error);
-        toast.error('Failed to fetch token holders');
-      }
+    if (!tokenAddr) return;
+    try {
+      const holders = await getTokenHolders(tokenAddr as string);
+      setTokenHolders(holders);
+    } catch (error) {
+      console.error('Error fetching token holders:', error);
+      toast.error('Failed to fetch token holders');
     }
   };
 
   const indexOfLastHolder = currentPage * holdersPerPage;
   const indexOfFirstHolder = indexOfLastHolder - holdersPerPage;
   const currentHolders = tokenHolders.slice(indexOfFirstHolder, indexOfLastHolder);
-
   const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
 
   const fetchAllData = useCallback(async () => {
-    if (address) {
-      await fetchTokenData(transactionPage);
-      await fetchHistoricalPriceData();
-      refetchCurrentPrice();
-      refetchLiquidity();
-      fetchTokenHolders();
-      refetchUserBalance();
+    if (!tokenAddr) return;
 
-      
-      try {
-        const events = await getTokenLiquidityEvents(tokenInfo.id);
-        setLiquidityEvents(events);
-      } catch (error) {
-        console.error('Error fetching liquidity events:', error);
-      }
+    await fetchTokenData(transactionPage);
+    await fetchHistoricalPriceData();
+    refetchCurrentPrice();
+    refetchLiquidity();
+    fetchTokenHolders();
+    refetchUserBalance();
+
+    try {
+      // Dùng address khi tokenInfo chưa có
+      const idForEvents = tokenInfo?.id ?? (tokenAddr as string);
+      const events = await getTokenLiquidityEvents(idForEvents);
+      setLiquidityEvents(events);
+    } catch (error) {
+      console.error('Error fetching liquidity events:', error);
     }
-  }, [address, transactionPage, fetchTokenData, fetchHistoricalPriceData, refetchCurrentPrice, refetchLiquidity, tokenInfo.id, refetchUserBalance]);
+  }, [
+    tokenAddr,
+    transactionPage,
+    fetchTokenData,
+    fetchHistoricalPriceData,
+    refetchCurrentPrice,
+    refetchLiquidity,
+    refetchUserBalance,
+    tokenInfo?.id,
+  ]);
 
+  // Nếu vào trang bằng link list -> sẽ chạy client fetch ngay cả khi SSR fail
   useEffect(() => {
     fetchAllData();
   }, [fetchAllData]);
 
   useEffect(() => {
-    if (tokenAllowance !== undefined && address) {
-      setIsApproved(tokenAllowance > 0);
+    if (tokenAllowance !== undefined && tokenAddr) {
+      setIsApproved(tokenAllowance > 0n);
     }
-  }, [tokenAllowance, address]);
+  }, [tokenAllowance, tokenAddr]);
 
   useEffect(() => {
     if (fetchedEthBalance) {
@@ -217,12 +225,25 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
       }
       fetchAllData();
       setIsTransacting(false);
-      setRefreshCounter(prev => prev + 1);
+      setRefreshCounter((prev) => prev + 1);
     } else if (transactionError) {
       toast.error('Transaction failed');
       setIsTransacting(false);
     }
   }, [transactionReceipt, transactionError, isSwapped, isApproved, fetchAllData]);
+
+  // Đồng bộ nhãn token sau khi tokenInfo sẵn sàng
+  useEffect(() => {
+    if (!tokenInfo) return;
+    setFromToken((prev) => ({
+      symbol: isSwapped ? tokenInfo.symbol : 'BONE',
+      amount: prev.amount,
+    }));
+    setToToken((prev) => ({
+      symbol: isSwapped ? 'BONE' : tokenInfo.symbol,
+      amount: prev.amount,
+    }));
+  }, [tokenInfo, isSwapped]);
 
   useEffect(() => {
     if (debouncedFromAmount) {
@@ -255,14 +276,14 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
   const handleSwap = useCallback(() => {
     setIsSwapped((prev) => !prev);
     setFromToken((prev) => ({
-      symbol: prev.symbol === 'BONE' ? tokenInfo.symbol : 'BONE',
+      symbol: prev.symbol === 'BONE' ? (tokenInfo?.symbol ?? '') : 'BONE',
       amount: '',
     }));
     setToToken((prev) => ({
-      symbol: prev.symbol === 'BONE' ? tokenInfo.symbol : 'BONE',
+      symbol: prev.symbol === 'BONE' ? (tokenInfo?.symbol ?? '') : 'BONE',
       amount: '',
     }));
-  }, [tokenInfo]);
+  }, [tokenInfo?.symbol]);
 
   const handleFromAmountChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setFromToken((prev) => ({ ...prev, amount: e.target.value }));
@@ -270,7 +291,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
   }, []);
 
   const handleAction = useCallback(async () => {
-    if (!address || !fromToken.amount || !userAddress) {
+    if (!tokenAddr || !fromToken.amount || !userAddress) {
       toast.error('Missing required information');
       return;
     }
@@ -282,21 +303,20 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
       let txHash;
       if (isSwapped) {
         if (!isApproved) {
-          txHash = await approveTokens(address as `0x${string}`);
+          txHash = await approveTokens(tokenAddr as `0x${string}`);
         } else {
-          txHash = await sellTokens(address as `0x${string}`, amount);
+          txHash = await sellTokens(tokenAddr as `0x${string}`, amount);
         }
       } else {
-        txHash = await buyTokens(address as `0x${string}`, amount);
+        txHash = await buyTokens(tokenAddr as `0x${string}`, amount);
       }
-      console.log('Transaction hash:', txHash);
-      setTransactionHash(txHash);
+      setTransactionHash(txHash as `0x${string}`);
     } catch (error) {
       console.error('Transaction error:', error);
       toast.error('Transaction failed to initiate: ' + (error as Error).message);
       setIsTransacting(false);
     }
-  }, [address, fromToken.amount, userAddress, isSwapped, isApproved, approveTokens, sellTokens, buyTokens]);
+  }, [tokenAddr, fromToken.amount, userAddress, isSwapped, isApproved, approveTokens, sellTokens, buyTokens]);
 
   useEffect(() => {
     if (!isWaiting && !transactionError) {
@@ -316,25 +336,24 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
   const handleMaxClick = () => {
     if (isSwapped) {
-      // For token balance, use the exact balance without formatting
       if (fetchedTokenBalance) {
         const exactTokenBalance = formatUnits(fetchedTokenBalance, 18);
-        setFromToken(prev => ({ ...prev, amount: exactTokenBalance }));
+        setFromToken((prev) => ({ ...prev, amount: exactTokenBalance }));
       }
     } else {
-      // For ETH balance, use 95% of the balance to reserve for gas
       if (fetchedEthBalance) {
         const exactEthBalance = formatUnits(fetchedEthBalance, 18);
         const maxEthAmount = (parseFloat(exactEthBalance) * 0.95).toString();
-        setFromToken(prev => ({ ...prev, amount: maxEthAmount }));
+        setFromToken((prev) => ({ ...prev, amount: maxEthAmount }));
       }
     }
   };
 
   if (!tokenInfo) {
+    // Khi SSR fail hoặc đang fetch lần đầu
     return (
       <Layout>
-        <div className="flex justify-center items-center min-h-screen">
+        <div className="flex justify-center items-center min-height-screen min-h-screen">
           <Spinner size="large" />
         </div>
       </Layout>
@@ -344,12 +363,12 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
   return (
     <Layout>
       <SEO token={tokenInfo} />
-      
-      {/* Mobile-first header (shown only on mobile) */}
+
+      {/* Mobile header */}
       <div className="lg:hidden mb-6">
-        <TokenInfo 
-          tokenInfo={tokenInfo} 
-          showHeader={true} 
+        <TokenInfo
+          tokenInfo={tokenInfo}
+          showHeader={true}
           refreshTrigger={refreshCounter}
           liquidityEvents={liquidityEvents}
         />
@@ -357,23 +376,23 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column (2 cols wide) */}
+          {/* Left */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Price Chart Section */}
+            {/* Chart */}
             <div className="space-y-2">
               <h2 className="text-sm font-semibold text-gray-300">Price Chart (USD)</h2>
-              <TradingViewChart 
-                data={chartData} 
-                liquidityEvents={liquidityEvents} 
+              <TradingViewChart
+                data={chartData}
+                liquidityEvents={liquidityEvents}
                 tokenInfo={tokenInfo}
               />
             </div>
 
-            {/* Quick Actions Section - Mobile Only */}
+            {/* Quick Actions - Mobile */}
             <div className="lg:hidden card gradient-border p-4">
               <h2 className="text-sm font-semibold mb-4 text-gray-400">Quick Actions</h2>
               <div className="bg-[var(--card2)] rounded-lg p-4 border-thin">
-                {/* From Input */}
+                {/* From */}
                 <div className="mb-4">
                   <div className="flex justify-between text-sm mb-2">
                     <span className="text-gray-400">From</span>
@@ -400,15 +419,15 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                   </div>
                 </div>
 
-                {/* Swap Button */}
-                <button 
+                {/* Swap */}
+                <button
                   onClick={handleSwap}
                   className="w-full flex justify-center p-2 text-gray-400 hover:text-[var(--primary)]"
                 >
                   <ArrowUpDownIcon size={20} />
                 </button>
 
-                {/* To Input */}
+                {/* To */}
                 <div className="mb-4">
                   <div className="flex justify-between text-sm mb-2">
                     <span className="text-gray-400">To</span>
@@ -428,7 +447,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                   </div>
                 </div>
 
-                {/* Action Button */}
+                {/* Action */}
                 <button
                   onClick={handleAction}
                   disabled={!fromToken.amount || isCalculating || isTransacting}
@@ -439,18 +458,14 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
               </div>
             </div>
 
-            {/* Trades and Chat Tabs */}
+            {/* Trades & Chat */}
             <div className="card gradient-border p-4">
               <Tab.Group>
                 <Tab.List className="flex space-x-1 rounded-lg bg-[var(--card2)] p-1 mb-4 border-thin">
                   <Tab
                     className={({ selected }) =>
                       `w-full rounded-md py-2.5 text-sm font-medium leading-5 transition-colors
-                      ${
-                        selected
-                          ? 'bg-[var(--card-boarder)] text-white'
-                          : 'text-gray-400 hover:bg-[var(--card-hover)] hover:text-white'
-                      }`
+                      ${selected ? 'bg-[var(--card-boarder)] text-white' : 'text-gray-400 hover:bg-[var(--card-hover)] hover:text-white'}`
                     }
                   >
                     Trades
@@ -458,11 +473,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                   <Tab
                     className={({ selected }) =>
                       `w-full rounded-md py-2.5 text-sm font-medium leading-5 transition-colors
-                      ${
-                        selected
-                          ? 'bg-[var(--card-boarder)] text-white'
-                          : 'text-gray-400 hover:bg-[var(--card-hover)] hover:text-white'
-                      }`
+                      ${selected ? 'bg-[var(--card-boarder)] text-white' : 'text-gray-400 hover:bg-[var(--card-hover)] hover:text-white'}`
                     }
                   >
                     Chat
@@ -486,23 +497,23 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
             </div>
           </div>
 
-          {/* Right Column */}
+          {/* Right */}
           <div className="space-y-6">
-            {/* Token Info Header (shown only on desktop) */}
+            {/* Token Info Header (desktop) */}
             <div className="hidden lg:block card gradient-border p-4">
-              <TokenInfo 
-                tokenInfo={tokenInfo} 
-                showHeader={true} 
+              <TokenInfo
+                tokenInfo={tokenInfo}
+                showHeader={true}
                 refreshTrigger={refreshCounter}
                 liquidityEvents={liquidityEvents}
               />
             </div>
 
-            {/* Quick Actions (Swap) Section - Desktop Only */}
+            {/* Quick Actions (desktop) */}
             <div className="hidden lg:block card gradient-border p-4">
               <h2 className="text-sm font-semibold mb-4 text-gray-400">Quick Actions</h2>
               <div className="bg-[var(--card2)] rounded-lg p-4 border-thin">
-                {/* From Input */}
+                {/* From */}
                 <div className="mb-4">
                   <div className="flex justify-between text-sm mb-2">
                     <span className="text-gray-400">From</span>
@@ -529,15 +540,15 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                   </div>
                 </div>
 
-                {/* Swap Button */}
-                <button 
+                {/* Swap */}
+                <button
                   onClick={handleSwap}
                   className="w-full flex justify-center p-2 text-gray-400 hover:text-[var(--primary)]"
                 >
                   <ArrowUpDownIcon size={20} />
                 </button>
 
-                {/* To Input */}
+                {/* To */}
                 <div className="mb-4">
                   <div className="flex justify-between text-sm mb-2">
                     <span className="text-gray-400">To (Estimated)</span>
@@ -557,7 +568,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                   </div>
                 </div>
 
-                {/* Action Button */}
+                {/* Action */}
                 <button
                   onClick={handleAction}
                   disabled={!fromToken.amount || isCalculating || isTransacting}
@@ -568,10 +579,9 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
               </div>
             </div>
           </div>
-
         </div>
 
-        {/* Token Holders Section (Full Width) */}
+        {/* Token Holders */}
         <div className="mt-6 card gradient-border p-4">
           <h2 className="text-sm font-semibold mb-4 text-gray-400">Token Holders</h2>
           <TokenHolders
@@ -586,29 +596,30 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
           />
         </div>
 
-         {/* Share Button */}
-         <ShareButton tokenInfo={tokenInfo} />
+        {/* Share */}
+        <ShareButton tokenInfo={tokenInfo} />
       </div>
     </Layout>
   );
 };
 
-//simple server-side rendering  just to get token info for seo - nothing more - nothing else  
+// SSR chỉ để SEO: không 404 khi API lỗi, trả props null để client tự fetch
 export const getServerSideProps: GetServerSideProps = async (context) => {
   const { address } = context.params as { address: string };
 
   try {
     const tokenInfo = await getTokenInfoAndTransactions(address, 1, 1);
-
     return {
       props: {
-        initialTokenInfo: tokenInfo,
+        initialTokenInfo: tokenInfo ?? null,
       },
     };
   } catch (error) {
-    console.error('Error fetching token data:', error);
+    console.error('SSR getTokenInfoAndTransactions failed:', error);
     return {
-      notFound: true,
+      props: {
+        initialTokenInfo: null,
+      },
     };
   }
 };
