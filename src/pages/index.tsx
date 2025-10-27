@@ -262,7 +262,8 @@ const Home: React.FC = () => {
 
       <HowItWorksPopup isVisible={showHowItWorks} onClose={() => setShowHowItWorks(false)} />
 
-      <div className="max-w-7xl ml-0 mr-auto px-4 sm:px-6 lg:px-10 xl:px-16">
+      {/* >>> CHỈNH Ở DÒNG NÀY: căn giữa container <<< */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 xl:px-16">
         <div className="text-center mb-4">
           {/* Banner */}
           <div className="relative mb-8">
@@ -487,29 +488,23 @@ const Home: React.FC = () => {
 
         /* ===== GREEN slider across browsers ===== */
         .slider-accent { appearance: none; -webkit-appearance: none; width: 100%; height: 8px; background: transparent; }
-        /* WebKit track */
         .slider-accent::-webkit-slider-runnable-track {
           height: 8px; border-radius: 999px;
           background: var(--accent);
         }
-        /* WebKit thumb */
         .slider-accent::-webkit-slider-thumb {
           -webkit-appearance: none; width: 18px; height: 18px; margin-top: -5px;
           border-radius: 50%; background: #fff; border: 2px solid var(--accent); cursor: pointer;
         }
-        /* Firefox track */
         .slider-accent::-moz-range-track {
           height: 8px; border-radius: 999px; background: var(--accent);
         }
-        /* Firefox progress (left of thumb) */
         .slider-accent::-moz-range-progress {
           height: 8px; border-radius: 999px; background: var(--accent);
         }
-        /* Firefox thumb */
         .slider-accent::-moz-range-thumb {
           width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); cursor: pointer;
         }
-        /* Edge/IE (fallback) */
         .slider-accent::-ms-fill-lower { background: var(--accent); }
         .slider-accent::-ms-fill-upper { background: var(--accent); }
         .slider-accent::-ms-thumb {

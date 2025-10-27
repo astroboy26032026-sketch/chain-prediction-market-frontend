@@ -24,7 +24,12 @@ import {
   formatAmountV2,
   getBondingCurveAddress,
 } from '@/utils/blockchainUtils';
-import { getTokenInfoAndTransactions, getTokenUSDPriceHistory, getTokenHolders, getTokenLiquidityEvents } from '@/utils/api';
+import {
+  getTokenInfoAndTransactions,
+  getTokenUSDPriceHistory,
+  getTokenHolders,
+  getTokenLiquidityEvents,
+} from '@/utils/api';
 import { parseUnits, formatUnits } from 'viem';
 import { useAccount, useWaitForTransactionReceipt } from 'wagmi';
 import { useDebounce } from 'use-debounce';
@@ -42,7 +47,6 @@ import Chats from '@/components/TokenDetails/Chats';
 
 interface TokenDetailProps {
   initialTokenInfo: TokenWithTransactions | null;
-  // Giữ lại các prop khác nếu cần dùng sau
 }
 
 // Token detail page
@@ -74,6 +78,15 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [holdersPerPage] = useState(10);
 
+  // settings ui state
+  const [isSettingsOpenMobile, setIsSettingsOpenMobile] = useState(false);
+  const [isSettingsOpenDesktop, setIsSettingsOpenDesktop] = useState(false);
+  const [slippage, setSlippage] = useState<string>('1.0');
+  const [antiMEV, setAntiMEV] = useState<boolean>(false);
+  const [txSpeed, setTxSpeed] = useState<'auto' | 'manual'>('auto');
+  const [priorityFee, setPriorityFee] = useState<string>('0.002'); // SOL
+  const [bribe, setBribe] = useState<string>('0.01'); // SOL
+
   // confirm
   const { data: transactionReceipt, isError: transactionError, isLoading: isWaiting } = useWaitForTransactionReceipt({
     hash: transactionHash,
@@ -92,8 +105,11 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
   const { data: sellReturnData, isLoading: isSellCalculating } =
     useCalcSellReturn(tokenAddr as `0x${string}`, parseUnits(debouncedFromAmount || '0', 18));
 
-  const { ethBalance: fetchedEthBalance, tokenBalance: fetchedTokenBalance, refetch: refetchUserBalance } =
-    useUserBalance(userAddress as `0x${string}`, tokenAddr as `0x${string}`);
+  const {
+    ethBalance: fetchedEthBalance,
+    tokenBalance: fetchedTokenBalance,
+    refetch: refetchUserBalance,
+  } = useUserBalance(userAddress as `0x${string}`, tokenAddr as `0x${string}`);
 
   const { data: tokenAllowance } = useTokenAllowance(
     tokenAddr as `0x${string}`,
@@ -198,10 +214,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
   useEffect(() => {
     if (tokenAllowance !== undefined && tokenAddr) {
-      setIsApproved(
-        typeof tokenAllowance === 'bigint' && tokenAllowance > BigInt(0)
-      );
-
+      setIsApproved(typeof tokenAllowance === 'bigint' && tokenAllowance > BigInt(0));
     }
   }, [tokenAllowance, tokenAddr]);
 
@@ -383,7 +396,9 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
           <div className="lg:col-span-2 space-y-6">
             {/* Chart */}
             <div className="space-y-2">
-              <h2 className="text-sm font-semibold text-gray-300">Price Chart (USD)</h2>
+              <h2 className="text-sm font-semibold text-gray-300">
+                {tokenInfo.name || tokenInfo.symbol}
+              </h2>
               <TradingViewChart
                 data={chartData}
                 liquidityEvents={liquidityEvents}
@@ -392,76 +407,119 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
             </div>
 
             {/* Quick Actions - Mobile */}
-            <div className="lg:hidden card gradient-border p-4">
-              <h2 className="text-sm font-semibold mb-4 text-gray-400">Quick Actions</h2>
-              <div className="bg-[var(--card2)] rounded-lg p-4 border-thin">
-                {/* From */}
-                <div className="mb-4">
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-gray-400">From</span>
-                    <span className="text-gray-400">
-                      Balance: {isSwapped ? tokenBalance : ethBalance}
-                    </span>
-                  </div>
-                  <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
-                    <input
-                      type="number"
-                      value={fromToken.amount}
-                      onChange={handleFromAmountChange}
-                      className="w-full bg-transparent text-white outline-none text-sm"
-                      placeholder="0.00"
-                      disabled={isTransacting}
-                    />
-                    <button
-                      onClick={handleMaxClick}
-                      className="text-xs text-[var(--primary)] hover:text-[var(--primary-hover)] font-medium px-2 py-1 rounded transition-colors"
-                    >
-                      MAX
-                    </button>
-                    <span className="text-gray-400 ml-2">{fromToken.symbol}</span>
-                  </div>
-                </div>
-
-                {/* Swap */}
+            <div className="lg:hidden card gradient-border p-4 relative">
+              {/* Header: Slippage label + Settings button (NO input) */}
+              <div className="mb-3 flex items-center justify-between">
+                <label className="text-sm font-semibold text-gray-400">Slippage (%)</label>
                 <button
-                  onClick={handleSwap}
-                  className="w-full flex justify-center p-2 text-gray-400 hover:text-[var(--primary)]"
+                  type="button"
+                  onClick={() => setIsSettingsOpenMobile((v) => !v)}
+                  className="rounded-md bg-[var(--card)] border-thin px-2 py-1 text-sm text-gray-300 hover:text-white"
+                  aria-label="Settings"
                 >
-                  <ArrowUpDownIcon size={20} />
-                </button>
-
-                {/* To */}
-                <div className="mb-4">
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-gray-400">To</span>
-                    <span className="text-gray-400">
-                      Balance: {isSwapped ? ethBalance : tokenBalance}
-                    </span>
-                  </div>
-                  <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
-                    <input
-                      type="text"
-                      value={isCalculating ? 'Calculating...' : toToken.amount}
-                      readOnly
-                      className="w-full bg-transparent text-white outline-none text-sm"
-                      placeholder="0.00"
-                    />
-                    <span className="text-gray-400 ml-2">{toToken.symbol}</span>
-                  </div>
-                </div>
-
-                {/* Action */}
-                <button
-                  onClick={handleAction}
-                  disabled={!fromToken.amount || isCalculating || isTransacting}
-                  className="btn btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isTransacting ? 'Processing...' : actionButtonText}
+                  ⚙️
                 </button>
               </div>
+
+              {/* Buy / Sell toggle (primary color like action button) */}
+              <div className="mb-4 flex items-center gap-2">
+                <button
+                  onClick={() => setIsSwapped(false)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border-thin
+                    ${!isSwapped ? 'bg-[var(--primary)] text-white' : 'bg-[var(--card)] text-gray-300 hover:text-white'}`}
+                >
+                  BUY
+                </button>
+                <button
+                  onClick={() => setIsSwapped(true)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border-thin
+                    ${isSwapped ? 'bg-[var(--primary)] text-white' : 'bg-[var(--card)] text-gray-300 hover:text-white'}`}
+                >
+                  SELL
+                </button>
+              </div>
+
+              {/* From */}
+              <div className="mb-4">
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-gray-400">From</span>
+                  <span className="text-gray-400">
+                    Balance: {isSwapped ? tokenBalance : ethBalance}
+                  </span>
+                </div>
+                <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
+                  <input
+                    type="number"
+                    value={fromToken.amount}
+                    onChange={handleFromAmountChange}
+                    className="w-full bg-transparent text-white outline-none text-sm"
+                    placeholder="0.00"
+                    disabled={isTransacting}
+                  />
+                  <button
+                    onClick={handleMaxClick}
+                    className="text-xs text-[var(--primary)] hover:text-[var(--primary-hover)] font-medium px-2 py-1 rounded transition-colors"
+                  >
+                    MAX
+                  </button>
+                </div>
+              </div>
+
+              {/* Swap */}
+              <button
+                onClick={handleSwap}
+                className="w-full flex justify-center p-2 text-gray-400 hover:text-[var(--primary)]"
+              >
+                <ArrowUpDownIcon size={20} />
+              </button>
+
+              {/* To */}
+              <div className="mb-4">
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-gray-400">To</span>
+                  <span className="text-gray-400">
+                    Balance: {isSwapped ? ethBalance : tokenBalance}
+                  </span>
+                </div>
+                <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
+                  <input
+                    type="text"
+                    value={isCalculating ? 'Calculating...' : toToken.amount}
+                    readOnly
+                    className="w-full bg-transparent text-white outline-none text-sm"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              {/* Action */}
+              <button
+                onClick={handleAction}
+                disabled={!fromToken.amount || isCalculating || isTransacting}
+                className="btn btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isTransacting ? 'Processing...' : actionButtonText}
+              </button>
+
+              {/* Settings Popover (mobile) */}
+              {isSettingsOpenMobile && (
+                <div className="absolute right-4 top-20 z-20 w-[320px] bg-[var(--card2)] border-thin rounded-xl shadow-xl p-4">
+                  <SettingsPanel
+                    antiMEV={antiMEV}
+                    setAntiMEV={setAntiMEV}
+                    txSpeed={txSpeed}
+                    setTxSpeed={setTxSpeed}
+                    priorityFee={priorityFee}
+                    setPriorityFee={setPriorityFee}
+                    bribe={bribe}
+                    setBribe={setBribe}
+                    onClose={() => setIsSettingsOpenMobile(false)}
+                  />
+                </div>
+              )}
             </div>
 
-            {/* Trades & Chat */}
+            {/* Trades / Chat / Holders */}
             <div className="card gradient-border p-4">
               <Tab.Group>
                 <Tab.List className="flex space-x-1 rounded-lg bg-[var(--card2)] p-1 mb-4 border-thin">
@@ -481,6 +539,14 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                   >
                     Chat
                   </Tab>
+                  <Tab
+                    className={({ selected }) =>
+                      `w-full rounded-md py-2.5 text-sm font-medium leading-5 transition-colors
+                      ${selected ? 'bg-[var(--card-boarder)] text-white' : 'text-gray-400 hover:bg-[var(--card-hover)] hover:text-white'}`
+                    }
+                  >
+                    Holders
+                  </Tab>
                 </Tab.List>
                 <Tab.Panels>
                   <Tab.Panel>
@@ -495,6 +561,18 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                   <Tab.Panel>
                     <Chats tokenAddress={address as string} tokenInfo={tokenInfo} />
                   </Tab.Panel>
+                  <Tab.Panel>
+                    <TokenHolders
+                      tokenHolders={currentHolders}
+                      currentPage={currentPage}
+                      totalPages={Math.ceil(tokenHolders.length / holdersPerPage)}
+                      tokenSymbol={tokenInfo.symbol}
+                      creatorAddress={tokenInfo.creatorAddress}
+                      tokenAddress={address as string}
+                      onPageChange={paginate}
+                      allHolders={tokenHolders}
+                    />
+                  </Tab.Panel>
                 </Tab.Panels>
               </Tab.Group>
             </div>
@@ -502,7 +580,120 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
           {/* Right */}
           <div className="space-y-6">
-            {/* Token Info Header (desktop) */}
+            {/* Quick Actions (desktop) — ABOVE Token Info */}
+            <div className="hidden lg:block card gradient-border p-4 relative">
+              {/* Header: Slippage label + Settings button (NO input) */}
+              <div className="mb-3 flex items-center justify-between">
+                <label className="text-sm font-semibold text-gray-400">Slippage (%)</label>
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsOpenDesktop((v) => !v)}
+                  className="rounded-md bg-[var(--card)] border-thin px-2 py-1 text-sm text-gray-300 hover:text-white"
+                  aria-label="Settings"
+                >
+                  ⚙️
+                </button>
+              </div>
+
+              {/* Buy / Sell toggle — primary color */}
+              <div className="mb-4 flex items-center gap-2">
+                <button
+                  onClick={() => setIsSwapped(false)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border-thin
+                    ${!isSwapped ? 'bg-[var(--primary)] text-white' : 'bg-[var(--card)] text-gray-300 hover:text-white'}`}
+                >
+                  BUY
+                </button>
+                <button
+                  onClick={() => setIsSwapped(true)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border-thin
+                    ${isSwapped ? 'bg-[var(--primary)] text-white' : 'bg-[var(--card)] text-gray-300 hover:text-white'}`}
+                >
+                  SELL
+                </button>
+              </div>
+
+              {/* From */}
+              <div className="mb-4">
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-gray-400">From</span>
+                  <span className="text-gray-400">
+                    Balance: {isSwapped ? tokenBalance : ethBalance}
+                  </span>
+                </div>
+                <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
+                  <input
+                    type="number"
+                    value={fromToken.amount}
+                    onChange={handleFromAmountChange}
+                    className="w-full bg-transparent text-white outline-none text-sm"
+                    placeholder="0.00"
+                    disabled={isTransacting}
+                  />
+                  <button
+                    onClick={handleMaxClick}
+                    className="text-xs text-[var(--primary)] hover:text-[var(--primary-hover)] font-medium px-2 py-1 rounded transition-colors"
+                  >
+                    MAX
+                  </button>
+                </div>
+              </div>
+
+              {/* Swap */}
+              <button
+                onClick={handleSwap}
+                className="w-full flex justify-center p-2 text-gray-400 hover:text-[var(--primary)]"
+              >
+                <ArrowUpDownIcon size={20} />
+              </button>
+
+              {/* To */}
+              <div className="mb-4">
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-gray-400">To (Estimated)</span>
+                  <span className="text-gray-400">
+                    Balance: {isSwapped ? ethBalance : tokenBalance}
+                  </span>
+                </div>
+                <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
+                  <input
+                    type="text"
+                    value={isCalculating ? 'Calculating...' : toToken.amount}
+                    readOnly
+                    className="w-full bg-transparent text-white outline-none text-sm"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              {/* Action */}
+              <button
+                onClick={handleAction}
+                disabled={!fromToken.amount || isCalculating || isTransacting}
+                className="btn btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isTransacting ? 'Processing...' : actionButtonText}
+              </button>
+
+              {/* Settings Popover (desktop) */}
+              {isSettingsOpenDesktop && (
+                <div className="absolute right-4 top-20 z-20 w-[320px] bg-[var(--card2)] border-thin rounded-xl shadow-xl p-4">
+                  <SettingsPanel
+                    antiMEV={antiMEV}
+                    setAntiMEV={setAntiMEV}
+                    txSpeed={txSpeed}
+                    setTxSpeed={setTxSpeed}
+                    priorityFee={priorityFee}
+                    setPriorityFee={setPriorityFee}
+                    bribe={bribe}
+                    setBribe={setBribe}
+                    onClose={() => setIsSettingsOpenDesktop(false)}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Token Info Header (desktop) — BELOW Quick Actions */}
             <div className="hidden lg:block card gradient-border p-4">
               <TokenInfo
                 tokenInfo={tokenInfo}
@@ -511,92 +702,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 liquidityEvents={liquidityEvents}
               />
             </div>
-
-            {/* Quick Actions (desktop) */}
-            <div className="hidden lg:block card gradient-border p-4">
-              <h2 className="text-sm font-semibold mb-4 text-gray-400">Quick Actions</h2>
-              <div className="bg-[var(--card2)] rounded-lg p-4 border-thin">
-                {/* From */}
-                <div className="mb-4">
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-gray-400">From</span>
-                    <span className="text-gray-400">
-                      Balance: {isSwapped ? tokenBalance : ethBalance} {fromToken.symbol}
-                    </span>
-                  </div>
-                  <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
-                    <input
-                      type="number"
-                      value={fromToken.amount}
-                      onChange={handleFromAmountChange}
-                      className="w-full bg-transparent text-white outline-none text-sm"
-                      placeholder="0.00"
-                      disabled={isTransacting}
-                    />
-                    <button
-                      onClick={handleMaxClick}
-                      className="text-xs text-[var(--primary)] hover:text-[var(--primary-hover)] font-medium px-2 py-1 rounded transition-colors"
-                    >
-                      MAX
-                    </button>
-                    <span className="text-gray-400 ml-2">{fromToken.symbol}</span>
-                  </div>
-                </div>
-
-                {/* Swap */}
-                <button
-                  onClick={handleSwap}
-                  className="w-full flex justify-center p-2 text-gray-400 hover:text-[var(--primary)]"
-                >
-                  <ArrowUpDownIcon size={20} />
-                </button>
-
-                {/* To */}
-                <div className="mb-4">
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-gray-400">To (Estimated)</span>
-                    <span className="text-gray-400">
-                      Balance: {isSwapped ? ethBalance : tokenBalance} {toToken.symbol}
-                    </span>
-                  </div>
-                  <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
-                    <input
-                      type="text"
-                      value={isCalculating ? 'Calculating...' : toToken.amount}
-                      readOnly
-                      className="w-full bg-transparent text-white outline-none text-sm"
-                      placeholder="0.00"
-                    />
-                    <span className="text-gray-400 ml-2">{toToken.symbol}</span>
-                  </div>
-                </div>
-
-                {/* Action */}
-                <button
-                  onClick={handleAction}
-                  disabled={!fromToken.amount || isCalculating || isTransacting}
-                  className="btn btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isTransacting ? 'Processing...' : actionButtonText}
-                </button>
-              </div>
-            </div>
           </div>
-        </div>
-
-        {/* Token Holders */}
-        <div className="mt-6 card gradient-border p-4">
-          <h2 className="text-sm font-semibold mb-4 text-gray-400">Token Holders</h2>
-          <TokenHolders
-            tokenHolders={currentHolders}
-            currentPage={currentPage}
-            totalPages={Math.ceil(tokenHolders.length / holdersPerPage)}
-            tokenSymbol={tokenInfo.symbol}
-            creatorAddress={tokenInfo.creatorAddress}
-            tokenAddress={address as string}
-            onPageChange={paginate}
-            allHolders={tokenHolders}
-          />
         </div>
 
         {/* Share */}
@@ -605,6 +711,96 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
     </Layout>
   );
 };
+
+/** Settings content reused for mobile/desktop */
+function SettingsPanel(props: {
+  antiMEV: boolean;
+  setAntiMEV: (v: boolean) => void;
+  txSpeed: 'auto' | 'manual';
+  setTxSpeed: (v: 'auto' | 'manual') => void;
+  priorityFee: string;
+  setPriorityFee: (v: string) => void;
+  bribe: string;
+  setBribe: (v: string) => void;
+  onClose: () => void;
+}) {
+  const {
+    antiMEV,
+    setAntiMEV,
+    txSpeed,
+    setTxSpeed,
+    priorityFee,
+    setPriorityFee,
+    bribe,
+    setBribe,
+    onClose,
+  } = props;
+
+  const activeBtn = 'px-3 py-1 rounded-md bg-[var(--primary)] text-white';
+  const idleBtn   = 'px-3 py-1 rounded-md bg-[var(--card)] text-gray-300 border-thin hover:text-white';
+
+  return (
+    <>
+      <div className="space-y-3 text-sm">
+        {/* Anti-MEV */}
+        <div className="flex items-center justify-between">
+          <span className="text-gray-300">Anti-MEV Protection</span>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setAntiMEV(true)}  className={antiMEV ? activeBtn : idleBtn}>ON</button>
+            <button onClick={() => setAntiMEV(false)} className={!antiMEV ? activeBtn : idleBtn}>OFF</button>
+          </div>
+        </div>
+
+        {/* Transaction Speed */}
+        <div className="flex items-center justify-between">
+          <span className="text-gray-300">Transaction Speed</span>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setTxSpeed('auto')}   className={txSpeed === 'auto' ? activeBtn : idleBtn}>AUTO</button>
+            <button onClick={() => setTxSpeed('manual')} className={txSpeed === 'manual' ? activeBtn : idleBtn}>MANUAL</button>
+          </div>
+        </div>
+
+        {/* Priority Fee (SOL) */}
+        <div>
+          <label className="text-gray-300 block mb-1">Priority Fee (SOL)</label>
+          <input
+            type="number"
+            min="0"
+            step="0.001"
+            value={priorityFee}
+            onChange={(e) => setPriorityFee(e.target.value)}
+            className="w-full bg-[var(--card)] border-thin rounded-md px-3 py-2 text-white outline-none"
+            placeholder="0.002"
+            disabled={txSpeed === 'auto'}
+          />
+        </div>
+
+        {/* Bribe (SOL) */}
+        <div>
+          <label className="text-gray-300 block mb-1">Bribe (SOL)</label>
+          <input
+            type="number"
+            min="0"
+            step="0.001"
+            value={bribe}
+            onChange={(e) => setBribe(e.target.value)}
+            className="w-full bg-[var(--card)] border-thin rounded-md px-3 py-2 text-white outline-none"
+            placeholder="0.01"
+          />
+        </div>
+      </div>
+
+      <div className="mt-4 flex justify-end">
+        <button
+          onClick={onClose}
+          className="px-3 py-1 rounded-md bg-[var(--card)] border-thin text-sm text-gray-300 hover:text-white"
+        >
+          Close
+        </button>
+      </div>
+    </>
+  );
+}
 
 // SSR chỉ để SEO: không 404 khi API lỗi, trả props null để client tự fetch
 export const getServerSideProps: GetServerSideProps = async (context) => {
