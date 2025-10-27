@@ -1,3 +1,4 @@
+// Dashboard.tsx
 import React, { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { useRouter } from 'next/router';
@@ -19,7 +20,7 @@ const TokenBalanceItem: React.FC<{
   userAddress: string;
   onClick: () => void;
 }> = ({ tokenAddress, symbol, userAddress, onClick }) => {
-  const { balance } = useERC20Balance(tokenAddress as `0x${string}`, userAddress as `0x${string}`);
+  const { balance } = useERC20Balance(tokenAddress as `0x${string}`, (userAddress || '') as `0x${string}`);
   
   if (!balance || balance.toString() === '0') {
     return null;
@@ -85,10 +86,7 @@ const Pagination: React.FC<{
                 {page}
               </button>
             );
-          } else if (
-            page === currentPage - 2 ||
-            page === currentPage + 2
-          ) {
+          } else if (page === currentPage - 2 || page === currentPage + 2) {
             return (
               <span key={page} className="text-gray-500 text-xs sm:text-sm">
                 ...
@@ -112,34 +110,40 @@ const Pagination: React.FC<{
 const UserDashboard: React.FC = () => {
   const { address } = useAccount();
   const router = useRouter();
+
+  // === Changed: tokenAddresses is now string[] ===
+  const [tokenAddresses, setTokenAddresses] = useState<string[]>([]);
+
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
-  const [tokenAddresses, setTokenAddresses] = useState<Array<{address: string, symbol: string}>>([]);
+
   const [isTokenLoading, setIsTokenLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'held' | 'created'>('held');
+
   const [createdTokens, setCreatedTokens] = useState<Token[]>([]);
   const [createdTokensPage, setCreatedTokensPage] = useState(1);
   const [createdTokensTotalPages, setCreatedTokensTotalPages] = useState(1);
 
   useEffect(() => {
-    if (address) {
-      fetchTransactions(address, currentPage);
-      fetchTokenAddresses();
-      fetchCreatedTokens(address, createdTokensPage);
-    }
+    if (!address) return;
+    fetchTransactions(address, currentPage);
+    fetchTokenAddresses();
+    fetchCreatedTokens(address, createdTokensPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, currentPage, createdTokensPage]);
 
   const fetchTransactions = async (userAddress: string, page: number) => {
     setIsLoading(true);
     try {
       const response: TransactionResponse = await getTransactionsByAddress(userAddress, page);
-      setTransactions(response.transactions);
-      setTotalPages(response.totalPages);
+      setTransactions(response.transactions || []);
+      setTotalPages(response.totalPages || 1);
     } catch (error) {
       console.error('Error fetching transactions:', error);
       setTransactions([]);
+      setTotalPages(1);
     } finally {
       setIsLoading(false);
     }
@@ -147,10 +151,12 @@ const UserDashboard: React.FC = () => {
 
   const fetchTokenAddresses = async () => {
     try {
-      const addresses = await getAllTokenAddresses();
-      setTokenAddresses(addresses);
+      // getAllTokenAddresses() is assumed to return string[]
+      const addresses: string[] = await getAllTokenAddresses();
+      setTokenAddresses(Array.isArray(addresses) ? addresses : []);
     } catch (error) {
       console.error('Error fetching token addresses:', error);
+      setTokenAddresses([]);
     }
   };
 
@@ -158,35 +164,33 @@ const UserDashboard: React.FC = () => {
     setIsLoading(true);
     try {
       const response = await getTokensByCreator(creatorAddress, page);
-      setCreatedTokens(response.tokens);
-      setCreatedTokensTotalPages(response.totalPages);
+      setCreatedTokens(response.tokens || []);
+      setCreatedTokensTotalPages(response.totalPages || 1);
     } catch (error) {
       console.error('Error fetching created tokens:', error);
       setCreatedTokens([]);
+      setCreatedTokensTotalPages(1);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handlePageChange = (newPage: number) => {
-    setCurrentPage(newPage);
-  };
+  const handlePageChange = (newPage: number) => setCurrentPage(newPage);
 
+  // You may later enrich this to look up symbols from a cache or another API.
   const getTokenSymbol = (tokenAddress: string) => {
-    const token = tokenAddresses.find(t => t.address.toLowerCase() === tokenAddress.toLowerCase());
-    return token ? token.symbol : 'Unknown';
+    // Try to infer from createdTokens first
+    const m = createdTokens.find(t => t.address?.toLowerCase() === tokenAddress.toLowerCase());
+    if (m?.symbol) return m.symbol;
+    return 'Unknown';
   };
 
   const handleTokenClick = (tokenAddress: string) => {
     setIsTokenLoading(true);
-    router.push(`/token/${tokenAddress}`).finally(() => {
-      setIsTokenLoading(false);
-    });
+    router.push(`/token/${tokenAddress}`).finally(() => setIsTokenLoading(false));
   };
 
-  const handleCreatedTokensPageChange = (newPage: number) => {
-    setCreatedTokensPage(newPage);
-  };
+  const handleCreatedTokensPageChange = (newPage: number) => setCreatedTokensPage(newPage);
 
   const TokenTab: React.FC<{ title: string, isActive: boolean, onClick: () => void }> = ({ title, isActive, onClick }) => (
     <button
@@ -221,13 +225,13 @@ const UserDashboard: React.FC = () => {
             <div>
               {tokenAddresses.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {tokenAddresses.map((token) => (
+                  {tokenAddresses.map((addr) => (
                     <TokenBalanceItem
-                      key={token.address}
-                      tokenAddress={token.address}
-                      symbol={token.symbol}
+                      key={addr}
+                      tokenAddress={addr}
+                      symbol={getTokenSymbol(addr)}
                       userAddress={address || ''}
-                      onClick={() => handleTokenClick(token.address)}
+                      onClick={() => handleTokenClick(addr)}
                     />
                   ))}
                 </div>
@@ -295,10 +299,18 @@ const UserDashboard: React.FC = () => {
                   {transactions.map((tx) => (
                     <tr key={tx.id} className="hover:bg-gray-700 transition-colors duration-150">
                       <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">{tx.type}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">{getTokenSymbol(tx.recipientAddress)}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">{formatAmountV3(tx.tokenAmount)}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">{formatAmountV3(tx.ethAmount)} BONE</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">{formatTimestamp(tx.timestamp)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">
+                        {getTokenSymbol(tx.recipientAddress)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">
+                        {formatAmountV3(tx.tokenAmount)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">
+                        {formatAmountV3(tx.ethAmount)} BONE
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">
+                        {formatTimestamp(tx.timestamp)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
