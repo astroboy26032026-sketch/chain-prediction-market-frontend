@@ -1,3 +1,4 @@
+// src/pages/profile/[address].tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { useAccount } from 'wagmi';
@@ -23,6 +24,20 @@ interface TokenBalanceItemProps {
   userAddress: string;
   onClick: () => void;
 }
+
+// Kiểu dữ liệu chuẩn cho danh sách token address + symbol
+type AddrSymbol = { address: string; symbol: string };
+
+// Type guard để phân biệt khi API trả về đúng dạng hoặc chỉ string[]
+const isAddrSymbolArray = (v: unknown): v is AddrSymbol[] =>
+  Array.isArray(v) &&
+  v.every(
+    (i) =>
+      i &&
+      typeof i === 'object' &&
+      'address' in (i as any) &&
+      'symbol' in (i as any)
+  );
 
 /* =========================
    Token Balance Item
@@ -148,8 +163,11 @@ const ProfilePage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
-  const [tokenAddresses, setTokenAddresses] = useState<Array<{ address: string; symbol: string }>>([]);
+
+  // Luôn giữ state là { address, symbol }[]
+  const [tokenAddresses, setTokenAddresses] = useState<AddrSymbol[]>([]);
   const [isTokenLoading, setIsTokenLoading] = useState(false);
+
   const [activeTab, setActiveTab] = useState<'held' | 'created'>('held');
   const [createdTokens, setCreatedTokens] = useState<Token[]>([]);
   const [createdTokensPage, setCreatedTokensPage] = useState(1);
@@ -173,12 +191,23 @@ const ProfilePage: React.FC = () => {
     }
   }, []);
 
+  // Sửa theo KIỂU A: chấp nhận API có thể trả string[] và chuẩn hóa
   const fetchTokenAddresses = useCallback(async () => {
     try {
-      const addresses = await getAllTokenAddresses();
-      setTokenAddresses(addresses);
+      const res = await getAllTokenAddresses();
+
+      if (isAddrSymbolArray(res)) {
+        // API đã trả đúng dạng { address, symbol }[]
+        setTokenAddresses(res);
+      } else if (Array.isArray(res)) {
+        // API trả string[] -> map sang { address, symbol: 'Unknown' }
+        setTokenAddresses((res as string[]).map((addr) => ({ address: addr, symbol: 'Unknown' })));
+      } else {
+        setTokenAddresses([]);
+      }
     } catch (error) {
       console.error('Error fetching token addresses:', error);
+      setTokenAddresses([]);
     }
   }, []);
 
@@ -211,15 +240,19 @@ const ProfilePage: React.FC = () => {
   }, [addressToUse, currentPage, createdTokensPage, fetchTransactions, fetchTokenAddresses, fetchCreatedTokens]);
 
   const handlePageChange = (newPage: number) => setCurrentPage(newPage);
+
   const getTokenSymbol = (tokenAddress: string) => {
     const token = tokenAddresses.find((t) => t.address.toLowerCase() === tokenAddress.toLowerCase());
-    return token ? token.symbol : 'Unknown';
+    return token?.symbol ?? 'Unknown';
   };
+
   const handleTokenClick = (tokenAddress: string) => {
     setIsTokenLoading(true);
     router.push(`/token/${tokenAddress}`).finally(() => setIsTokenLoading(false));
   };
+
   const handleCreatedTokensPageChange = (newPage: number) => setCreatedTokensPage(newPage);
+
   const isTokenIncomplete = (token: Token) => {
     const socialCount = [token.website, token.telegram, token.discord, token.twitter, token.youtube].filter(Boolean).length;
     return !token.logo || !token.description || socialCount < 3;
