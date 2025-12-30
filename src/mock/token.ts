@@ -11,7 +11,8 @@ const makeToken = (i: number, overrides?: Partial<Token>): Token => {
     id: `mock-${i}`,
     chainId: 109,
     map: 'EVM',
-
+    marketCap:0,
+    priceUsd:0,
     address: addr,
     creatorAddress: `0xcreator${i.toString().padStart(34, '0')}`,
 

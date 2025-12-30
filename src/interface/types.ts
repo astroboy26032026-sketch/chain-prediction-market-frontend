@@ -16,6 +16,8 @@ export interface LiquidityEvent {
     name: string;
     symbol: string;
     logo: string;
+    marketCap:number;
+    priceUsd:number;
     description: string;
     createdAt: string;
     updatedAt: string;
