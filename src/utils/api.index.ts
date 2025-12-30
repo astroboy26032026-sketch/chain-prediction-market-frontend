@@ -41,3 +41,11 @@ export const getTokenHolders = (
 export const getTokenLiquidityEvents = (
   ...args: Parameters<typeof realApi.getTokenLiquidityEvents>
 ) => impl.getTokenLiquidityEvents(...args);
+
+export const getChatMessages = (
+  ...args: Parameters<typeof realApi.getChatMessages>
+) => impl.getChatMessages(...args);
+
+export const addChatMessage = (
+  ...args: Parameters<typeof realApi.addChatMessage>
+) => impl.addChatMessage(...args);
