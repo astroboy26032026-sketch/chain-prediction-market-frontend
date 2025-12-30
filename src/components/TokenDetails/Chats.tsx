@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
-import { getChatMessages, addChatMessage } from '@/utils/api';
+//import { getChatMessages, addChatMessage } from '@/utils/api';
+import { getChatMessages, addChatMessage } from '@/utils/api.index';
 import { useAccount } from 'wagmi';
 import { toast } from 'react-toastify';
 import { formatTimestamp, getRandomAvatarImage, shortenAddress } from '@/utils/chatUtils';

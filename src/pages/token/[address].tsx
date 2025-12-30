@@ -29,7 +29,7 @@ import {
   getTokenUSDPriceHistory,
   getTokenHolders,
   getTokenLiquidityEvents,
-} from '@/utils/api';
+} from '@/utils/api.index';
 import { parseUnits, formatUnits } from 'viem';
 import { useAccount, useWaitForTransactionReceipt } from 'wagmi';
 import { useDebounce } from 'use-debounce';

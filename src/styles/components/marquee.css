@@ -1,0 +1,46 @@
+/* =========================
+   MARQUEE (UI COMPONENT)
+   ========================= */
+
+   .marquee-container {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+  }
+  
+  .marquee-fade {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      90deg,
+      var(--background) 0%,
+      rgba(0, 0, 0, 0) 8%,
+      rgba(0, 0, 0, 0) 92%,
+      var(--background) 100%
+    );
+    z-index: 2;
+  }
+  
+  .marquee-track {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    animation-name: marquee-x;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  
+  .marquee-pause:hover .marquee-track {
+    animation-play-state: paused;
+  }
+  
+  @keyframes marquee-x {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+  

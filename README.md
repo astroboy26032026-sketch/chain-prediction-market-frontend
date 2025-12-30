@@ -1,6 +1,4 @@
-# Pump Fun UI
-
-Pump Fun UI is a Next.js-based web application for interacting with the Pump Fun platform.
+# Pump Clone
 
 ## Table of Contents
 
@@ -18,7 +16,7 @@ Pump Fun UI is a Next.js-based web application for interacting with the Pump Fun
 
 ### Prerequisites
 
-- Node.js (version 14 or later)
+- Node.js (version 20 or later)
 - Yarn package manager
 
 ### Installation
@@ -47,7 +45,7 @@ Pump Fun UI is a Next.js-based web application for interacting with the Pump Fun
 
 ## Architecture Overview
 
-Pump Fun UI is built using the following technologies and frameworks:
+Built using the following technologies and frameworks:
 
 - Next.js: React framework for server-side rendering and static site generation
 - React: JavaScript library for building user interfaces
@@ -75,8 +73,3 @@ NEXT_PUBLIC_WS_BASE_URL=
 UPLOADTHING_TOKEN=
 ```
 NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS_OLD & NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS_OLD1 are for compatibility with old contracts
-
-
-### 🚀 Looking to build a platform like Pump.fun?
-
-I've made the UI open-source, but the backend and smart contract are closed-source. If you're interested in creating a full-fledged Pump.fun-like platform, let's collaborate! [Contact me on Telegram](https://t.me/rink3y) (RedWilly) for more details.
