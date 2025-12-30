@@ -14,11 +14,13 @@ import { getMockTokenDetail } from '@/mock/factories/tokenDetail.factory';
 const paginate = <T>(data: T[], page = 1, pageSize = 20): PaginatedResponse<T> => {
   const start = (page - 1) * pageSize;
   const end = start + pageSize;
+
   return {
     data: data.slice(start, end),
     totalCount: data.length,
     currentPage: page,
     totalPages: Math.ceil(data.length / pageSize) || 1,
+    tokens: [], // ✅ BẮT BUỘC PHẢI CÓ
   };
 };
 
