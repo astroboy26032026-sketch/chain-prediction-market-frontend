@@ -26,7 +26,12 @@ const emptyToken: Token = {
     liquidityEvents: 0
   },
   // liquidityEvents: 0,
-  map: null
+  map: null,
+
+    // ✅ THÊM 2 FIELD BẮT BUỘC
+  marketCap: 0,
+  priceUsd: 0,
+
 };
 
 export default async function handler(
