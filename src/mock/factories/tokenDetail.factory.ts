@@ -67,7 +67,9 @@ export function getMockTokenDetail(address: string): TokenWithTransactions {
     createdAt: base.createdAt,
     updatedAt: new Date().toISOString(),
     latestTransactionTimestamp: latestTxTime,
-
+      // ✅ THÊM 2 FIELD BẮT BUỘC
+    marketCap: Number(base.marketCap ?? 0),
+    priceUsd: Number(base.priceUsd ?? '0.000001'),
     _count: {
       liquidityEvents: 0,
     },
