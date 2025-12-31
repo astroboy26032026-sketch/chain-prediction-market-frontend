@@ -23,8 +23,7 @@
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/redWilly/Pump-UI
-   cd Pump-UI
+   git clone https://github.com/Quan359100/Pump_fun_clone.git
    ```
 
 2. Install dependencies:
@@ -62,7 +61,6 @@ The application follows a component-based architecture, with reusable UI compone
 Create a `.env.local` file in the root directory with the following variables:
 
 ```
-NEXT_PUBLIC_API_BASE_URL=
 NEXT_PUBLIC_BLOCKSCOUT_URL=
 NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS=
 NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS_OLD=
@@ -71,5 +69,7 @@ NEXT_PUBLIC_DEX_TARGET=
 NEXT_PUBLIC_DOMAIN=
 NEXT_PUBLIC_WS_BASE_URL=
 UPLOADTHING_TOKEN=
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+NEXT_PUBLIC_USE_MOCK=true
 ```
 NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS_OLD & NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS_OLD1 are for compatibility with old contracts

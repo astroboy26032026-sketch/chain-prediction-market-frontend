@@ -13,7 +13,7 @@ import { WebSocketProvider } from '@/components/providers/WebSocketProvider';
 
 
 const config = getDefaultConfig({
-  appName: "Pump Fun",
+  appName: "Pump Fun Clone",
   projectId: "YOUR_PROJECT_ID",
   chains: supportedChains as any,
   ssr: true,
