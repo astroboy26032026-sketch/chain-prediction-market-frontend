@@ -56,6 +56,15 @@ build:
       docker buildx build \
         --cache-from=type=registry,ref="$IMAGE:buildcache" \
         --cache-to=type=registry,ref="$IMAGE:buildcache",mode=max \
+        --build-arg NEXT_PUBLIC_BLOCKSCOUT_URL="$NEXT_PUBLIC_BLOCKSCOUT_URL" \
+        --build-arg NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS="$NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS" \
+        --build-arg NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS_OLD="$NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS_OLD" \
+        --build-arg NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS_OLD1="$NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS_OLD1" \
+        --build-arg NEXT_PUBLIC_DEX_TARGET="$NEXT_PUBLIC_DEX_TARGET" \
+        --build-arg NEXT_PUBLIC_DOMAIN="$NEXT_PUBLIC_DOMAIN" \
+        --build-arg NEXT_PUBLIC_WS_BASE_URL="$NEXT_PUBLIC_WS_BASE_URL" \
+        --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
+        --build-arg NEXT_PUBLIC_USE_MOCK="$NEXT_PUBLIC_USE_MOCK" \
         -t "$IMAGE:$IMAGE_TAG" \
         -t "$IMAGE:latest" \
         --push \
