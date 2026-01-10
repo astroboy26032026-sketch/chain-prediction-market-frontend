@@ -87,11 +87,49 @@ compose_up:
       sshpass -p "$SSH_PASSWORD" ssh $SSH_OPTS "$SSH_USER@$SSH_HOST" "
         set -e
         cd '$REMOTE_DIR'
-
         docker compose -f '$COMPOSE_FILE_NAME' up -d --no-deps frontend
+        docker compose -f '$COMPOSE_FILE_NAME' ps frontend
+      "
 
-        docker exec pfc-nginx nginx -t
-        docker exec pfc-nginx nginx -s reload
+reload_nginx:
+  stage: deploy
+  extends: .ssh_remote_base
+  tags:
+    - dev-be
+  needs: 
+    - compose_up
+  variables:
+    REMOTE_DIR: /opt/pfc
+    COMPOSE_FILE_NAME: docker-compose.dev.yml
+  script:
+    - echo "♻️ Reload nginx..."
+    - |
+      sshpass -p "$SSH_PASSWORD" ssh $SSH_OPTS "$SSH_USER@$SSH_HOST" "
+        set -e
+        cd '$REMOTE_DIR'
 
-        docker compose -f '$COMPOSE_FILE_NAME' ps frontend nginx
+        NGINX_CID=\$(docker compose -f '$COMPOSE_FILE_NAME' ps -q nginx)
+        echo \"NGINX_CID=\$NGINX_CID\"
+
+        for i in \$(seq 1 30); do
+          status=\$(docker inspect -f '{{.State.Status}}' \$NGINX_CID 2>/dev/null || true)
+          health=\$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' \$NGINX_CID 2>/dev/null || true)
+          echo \"[wait] nginx status=\$status health=\$health (\$i/30)\"
+
+          if [ \"\$status\" = \"running\" ] && { [ \"\$health\" = \"healthy\" ] || [ \"\$health\" = \"no-healthcheck\" ]; }; then
+            break
+          fi
+          sleep 2
+        done
+
+        if [ \"\$(docker inspect -f '{{.State.Status}}' \$NGINX_CID 2>/dev/null || true)\" != \"running\" ]; then
+          echo \"nginx is not running - logs:\"
+          docker logs --tail 200 \$NGINX_CID || true
+          exit 1
+        fi
+
+        docker exec \$NGINX_CID nginx -t
+        docker exec \$NGINX_CID nginx -s reload
+
+        docker compose -f '$COMPOSE_FILE_NAME' ps nginx
       "
