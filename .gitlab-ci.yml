@@ -11,7 +11,7 @@ stages:
   - deploy
 
 variables:
-  IMAGE: "$CI_REGISTRY/pumpfunclone/pfc-frontend-project/pfc-fe"
+  IMAGE: "$CI_REGISTRY/pumpfunclone/pump_fun_clone/pfc-fe"
   DOCKER_DRIVER: overlay2
   DOCKER_HOST: tcp://docker:2375
   DOCKER_TLS_CERTDIR: ""
