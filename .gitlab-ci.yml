@@ -88,7 +88,6 @@ compose_up:
         set -e
         cd '$REMOTE_DIR'
 
-        docker compose -f '$COMPOSE_FILE_NAME' pull frontend
         docker compose -f '$COMPOSE_FILE_NAME' up -d --no-deps frontend
 
         docker exec pfc-nginx nginx -t
