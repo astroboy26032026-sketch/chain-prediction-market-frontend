@@ -1,6 +1,6 @@
 workflow:
   rules:
-    - if: '$CI_COMMIT_REF_NAME == "master"'
+    - if: '$CI_COMMIT_REF_NAME == "main"'
       when: always
     - if: '$CI_PIPELINE_SOURCE == "web"'
       when: always
@@ -11,7 +11,7 @@ stages:
   - deploy
 
 variables:
-  IMAGE: "$CI_REGISTRY/$CI_PROJECT_PATH/pfc-fe"
+  IMAGE: "$CI_REGISTRY/pumpfunclone/pfc-frontend-project/pfc-fe"
   DOCKER_DRIVER: overlay2
   DOCKER_HOST: tcp://docker:2375
   DOCKER_TLS_CERTDIR: ""
