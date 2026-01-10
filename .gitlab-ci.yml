@@ -29,30 +29,30 @@ variables:
     - export SCP_OPTS="-P ${SSH_PORT} -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes"
 
 
-# Build & push image to self-hosted registry
-build:
-  stage: build
-  tags:
-    - dev-be    
-  image: docker:24
-  services:
-    - name: docker:24-dind
-      command: ["--registry-mirror=https://mirror.gcr.io"]
-  script:
-    - echo "🔐 Logging into registry..."
-    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin    
+# # Build & push image to self-hosted registry
+# build:
+#   stage: build
+#   tags:
+#     - dev-be    
+#   image: docker:24
+#   services:
+#     - name: docker:24-dind
+#       command: ["--registry-mirror=https://mirror.gcr.io"]
+#   script:
+#     - echo "🔐 Logging into registry..."
+#     - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin    
 
-    - echo "⚙️ Building Docker image..."
-    - BUILD_DATE=$(date +'%Y%m%d')
-    - IMAGE_TAG="${CI_COMMIT_SHORT_SHA}-${BUILD_DATE}"
-    - docker build -t "$IMAGE:$IMAGE_TAG" -t "$IMAGE:latest" .
+#     - echo "⚙️ Building Docker image..."
+#     - BUILD_DATE=$(date +'%Y%m%d')
+#     - IMAGE_TAG="${CI_COMMIT_SHORT_SHA}-${BUILD_DATE}"
+#     - docker build -t "$IMAGE:$IMAGE_TAG" -t "$IMAGE:latest" .
 
-    - echo "📤 Pushing image to registry..."
-    - docker push "$IMAGE:$IMAGE_TAG"
-    - docker push "$IMAGE:latest"
+#     - echo "📤 Pushing image to registry..."
+#     - docker push "$IMAGE:$IMAGE_TAG"
+#     - docker push "$IMAGE:latest"
 
-    - echo "✅ Done! Image pushed to:"
-    - echo "$IMAGE:$IMAGE_TAG"    
+#     - echo "✅ Done! Image pushed to:"
+#     - echo "$IMAGE:$IMAGE_TAG"    
 
 pull_image:
   stage: deploy
