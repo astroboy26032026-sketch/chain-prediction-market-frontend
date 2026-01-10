@@ -7,7 +7,7 @@ workflow:
     - when: never
 
 stages:
-  - build
+#  - build
   - deploy
 
 variables:
@@ -54,4 +54,45 @@ build:
     - echo "✅ Done! Image pushed to:"
     - echo "$IMAGE:$IMAGE_TAG"    
 
+pull_image:
+  stage: deploy
+  extends: .ssh_remote_base
+  tags: 
+    - dev-be
+  variables:
+    REMOTE_DIR: /opt/pfc
+  script:
+    - echo "🔐 Registry login on remote..."
+    # Pipe password từ CI vào docker login chạy TRÊN VM
+    - echo "$CI_REGISTRY_PASSWORD" | sshpass -p "$SSH_PASSWORD" ssh $SSH_OPTS "$SSH_USER@$SSH_HOST" \
+        "docker login '$CI_REGISTRY' -u '$CI_REGISTRY_USER' --password-stdin"
 
+    - echo "⬇️  Pull latest image on remote..."
+    - sshpass -p "$SSH_PASSWORD" ssh $SSH_OPTS "$SSH_USER@$SSH_HOST" \
+        "docker pull '$IMAGE:latest' && docker images | grep -E '$(basename \"$IMAGE\")\\s+latest' || true"
+
+compose_up:
+  stage: deploy
+  extends: .ssh_remote_base
+  tags: 
+    - dev-be
+  needs: 
+    - pull_image
+  variables:
+    REMOTE_DIR: /opt/pfc
+    COMPOSE_FILE_NAME: docker-compose.dev.yml
+  script:
+    - echo "🚀 Deploy frontend only (no restart DB/BE)..."
+    - |
+      sshpass -p "$SSH_PASSWORD" ssh $SSH_OPTS "$SSH_USER@$SSH_HOST" "
+        set -e
+        cd '$REMOTE_DIR'
+
+        docker compose -f '$COMPOSE_FILE_NAME' pull frontend
+        docker compose -f '$COMPOSE_FILE_NAME' up -d --no-deps frontend
+
+        docker exec pfc-nginx nginx -t
+        docker exec pfc-nginx nginx -s reload
+
+        docker compose -f '$COMPOSE_FILE_NAME' ps frontend nginx
+      "
