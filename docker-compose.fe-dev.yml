@@ -1,0 +1,28 @@
+services:
+  frontend:
+    image: registry.pumpfunclone2025.win:443/pumpfunclone/pump_fun_clone/pfc-fe:latest
+    container_name: pfc-frontend
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_BLOCKSCOUT_URL: ""
+      NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS: ""
+      NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS_OLD: ""
+      NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS_OLD1: ""
+      NEXT_PUBLIC_DEX_TARGET: ""
+      NEXT_PUBLIC_DOMAIN: ""
+      NEXT_PUBLIC_WS_BASE_URL: ""
+      UPLOADTHING_TOKEN: ""
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+      NEXT_PUBLIC_USE_MOCK: true
+
+    networks:
+      - pfc-network
+
+networks:
+  pfc-network:
+    name: pfc-network
+    driver: bridge
