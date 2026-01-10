@@ -1,0 +1,57 @@
+workflow:
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "master"'
+      when: always
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: always
+    - when: never
+
+stages:
+  - build
+  - deploy
+
+variables:
+  IMAGE: "$CI_REGISTRY/pumpfunclone/pfc-frontend-project/pfc-fe"
+  DOCKER_DRIVER: overlay2
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  SSH_PORT: "22"
+
+
+.ssh_remote_base:
+  image: alpine:3.20
+  before_script:
+    - apk add --no-cache openssh-client sshpass curl rsync
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+    - export TARGET="$SSH_USER@$SSH_HOST"
+    - export SSH_OPTS="-p ${SSH_PORT} -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes"
+    - export SCP_OPTS="-P ${SSH_PORT} -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes"
+
+
+# Build & push image to self-hosted registry
+build:
+  stage: build
+  tags:
+    - dev-be    
+  image: docker:24
+  services:
+    - name: docker:24-dind
+      command: ["--registry-mirror=https://mirror.gcr.io"]
+  script:
+    - echo "🔐 Logging into registry..."
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin    
+
+    - echo "⚙️ Building Docker image..."
+    - BUILD_DATE=$(date +'%Y%m%d')
+    - IMAGE_TAG="${CI_COMMIT_SHORT_SHA}-${BUILD_DATE}"
+    - docker build -t "$IMAGE:$IMAGE_TAG" -t "$IMAGE:latest" .
+
+    - echo "📤 Pushing image to registry..."
+    - docker push "$IMAGE:$IMAGE_TAG"
+    - docker push "$IMAGE:latest"
+
+    - echo "✅ Done! Image pushed to:"
+    - echo "$IMAGE:$IMAGE_TAG"    
+
+

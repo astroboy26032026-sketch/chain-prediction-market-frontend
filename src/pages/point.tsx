@@ -74,7 +74,7 @@ const getNextTier = (tier: PlantTier | null): PlantTier | null => {
 };
 
 const TIER_EMOJI: Record<PlantTier, string> = {
-  SEED: '🌱',
+  SEED: '🌱✨',
   SPROUT: '🌿',
   SAPLING: '🌳',
   TREE: '🌴',
