@@ -33,7 +33,7 @@ variables:
 build:
   stage: build
   tags:
-    - dev-fe    
+    - dev-be    
   image: docker:24
   services:
     - name: docker:24-dind
