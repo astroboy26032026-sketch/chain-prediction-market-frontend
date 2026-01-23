@@ -1,38 +1,52 @@
+// src/pages/_app.tsx
 import '@/styles/globals.css';
 import '@/styles/components/marquee.css';
 import type { AppProps } from 'next/app';
-import { WagmiConfig, createConfig, WagmiProvider } from 'wagmi';
-import { supportedChains } from '@/chain/config';
+
+import React, { useMemo } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { getDefaultConfig, RainbowKitProvider } from '@rainbow-me/rainbowkit';
-import '@rainbow-me/rainbowkit/styles.css';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+
+import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
+import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
+import {
+  PhantomWalletAdapter,
+  SolflareWalletAdapter,
+} from '@solana/wallet-adapter-wallets';
+
+import '@solana/wallet-adapter-react-ui/styles.css';
+
 import { WebSocketProvider } from '@/components/providers/WebSocketProvider';
+import { AuthProvider } from '@/components/providers/AuthProvider';
 
-
-
-const config = getDefaultConfig({
-  appName: "Pump Fun Clone",
-  projectId: "YOUR_PROJECT_ID",
-  chains: supportedChains as any,
-  ssr: true,
-});
-
-
-const queryClient = new QueryClient()
+const queryClient = new QueryClient();
 
 export default function App({ Component, pageProps }: AppProps) {
+  // RPC endpoint (khuyến nghị để trong .env.local)
+  const endpoint =
+    process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com';
+
+  // Wallet adapters
+  const wallets = useMemo(
+    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
+    []
+  );
+
   return (
-    <WagmiConfig config={config}>
-      <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider>
-          <WebSocketProvider>
-            <Component {...pageProps} />
-          </WebSocketProvider>
-        </RainbowKitProvider>
-      </QueryClientProvider>
-      <ToastContainer />
-    </WagmiConfig>
-  )
+    <QueryClientProvider client={queryClient}>
+      <ConnectionProvider endpoint={endpoint}>
+        <WalletProvider wallets={wallets} autoConnect>
+          <WalletModalProvider>
+            <AuthProvider>
+              <WebSocketProvider>
+                <Component {...pageProps} />
+                <ToastContainer />
+              </WebSocketProvider>
+            </AuthProvider>
+          </WalletModalProvider>
+        </WalletProvider>
+      </ConnectionProvider>
+    </QueryClientProvider>
+  );
 }

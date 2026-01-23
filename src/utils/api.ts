@@ -15,7 +15,59 @@ import {
 import { ethers } from 'ethers';
 
 // =====================
-// Base & helpers
+// AUTH base & token helpers (NEW)
+// =====================
+export const AUTH_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ||
+  'https://dev.pumpfunclone2025.win';
+
+const AUTH_TOKEN_KEY = 'pf_token';
+
+export function getStoredToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+export function setStoredToken(token: string | null) {
+  if (typeof window === 'undefined') return;
+  if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
+  else localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+/**
+ * Axios instance for AUTH endpoints (NO proxy)
+ * -> calls directly to https://dev.pumpfunclone2025.win/auth/...
+ */
+export const authApi = axios.create({
+  baseURL: AUTH_BASE_URL,
+  headers: { 'Content-Type': 'application/json' },
+  // withCredentials: true, // bật nếu BE dùng cookie/session
+});
+
+/**
+ * Set token for authApi (and persist it)
+ */
+export function setAuthToken(token: string | null, persist = true) {
+  if (persist) setStoredToken(token);
+
+  if (token) authApi.defaults.headers.common.Authorization = `Bearer ${token}`;
+  else delete authApi.defaults.headers.common.Authorization;
+}
+
+// Init token on client
+if (typeof window !== 'undefined') {
+  const token = getStoredToken();
+  if (token) setAuthToken(token, false);
+}
+
+// (Optional) Keep light interceptor - do NOT auto-refresh here
+authApi.interceptors.response.use(
+  (res) => res,
+  (err) => Promise.reject(err)
+);
+
+// =====================
+// Base & helpers (ports via proxy - EXISTING)
 // =====================
 const PROXY_BASE = '/api/proxy';
 const isServer = typeof window === 'undefined';
@@ -47,7 +99,7 @@ export async function getAllTokens(page = 1, pageSize = 13): Promise<PaginatedRe
 }
 
 export async function getAllTokensTrends(): Promise<Token[]> {
-  const { data } = await getViaProxy<Token[]>('/ports/getAllTokensTrends');
+  const { data } = await getViaProxy<Token[]>('/homepage/trending');
   return data;
 }
 

@@ -1,14 +1,19 @@
+// src/components/layout/Navbar.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
-import { useAccount } from 'wagmi';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { toast } from 'react-toastify';
 import HowItWorksPopup from '@/components/notifications/HowItWorksPopup';
-import { shortenAddress } from '@/utils/blockchainUtils';
 import { Switch } from '@/components/ui/switch';
-import { Sun, Moon, User2, UsersRound, Gift , Trophy ,Gem , Coins } from 'lucide-react';
+import { Sun, Moon, User2, UsersRound, Gift, Trophy, Gem, Coins } from 'lucide-react';
+
+import { useWallet } from '@solana/wallet-adapter-react';
+import dynamic from 'next/dynamic';
+
+const SolanaAuth = dynamic(() => import('@/components/auth/SolanaAuth'), {
+  ssr: false,
+});
 
 /* =========================
    Palette setup
@@ -21,13 +26,13 @@ const PALETTES: Palette[] = ['seed', 'sprout', 'bud', 'bloom', 'canopy'];
 ========================= */
 const TelegramIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg viewBox="0 0 24 24" fill="currentColor" {...props} className={`social-icon ${props.className ?? ''}`}>
-    <path d="M9.036 15.47 9.2 19.1c.4 0 .58-.17.79-.37l1.9-1.82 3.94 2.88c.72.4 1.22.19 1.41-.67l2.56-12.03h.01c.23-1.11-.4-1.54-1.1-1.27L3.34 10.01c-1.06.41-1.04 1-.18 1.27l4.7 1.47 10.91-6.88c.51-.32.98-.14.6.18l-10.4 9.45z"/>
+    <path d="M9.036 15.47 9.2 19.1c.4 0 .58-.17.79-.37l1.9-1.82 3.94 2.88c.72.4 1.22.19 1.41-.67l2.56-12.03h.01c.23-1.11-.4-1.54-1.1-1.27L3.34 10.01c-1.06.41-1.04 1-.18 1.27l4.7 1.47 10.91-6.88c.51-.32.98-.14.6.18l-10.4 9.45z" />
   </svg>
 );
 
 const XIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg viewBox="0 0 24 24" fill="currentColor" {...props} className={`social-icon ${props.className ?? ''}`}>
-    <path d="M18.244 2H21l-6.36 7.27L22 22h-6.828l-4.82-6.314L4.76 22H2l6.89-7.88L2 2h6.914l4.39 5.77L18.244 2Zm-1.196 18h1.86L8.01 3.96H6.05L17.048 20Z"/>
+    <path d="M18.244 2H21l-6.36 7.27L22 22h-6.828l-4.82-6.314L4.76 22H2l6.89-7.88L2 2h6.914l4.39 5.77L18.244 2Zm-1.196 18h1.86L8.01 3.96H6.05L17.048 20Z" />
   </svg>
 );
 
@@ -68,12 +73,17 @@ const applyPalette = (p: Palette) => {
 /* =========================
    NavLink
 ========================= */
-const NavLink: React.FC<{ href: string; children: React.ReactNode; exact?: boolean }> = ({ href, children, exact = false }) => {
+const NavLink: React.FC<{ href: string; children: React.ReactNode; exact?: boolean }> = ({
+  href,
+  children,
+  exact = false,
+}) => {
   const router = useRouter();
   const isActive = useMemo(() => {
     const path = router.asPath.split('?')[0];
     return exact ? path === href : path.startsWith(href);
   }, [router.asPath, href, exact]);
+
   return (
     <Link href={href} className={`sidebar-link ${isActive ? 'sidebar-link--active' : ''}`}>
       {children}
@@ -82,48 +92,16 @@ const NavLink: React.FC<{ href: string; children: React.ReactNode; exact?: boole
 };
 
 /* =========================
-   Wallet Connect
-========================= */
-const CustomConnectButton = () => (
-  <ConnectButton.Custom>
-    {({ account, chain, openAccountModal, openChainModal, openConnectModal, mounted }) => {
-      const ready = mounted;
-      const connected = ready && account && chain;
-      return (
-        <div {...(!ready && { 'aria-hidden': true, style: { opacity: 0, pointerEvents: 'none', userSelect: 'none' } })}>
-          {!connected ? (
-            <button onClick={openConnectModal} className="btn btn-primary w-full font-semibold">
-              Connect Wallet
-            </button>
-          ) : chain?.unsupported ? (
-            <button onClick={openChainModal} className="btn btn-secondary w-full text-[12px] px-2 py-1">
-              Wrong network
-            </button>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <button onClick={openChainModal} className="btn btn-secondary text-[12px] w-full flex items-center justify-center">
-                {chain?.iconUrl && <img src={chain.iconUrl} alt={chain.name ?? 'Chain'} width={14} height={14} className="rounded-full mr-2" />}
-                {chain?.name}
-              </button>
-              <button onClick={openAccountModal} className="btn btn-primary text-[12px] px-2 py-1 w-full">
-                {account?.address ? shortenAddress(account.address) : 'Account'}
-                {account?.displayBalance && <span className="hidden sm:inline ml-1">({account.displayBalance})</span>}
-              </button>
-            </div>
-          )}
-        </div>
-      );
-    }}
-  </ConnectButton.Custom>
-);
-
-/* =========================
    Navbar Component
 ========================= */
 const Navbar: React.FC = () => {
   const [showHow, setShowHow] = useState(false);
-  const { address } = useAccount();
   const router = useRouter();
+
+  // Solana wallet
+  const { publicKey } = useWallet();
+  const address = publicKey?.toBase58();
+
   const [isDark, setIsDark] = useState(true);
   const [palette, setPalette] = useState<Palette>('seed');
 
@@ -131,6 +109,7 @@ const Navbar: React.FC = () => {
     const t = getInitialTheme();
     applyTheme(t);
     setIsDark(t === 'dark');
+
     const p = getInitialPalette();
     applyPalette(p);
     setPalette(p);
@@ -157,7 +136,14 @@ const Navbar: React.FC = () => {
         {/* Logo */}
         <div>
           <Link href="/" className="flex items-center gap-3 mb-6 group">
-            <Image src="/logo-seed.png" alt="Pumpfun Clone Logo" width={72} height={72} className="rounded-xl logo-bounce shadow-lg" priority />
+            <Image
+              src="/logo-seed.png"
+              alt="Pumpfun Clone Logo"
+              width={72}
+              height={72}
+              className="rounded-xl logo-bounce shadow-lg"
+              priority
+            />
             <span className="brand-title">Pumpfun Clone</span>
           </Link>
 
@@ -186,20 +172,23 @@ const Navbar: React.FC = () => {
             <NavLink href="/point">
               <Gem className="sidebar-icon" />
               <span className="sidebar-label">Points</span>
-            </NavLink>            
-
+            </NavLink>
 
             <NavLink href="/stake">
               <Coins className="sidebar-icon" />
               <span className="sidebar-label">Stake</span>
             </NavLink>
 
-            <button onClick={() => router.push('/create')} className="btn btn-primary w-full font-semibold mt-4 flex items-center justify-center gap-2">
+            <button
+              onClick={() => router.push('/create')}
+              className="btn btn-primary w-full font-semibold mt-4 flex items-center justify-center gap-2"
+            >
               <span>Create Token</span>
             </button>
 
+            {/* Solana Wallet + Auth */}
             <div className="mt-3">
-              <CustomConnectButton />
+              <SolanaAuth />
             </div>
 
             {/* Theme & Palette */}
@@ -209,12 +198,19 @@ const Navbar: React.FC = () => {
                   {isDark ? <Moon className="w-5 h-5 text-[var(--primary)]" /> : <Sun className="w-5 h-5 text-yellow-400" />}
                   <span className="text-[13px] opacity-90">{isDark ? 'Dark Mode' : 'Light Mode'}</span>
                 </div>
+
                 <Switch
                   checked={isDark}
                   onCheckedChange={handleThemeToggle}
-                  className={`${isDark ? 'bg-[color:var(--primary)]' : 'bg-[color:var(--card-border)]'} relative inline-flex h-6 w-11 items-center rounded-full transition-colors`}
+                  className={`${
+                    isDark ? 'bg-[color:var(--primary)]' : 'bg-[color:var(--card-border)]'
+                  } relative inline-flex h-6 w-11 items-center rounded-full transition-colors`}
                 >
-                  <span className={`${isDark ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`} />
+                  <span
+                    className={`${
+                      isDark ? 'translate-x-6' : 'translate-x-1'
+                    } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+                  />
                 </Switch>
               </div>
 
@@ -240,14 +236,24 @@ const Navbar: React.FC = () => {
         <div className="mt-auto pt-4 border-t border-[var(--navbar-border)]">
           <div className="flex flex-col items-center gap-2">
             <div className="social-links">
-              <a href="https://t.me/your_channel" target="_blank" rel="noopener noreferrer" className="social-link"><TelegramIcon /></a>
-              <a href="https://twitter.com/your_handle" target="_blank" rel="noopener noreferrer" className="social-link"><XIcon /></a>
+              <a href="https://t.me/your_channel" target="_blank" rel="noopener noreferrer" className="social-link">
+                <TelegramIcon />
+              </a>
+              <a href="https://twitter.com/your_handle" target="_blank" rel="noopener noreferrer" className="social-link">
+                <XIcon />
+              </a>
             </div>
 
             <div className="footer-nav">
-              <Link href="/about" className="footer-nav-link">Doc</Link>
-              <Link href="/FAQ" className="footer-nav-link">FAQ</Link>
-              <button onClick={() => setShowHow(true)} className="footer-nav-link">How it Works</button>
+              <Link href="/about" className="footer-nav-link">
+                Doc
+              </Link>
+              <Link href="/FAQ" className="footer-nav-link">
+                FAQ
+              </Link>
+              <button onClick={() => setShowHow(true)} className="footer-nav-link">
+                How it Works
+              </button>
             </div>
 
             <p className="footer-text">© {new Date().getFullYear()} Pumpfun Clone</p>

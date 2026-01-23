@@ -4,7 +4,7 @@ import { updateToken } from '@/utils/api';
 import { toast } from 'react-toastify';
 import axios from 'axios';
 import { CloudArrowUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import SiweAuth from '@/components/auth/SiweAuth';
+import SiweAuth from '@/components/auth/remove.SiweAuth';
 import { useAccount } from 'wagmi';
 
 interface TokenUpdateModalProps {

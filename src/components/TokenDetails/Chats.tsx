@@ -7,7 +7,7 @@ import { toast } from 'react-toastify';
 import { formatTimestamp, getRandomAvatarImage, shortenAddress } from '@/utils/chatUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TokenWithTransactions } from '@/interface/types';
-import SiweAuth from '@/components/auth/SiweAuth';
+import SiweAuth from '@/components/auth/remove.SiweAuth';
 import { Reply, X } from 'lucide-react';
 
 interface ChatMessage {

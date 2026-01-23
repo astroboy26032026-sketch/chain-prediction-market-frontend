@@ -17,7 +17,7 @@ const nextConfig = {
     return [
         {
           source: '/api/proxy/:path*',
-          destination: 'https://bondle.xyz/api/:path*',
+          destination: 'https://dev.pumpfunclone2025.win/:path*',
         },
       // {
       //   source: '/api/proxy/:path*',
