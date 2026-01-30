@@ -1,7 +1,8 @@
-// pages/index.tsx — marquee ALWAYS from category=trending (independent), stable load-more, fixed types + marquee logo
+// pages/index.tsx — marquee ALWAYS from category=trending (independent), stable load-more, fixed types + marquee logo (next/image)
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import Image from 'next/image';
 
 import Layout from '@/components/layout/Layout';
 import TokenList from '@/components/tokens/TokenList';
@@ -123,6 +124,22 @@ const mapSortToCategory = (sort: SortOption): TokenCategory => {
   }
 };
 
+// ===== Marquee logo: safe normalize + fallback =====
+const normalizeLogo = (raw: any): string => {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  // allow http(s) only (tránh mấy schema lạ)
+  if (/^https?:\/\//i.test(s)) return s;
+  return '';
+};
+
+const getSymbolText = (t: any): string => {
+  const sym = String(t?.symbol || '').trim();
+  const name = String(t?.name || '').trim();
+  const base = sym || name || '??';
+  return base.slice(0, 2).toUpperCase();
+};
+
 const Home: React.FC = () => {
   const router = useRouter();
   const { newTokens } = useWebSocket();
@@ -155,6 +172,9 @@ const Home: React.FC = () => {
   // -------------------
   const [marqueeTokens, setMarqueeTokens] = useState<Token[]>([]);
   const marqueeReqRef = useRef(0);
+
+  // marquee logo error tracking (per token id)
+  const [marqueeLogoError, setMarqueeLogoError] = useState<Record<string, boolean>>({});
 
   // -------------------
   // NSFW + websocket new tokens
@@ -225,16 +245,19 @@ const Home: React.FC = () => {
           includeNsfw,
         };
 
-        // q = '' để lấy full trending
         const res = await searchTokens('', 1, MARQUEE_LIMIT, undefined, f);
         if (myReq !== marqueeReqRef.current) return;
 
         const items = (res?.data ?? []) as Token[];
         setMarqueeTokens(items);
+
+        // reset lỗi logo để render lại (tránh bị “kẹt”)
+        setMarqueeLogoError({});
       } catch (e) {
         console.error('marquee trending fetch error:', e);
         if (myReq !== marqueeReqRef.current) return;
         setMarqueeTokens([]);
+        setMarqueeLogoError({});
       }
     };
 
@@ -251,9 +274,7 @@ const Home: React.FC = () => {
 
         const existing = prev.data ?? [];
         const toAdd = newTokens.filter(
-          (n) =>
-            !existing.some((e: any) => e?.id === n.id) &&
-            !displayedNewTokens.some((d) => d.id === n.id)
+          (n) => !existing.some((e: any) => e?.id === n.id) && !displayedNewTokens.some((d) => d.id === n.id)
         );
 
         if (!toAdd.length) return prev;
@@ -512,11 +533,7 @@ const Home: React.FC = () => {
           <Marquee speed={130}>
             {(marqueeTokens ?? []).map((token, index) => {
               const rawAddr =
-                (token as any)?.address ||
-                (token as any)?.mint ||
-                (token as any)?.tokenAddress ||
-                (token as any)?.ca ||
-                null;
+                (token as any)?.address || (token as any)?.mint || (token as any)?.tokenAddress || (token as any)?.ca || null;
 
               const addr = rawAddr ? encodeURIComponent(String(rawAddr)) : null;
               const href = addr ? `${TOKEN_BASE_PATH}/${addr}` : getTokenHref(token);
@@ -527,12 +544,15 @@ const Home: React.FC = () => {
                 if (isExternal) setTimeout(() => setIsMarqueeLoading(false), 300);
               };
 
-              const logo = String((token as any)?.logo || '').trim();
-              const symbol = String((token as any)?.symbol || (token as any)?.name || '?').trim();
+              const key = String((token as any)?.id ?? (token as any)?.address ?? index);
+              const logo = normalizeLogo((token as any)?.logo);
+              const symbolText = getSymbolText(token);
+
+              const showLogo = Boolean(logo) && !marqueeLogoError[key];
 
               return (
                 <Link
-                  key={`${(token as any)?.id ?? 'token'}-${index}`}
+                  key={`${key}-${index}`}
                   href={href || TOKEN_BASE_PATH}
                   target={isExternal ? '_blank' : undefined}
                   rel={isExternal ? 'noopener noreferrer' : undefined}
@@ -540,27 +560,22 @@ const Home: React.FC = () => {
                   className="inline-flex items-center gap-3 px-3 py-2 mr-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card)] hover:shadow-xl cursor-pointer"
                   style={{ minWidth: 220 }}
                 >
-                  {/* ✅ LOGO */}
-                  <div className="w-12 h-12 rounded-xl overflow-hidden border border-[var(--card-border)] shrink-0 bg-[var(--card-border)]">
-                    {logo ? (
-                      <img
+                  {/* ✅ LOGO (next/image) + fallback */}
+                  <div className="w-12 h-12 rounded-xl overflow-hidden border border-[var(--card-border)] shrink-0 bg-[var(--card-border)] relative">
+                    {showLogo ? (
+                      <Image
                         src={logo}
-                        alt={symbol}
+                        alt={symbolText}
+                        width={48}
+                        height={48}
                         className="w-full h-full object-cover"
                         loading="lazy"
-                        referrerPolicy="no-referrer"
-                        onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).style.display = 'none';
-                          const parent = e.currentTarget.parentElement;
-                          if (parent) {
-                            const text = symbol.slice(0, 2).toUpperCase() || '??';
-                            parent.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">${text}</div>`;
-                          }
-                        }}
+                        onError={() => setMarqueeLogoError((p) => ({ ...p, [key]: true }))}
+                        unoptimized={false}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center font-bold text-xs">
-                        {(symbol.slice(0, 2) || '??').toUpperCase()}
+                        {symbolText}
                       </div>
                     )}
                   </div>
@@ -782,16 +797,10 @@ const Home: React.FC = () => {
                     </div>
 
                     <div className="flex items-center justify-between gap-3">
-                      <button
-                        onClick={clearFilter}
-                        className="flex-1 px-4 py-2 rounded-lg border border-[var(--card-border)] bg-[var(--card)]"
-                      >
+                      <button onClick={clearFilter} className="flex-1 px-4 py-2 rounded-lg border border-[var(--card-border)] bg-[var(--card)]">
                         Clear
                       </button>
-                      <button
-                        onClick={applyFilter}
-                        className="flex-1 px-4 py-2 rounded-lg bg-[var(--primary)] text-white font-semibold hover:opacity-90"
-                      >
+                      <button onClick={applyFilter} className="flex-1 px-4 py-2 rounded-lg bg-[var(--primary)] text-white font-semibold hover:opacity-90">
                         Apply
                       </button>
                     </div>
