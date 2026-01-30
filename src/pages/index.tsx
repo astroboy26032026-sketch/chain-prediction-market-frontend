@@ -1,4 +1,4 @@
-// pages/index.tsx — marquee ALWAYS from category=trending (independent), stable load-more, fixed types
+// pages/index.tsx — marquee ALWAYS from category=trending (independent), stable load-more, fixed types + marquee logo
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
@@ -332,7 +332,7 @@ const Home: React.FC = () => {
       return;
     }
 
-    // ✅ guard: prevent calling same cursor repeatedly (autoLoad spam)
+    // ✅ guard: prevent calling same cursor repeatedly
     if (lastCursorRef.current === cur) return;
     lastCursorRef.current = cur;
 
@@ -352,9 +352,6 @@ const Home: React.FC = () => {
       const nc = (fetched?.nextCursor ?? null) as string | null;
 
       // ✅ END CONDITIONS:
-      // - items rỗng
-      // - nextCursor null
-      // - nextCursor không đổi (cursor stuck)
       if (items.length === 0 || !nc || nc === cur) {
         setHasMore(false);
         setNextCursor(null);
@@ -400,7 +397,7 @@ const Home: React.FC = () => {
 
   // main effect: refetch when sort/search/includeNsfw/filter change
   useEffect(() => {
-    lastCursorRef.current = null; // ✅ reset load-more cursor history
+    lastCursorRef.current = null;
     setNextCursor(null);
     setHasMore(true);
     fetchFirst();
@@ -469,7 +466,6 @@ const Home: React.FC = () => {
   // -------------------
   // Derived lists
   // -------------------
-  // Server đã filter q + range, giữ client range filter nhẹ cho safety (q bỏ để tránh double filter)
   const filteredTokens = useMemo(() => {
     let list = tokens?.data ?? [];
     if (!list.length) return [];
@@ -513,7 +509,7 @@ const Home: React.FC = () => {
           </Marquee>
 
           {/* ✅ ALWAYS trending marquee (independent from sort/search list) */}
-          <Marquee speed={90}>
+          <Marquee speed={130}>
             {(marqueeTokens ?? []).map((token, index) => {
               const rawAddr =
                 (token as any)?.address ||
@@ -531,6 +527,9 @@ const Home: React.FC = () => {
                 if (isExternal) setTimeout(() => setIsMarqueeLoading(false), 300);
               };
 
+              const logo = String((token as any)?.logo || '').trim();
+              const symbol = String((token as any)?.symbol || (token as any)?.name || '?').trim();
+
               return (
                 <Link
                   key={`${(token as any)?.id ?? 'token'}-${index}`}
@@ -541,7 +540,31 @@ const Home: React.FC = () => {
                   className="inline-flex items-center gap-3 px-3 py-2 mr-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card)] hover:shadow-xl cursor-pointer"
                   style={{ minWidth: 220 }}
                 >
-                  <div className="w-12 h-12 rounded-xl overflow-hidden border border-[var(--card-border)] shrink-0" />
+                  {/* ✅ LOGO */}
+                  <div className="w-12 h-12 rounded-xl overflow-hidden border border-[var(--card-border)] shrink-0 bg-[var(--card-border)]">
+                    {logo ? (
+                      <img
+                        src={logo}
+                        alt={symbol}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display = 'none';
+                          const parent = e.currentTarget.parentElement;
+                          if (parent) {
+                            const text = symbol.slice(0, 2).toUpperCase() || '??';
+                            parent.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">${text}</div>`;
+                          }
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center font-bold text-xs">
+                        {(symbol.slice(0, 2) || '??').toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="font-bold truncate">{(token as any)?.name || 'Unnamed'}</div>
                 </Link>
               );
@@ -801,9 +824,7 @@ const Home: React.FC = () => {
               }}
             />
           ) : (
-            <div className="text-center text-[var(--primary)] text-xs mt-10">
-              No tokens found matching your criteria.
-            </div>
+            <div className="text-center text-[var(--primary)] text-xs mt-10">No tokens found matching your criteria.</div>
           )}
         </div>
       </div>
