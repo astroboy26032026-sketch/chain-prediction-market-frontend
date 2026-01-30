@@ -2,38 +2,55 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 export const config = {
-  api: { bodyParser: true },
+  api: {
+    bodyParser: true, // giữ như bạn đang dùng
+  },
 };
 
 const getBackendBaseUrl = () => {
-  return (
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    process.env.API_BASE_URL ||
-    'https://dev.pumpfunclone2025.win'
+  // ✅ Server-side nên ưu tiên biến không public
+  // NEXT_PUBLIC_* không sai, nhưng không cần dùng ở đây.
+  return (process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'https://dev.pumpfunclone2025.win').replace(
+    /\/+$/,
+    ''
   );
 };
 
-function setCors(res: NextApiResponse) {
-  // same-origin thường không cần, nhưng thêm để dập mọi trường hợp preflight
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+// ✅ CORS: chỉ mở khi thật sự cần, và chỉ mở đúng origin
+function setCors(req: NextApiRequest, res: NextApiResponse) {
+  const origin = req.headers.origin;
+
+  // Nếu bạn chỉ chạy same-origin thì có thể bỏ hẳn setCors().
+  // Nhưng nếu muốn để tránh case preflight lạ: allow whitelist.
+  const allowList = new Set<string>([
+    'http://localhost:3000',
+    // thêm domain prod/staging của bạn tại đây:
+    // 'https://pumpfunclone2025.win',
+    // 'https://dev.pumpfunclone2025.win',
+  ]);
+
+  if (origin && allowList.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  }
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  setCors(res);
+  setCors(req, res);
 
   // ✅ Handle preflight
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    return res.status(204).end();
   }
 
   try {
-    const baseUrl = getBackendBaseUrl().replace(/\/$/, '');
+    const baseUrl = getBackendBaseUrl();
     const pathParts = (req.query.path as string[]) || [];
-    const path = '/' + pathParts.join('/'); // /auth/wallet/challenge
+    const path = '/' + pathParts.join('/');
 
-    // keep querystring
+    // ✅ Keep querystring
     const url = new URL(baseUrl + path);
     for (const [k, v] of Object.entries(req.query)) {
       if (k === 'path') continue;
@@ -41,32 +58,49 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       else if (v != null) url.searchParams.set(k, String(v));
     }
 
-    const headers: Record<string, string> = {};
+    // ✅ Forward headers hợp lý
+    const headers: Record<string, string> = {
+      accept: req.headers.accept ? String(req.headers.accept) : 'application/json',
+    };
+
+    // forward auth
     if (req.headers.authorization) headers['authorization'] = String(req.headers.authorization);
-    headers['content-type'] = 'application/json';
-    headers['accept'] = 'application/json';
+
+    // forward content-type nếu có (đừng set cứng)
+    if (req.headers['content-type']) headers['content-type'] = String(req.headers['content-type']);
 
     const method = (req.method || 'GET').toUpperCase();
 
     const upstream = await fetch(url.toString(), {
       method,
       headers,
-      body: method === 'GET' || method === 'HEAD' ? undefined : JSON.stringify(req.body ?? {}),
+      // body chỉ gửi khi cần
+      body:
+        method === 'GET' || method === 'HEAD'
+          ? undefined
+          : headers['content-type']?.includes('application/json')
+            ? JSON.stringify(req.body ?? {})
+            : // nếu content-type không phải json, để nguyên (bodyParser true sẽ “ăn” mất stream upload,
+              // nhưng ít nhất không JSON.stringify bừa)
+              (req.body as any),
     });
 
-    const ct = upstream.headers.get('content-type') || 'application/json';
+    // ✅ Pass-through status + content-type
     res.status(upstream.status);
-    res.setHeader('content-type', ct);
+    const ct = upstream.headers.get('content-type');
+    if (ct) res.setHeader('content-type', ct);
 
     const text = await upstream.text();
-    // nếu BE trả JSON -> parse để FE nhận object
-    if (ct.includes('application/json')) {
+
+    // ✅ Nếu BE trả json → trả object
+    if (ct?.includes('application/json')) {
       try {
         return res.send(JSON.parse(text));
       } catch {
         return res.send(text);
       }
     }
+
     return res.send(text);
   } catch (e: any) {
     return res.status(502).json({

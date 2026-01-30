@@ -13,7 +13,7 @@ export default async function handler(
   }
 
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/tokens/trending`);
+    const response = await axios.get(`${API_BASE_URL}/homepage/trending`);
     res.status(200).json(response.data);
   } catch (error) {
     res.status(500).json([]);

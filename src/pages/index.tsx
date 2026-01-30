@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+// pages/index.tsx (Home) — marquee ALWAYS from category=trending (independent), stable load-more, fixed types
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
-import Image from 'next/image';
 
 import Layout from '@/components/layout/Layout';
 import TokenList from '@/components/tokens/TokenList';
@@ -15,24 +15,20 @@ import { Switch } from '@/components/ui/switch';
 import SEO from '@/components/seo/SEO';
 
 import { useWebSocket } from '@/components/providers/WebSocketProvider';
-import {
-  getAllTokensTrends,
-  getRecentTokens,
-  searchTokens,
-  getTokensWithLiquidity,
-} from '@/utils/api.index';
+import { searchTokens } from '@/utils/api.index';
+import type { TokenCategory, TokenSearchFilters } from '@/utils/api';
 
 import { Token, TokenWithLiquidityEvents, PaginatedResponse } from '@/interface/types';
 
 const TOKENS_PER_PAGE = 19;
 const TOKEN_BASE_PATH = '/token';
 
-// ===== Helpers for token linking =====
-const isLikelySolanaAddress = (s: string): boolean =>
-  /^[1-9A-HJ-NP-Za-km-z]{32,48}$/.test(s);
+// marquee: không limit 5, nhưng để tránh quá nặng UI -> giới hạn hợp lý
+const MARQUEE_LIMIT = 40;
 
-const isLikelyEvmAddress = (s: string): boolean =>
-  /^0x[a-fA-F0-9]{40}$/.test(s);
+// ===== Helpers for token linking =====
+const isLikelySolanaAddress = (s: string): boolean => /^[1-9A-HJ-NP-Za-km-z]{32,48}$/.test(s);
+const isLikelyEvmAddress = (s: string): boolean => /^0x[a-fA-F0-9]{40}$/.test(s);
 
 const normalizeCandidate = (raw: any): string | null => {
   if (!raw) return null;
@@ -45,20 +41,12 @@ const normalizeCandidate = (raw: any): string | null => {
 };
 
 const getTokenIdentifier = (t: any): string | null => {
-  const candidates = [
-    t?.address,
-    t?.mint,
-    t?.tokenAddress,
-    t?.ca,
-    t?.id,
-  ];
-
+  const candidates = [t?.address, t?.mint, t?.tokenAddress, t?.ca, t?.id];
   for (const raw of candidates) {
     const normalized = normalizeCandidate(raw);
     if (!normalized) continue;
     if (/^https?:\/\//i.test(normalized)) return normalized;
-    if (isLikelyEvmAddress(normalized) || isLikelySolanaAddress(normalized))
-      return normalized;
+    if (isLikelyEvmAddress(normalized) || isLikelySolanaAddress(normalized)) return normalized;
   }
   return null;
 };
@@ -85,16 +73,9 @@ const parseAbbrev = (s: string | number | null | undefined): number => {
   const raw = String(s).trim().toLowerCase().replace(/[\$,]/g, '');
   if (!raw) return NaN;
 
-  const multiplier = raw.endsWith('k')
-    ? 1e3
-    : raw.endsWith('m')
-      ? 1e6
-      : raw.endsWith('b')
-        ? 1e9
-        : 1;
-
+  const multiplier = raw.endsWith('k') ? 1e3 : raw.endsWith('m') ? 1e6 : raw.endsWith('b') ? 1e9 : 1;
   const num = parseFloat(raw.replace(/[kmb]$/i, ''));
-  return isNaN(num) ? NaN : num * multiplier;
+  return Number.isNaN(num) ? NaN : num * multiplier;
 };
 
 const fmtAbbrev = (n: number): string =>
@@ -107,44 +88,74 @@ const fmtAbbrev = (n: number): string =>
         : `$${Math.max(0, Math.floor(n))}`;
 
 const getMcap = (t: any): number =>
-  Number(
-    t?.mcapUsd ??
-      t?.marketcapUsd ??
-      t?.marketCapUsd ??
-      t?.marketcap ??
-      t?.marketCap ??
-      t?.mcap ??
-      t?.mc ??
-      0
-  );
+  Number(t?.mcapUsd ?? t?.marketcapUsd ?? t?.marketCapUsd ?? t?.marketcap ?? t?.marketCap ?? t?.mcap ?? t?.mc ?? 0);
 
 const getVol24h = (t: any): number =>
-  Number(
-    t?.vol24hUsd ?? t?.volume24hUsd ?? t?.volume24h ?? t?.vol24h ?? t?.vol ?? 0
-  );
+  Number(t?.vol24hUsd ?? t?.volume24hUsd ?? t?.volume24h ?? t?.vol24h ?? t?.vol ?? 0);
+
+type ActiveFilter = {
+  mcapMin: number;
+  mcapMax: number;
+  volMin: number;
+  volMax: number;
+};
+
+// ✅ UI sort (4 option) -> API category (TokenCategory)
+const mapSortToCategory = (sort: SortOption): TokenCategory => {
+  switch (sort) {
+    case 'trending':
+      return 'trending';
+    case 'marketcap':
+      return 'marketcap';
+    case 'new':
+      return 'new';
+    case 'finalized':
+      return 'finalized';
+  }
+};
 
 const Home: React.FC = () => {
   const router = useRouter();
   const { newTokens } = useWebSocket();
 
-  const [tokens, setTokens] = useState<
-    PaginatedResponse<Token | TokenWithLiquidityEvents> | null
-  >(null);
-  const [currentPage, setCurrentPage] = useState(1);
+  // -------------------
+  // UI states
+  // -------------------
   const [sort, setSort] = useState<SortOption>('trending');
   const [searchQuery, setSearchQuery] = useState('');
+
   const [isLoading, setIsLoading] = useState(true);
-  const [noRecentTokens, setNoRecentTokens] = useState(false);
-  const [noLiquidityTokens, setNoLiquidityTokens] = useState(false);
-  const [showNewTokens, setShowNewTokens] = useState(false);
-  const [newTokensBuffer, setNewTokensBuffer] = useState<Token[]>([]);
-  const [displayedNewTokens, setDisplayedNewTokens] = useState<Token[]>([]);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
-  const [allTrendingTokens, setAllTrendingTokens] = useState<Token[]>([]);
   const [isMarqueeLoading, setIsMarqueeLoading] = useState(false);
 
+  // -------------------
+  // Token states (cursor list)
+  // -------------------
+  const [tokens, setTokens] = useState<PaginatedResponse<Token | TokenWithLiquidityEvents> | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+
+  // -------------------
+  // Marquee trending tokens (ALWAYS trending)
+  // -------------------
+  const [marqueeTokens, setMarqueeTokens] = useState<Token[]>([]);
+  const marqueeReqRef = useRef(0);
+
+  // -------------------
+  // NSFW + websocket new tokens
+  // -------------------
+  const [includeNsfw, setIncludeNsfw] = useState(false); // BE: includeNsfw=true/false
+  const [showNewTokens, setShowNewTokens] = useState(false); // websocket inject
+
+  const [newTokensBuffer, setNewTokensBuffer] = useState<Token[]>([]);
+  const [displayedNewTokens, setDisplayedNewTokens] = useState<Token[]>([]);
+
+  // -------------------
   // Filter state
+  // -------------------
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [pending, setPending] = useState({
     mcapMin: DEFAULTS.mcapMin,
@@ -156,12 +167,26 @@ const Home: React.FC = () => {
     volMinText: '',
     volMaxText: '',
   });
-  const [activeFilter, setActiveFilter] = useState<{
-    mcapMin: number;
-    mcapMax: number;
-    volMin: number;
-    volMax: number;
-  } | null>(null);
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter | null>(null);
+
+  // guard against race conditions (list)
+  const reqIdRef = useRef(0);
+
+  const buildFilters = useCallback((): TokenSearchFilters => {
+    const f: TokenSearchFilters = {
+      includeNsfw,
+      category: mapSortToCategory(sort),
+    };
+
+    if (activeFilter) {
+      f.mcapMin = activeFilter.mcapMin;
+      f.mcapMax = activeFilter.mcapMax;
+      f.volMin = activeFilter.volMin;
+      f.volMax = activeFilter.volMax;
+    }
+
+    return f;
+  }, [includeNsfw, sort, activeFilter]);
 
   // Handle marquee loading overlay on route change
   useEffect(() => {
@@ -177,23 +202,45 @@ const Home: React.FC = () => {
     };
   }, [router.events]);
 
-  // Fetch tokens when page, sort, or search changes
+  // ===== Marquee fetch: ALWAYS trending (independent from sort/search/list) =====
   useEffect(() => {
-    fetchTokens();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, sort, searchQuery]);
+    const run = async () => {
+      const myReq = ++marqueeReqRef.current;
 
-  // Handle incoming new tokens via WebSocket
+      try {
+        const f: TokenSearchFilters = {
+          category: 'trending' as TokenCategory,
+          includeNsfw,
+        };
+
+        // q = '' để lấy full trending
+        const res = await searchTokens('', 1, MARQUEE_LIMIT, undefined, f);
+        if (myReq !== marqueeReqRef.current) return;
+
+        const items = (res?.data ?? []) as Token[];
+        setMarqueeTokens(items);
+      } catch (e) {
+        console.error('marquee trending fetch error:', e);
+        if (myReq !== marqueeReqRef.current) return;
+        setMarqueeTokens([]);
+      }
+    };
+
+    run();
+  }, [includeNsfw]);
+
+  // Handle incoming new tokens via WebSocket (inject into current list)
   useEffect(() => {
     if (!newTokens?.length) return;
 
     if (showNewTokens) {
       setTokens((prev) => {
-        if (!prev) return null;
+        if (!prev) return prev;
 
+        const existing = prev.data ?? [];
         const toAdd = newTokens.filter(
           (n) =>
-            !prev.data.some((e: any) => e?.id === n.id) &&
+            !existing.some((e: any) => e?.id === n.id) &&
             !displayedNewTokens.some((d) => d.id === n.id)
         );
 
@@ -203,7 +250,7 @@ const Home: React.FC = () => {
 
         return {
           ...prev,
-          data: [...toAdd, ...prev.data],
+          data: [...toAdd, ...existing],
           totalCount: (prev.totalCount || 0) + toAdd.length,
         };
       });
@@ -215,102 +262,131 @@ const Home: React.FC = () => {
     }
   }, [newTokens, showNewTokens, displayedNewTokens]);
 
-  const fetchTokens = async () => {
+  const fetchFirst = useCallback(async () => {
     setIsLoading(true);
-    setNoRecentTokens(false);
-    setNoLiquidityTokens(false);
     setError(null);
 
+    const myReq = ++reqIdRef.current;
+
     try {
-      let fetched: any;
+      const filters = buildFilters();
+      const q = searchQuery.trim();
 
-      if (searchQuery.trim()) {
-        fetched = await searchTokens(searchQuery, currentPage, TOKENS_PER_PAGE);
-      } else {
-        switch (sort) {
-          case 'trending':
-          case 'marketcap': {
-            if (!allTrendingTokens.length) {
-              const trending = await getAllTokensTrends();
-              setAllTrendingTokens(trending);
+      const fetched = await searchTokens(q, 1, TOKENS_PER_PAGE, undefined, filters);
+      if (myReq !== reqIdRef.current) return;
 
-              const start = (currentPage - 1) * TOKENS_PER_PAGE;
-              const end = start + TOKENS_PER_PAGE;
+      const data = (fetched?.data ?? []) as any[];
+      const nc = (fetched?.nextCursor ?? null) as string | null;
 
-              fetched = {
-                data: sort === 'marketcap' ? trending : trending.slice(start, end),
-                totalCount: trending.length,
-                currentPage,
-                totalPages: Math.ceil(trending.length / TOKENS_PER_PAGE),
-                fullList: sort === 'marketcap',
-              };
-            } else {
-              const start = (currentPage - 1) * TOKENS_PER_PAGE;
-              const end = start + TOKENS_PER_PAGE;
-
-              fetched = {
-                data:
-                  sort === 'marketcap'
-                    ? allTrendingTokens
-                    : allTrendingTokens.slice(start, end),
-                totalCount: allTrendingTokens.length,
-                currentPage,
-                totalPages: Math.ceil(allTrendingTokens.length / TOKENS_PER_PAGE),
-                fullList: sort === 'marketcap',
-              };
-            }
-            break;
-          }
-
-          case 'new': {
-            const result = await getRecentTokens(currentPage, TOKENS_PER_PAGE, 1);
-            if (result === null) {
-              setNoRecentTokens(true);
-              fetched = { data: [], totalCount: 0, currentPage: 1, totalPages: 1 };
-            } else {
-              fetched = result;
-            }
-            break;
-          }
-
-          case 'finalized': {
-            try {
-              fetched = await getTokensWithLiquidity(currentPage, TOKENS_PER_PAGE);
-            } catch (e: any) {
-              if (e?.response?.status === 404) {
-                setNoLiquidityTokens(true);
-                fetched = { data: [], totalCount: 0, currentPage: 1, totalPages: 1 };
-              } else {
-                throw e;
-              }
-            }
-            break;
-          }
-
-          default:
-            fetched = { data: [], totalCount: 0, currentPage: 1, totalPages: 1 };
-        }
-      }
-
-      const adjusted: PaginatedResponse<Token | TokenWithLiquidityEvents> = {
-        data: fetched?.data || fetched?.tokens || [],
-        totalCount: fetched?.totalCount ?? 0,
-        currentPage: fetched?.currentPage || 1,
-        totalPages: fetched?.totalPages || 1,
+      setTokens({
+        data,
         tokens: [],
-        fullList: fetched?.fullList,
-      };
+        totalCount: data.length,
+        currentPage: 1,
+        totalPages: 1,
+        nextCursor: nc,
+      });
 
-      setTokens(adjusted);
+      setNextCursor(nc);
+      setHasMore(Boolean(nc)); // ✅ cursor null => hết
     } catch (e) {
-      console.error('fetchTokens error:', e);
+      console.error('fetchFirst error:', e);
       setError('Failed to fetch tokens. Please try again later.');
+      setTokens({
+        data: [],
+        tokens: [],
+        totalCount: 0,
+        currentPage: 1,
+        totalPages: 1,
+        nextCursor: null,
+      });
+      setNextCursor(null);
+      setHasMore(false);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [buildFilters, searchQuery]);
 
+  const fetchMore = useCallback(async () => {
+    if (!hasMore) return;
+    if (isLoadingMore) return;
+    if (!nextCursor) {
+      // ✅ guard: nếu cursor null mà UI vẫn gọi
+      setHasMore(false);
+      return;
+    }
+
+    setIsLoadingMore(true);
+    setError(null);
+
+    const myReq = ++reqIdRef.current;
+
+    try {
+      const filters = buildFilters();
+      const q = searchQuery.trim();
+
+      const fetched = await searchTokens(q, 1, TOKENS_PER_PAGE, nextCursor ?? undefined, filters);
+      if (myReq !== reqIdRef.current) return;
+
+      const items = (fetched?.data ?? []) as any[];
+      const nc = (fetched?.nextCursor ?? null) as string | null;
+
+      setTokens((prev) => {
+        const prevData = prev?.data ?? [];
+
+        // dedupe by id/address
+        const seen = new Set(prevData.map((t: any) => t?.id ?? t?.address));
+        const merged = [...prevData];
+
+        for (const it of items) {
+          const key = (it as any)?.id ?? (it as any)?.address;
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          merged.push(it);
+        }
+
+        return {
+          ...(prev ?? {
+            tokens: [],
+            totalCount: 0,
+            currentPage: 1,
+            totalPages: 1,
+          }),
+          data: merged,
+          totalCount: merged.length,
+          nextCursor: nc,
+        };
+      });
+
+      setNextCursor(nc);
+      setHasMore(Boolean(nc)); // ✅ cursor null => stop, hide spinner
+    } catch (e) {
+      console.error('fetchMore error:', e);
+      setError('Failed to load more tokens.');
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [hasMore, isLoadingMore, buildFilters, searchQuery, nextCursor]);
+
+  // main effect: refetch when sort/search/includeNsfw/filter change
+  useEffect(() => {
+    setNextCursor(null);
+    setHasMore(true);
+    fetchFirst();
+  }, [
+    sort,
+    searchQuery,
+    includeNsfw,
+    activeFilter?.mcapMin,
+    activeFilter?.mcapMax,
+    activeFilter?.volMin,
+    activeFilter?.volMax,
+    fetchFirst,
+  ]);
+
+  // -------------------
   // Filter handlers
+  // -------------------
   const clearFilter = () => {
     setPending({
       mcapMin: DEFAULTS.mcapMin,
@@ -323,6 +399,8 @@ const Home: React.FC = () => {
       volMaxText: '',
     });
     setActiveFilter(null);
+    setNextCursor(null);
+    setHasMore(true);
   };
 
   const applyFilter = () => {
@@ -332,21 +410,34 @@ const Home: React.FC = () => {
       volMin: pending.volMin,
       volMax: pending.volMax,
     });
+    setNextCursor(null);
+    setHasMore(true);
     setIsFilterOpen(false);
   };
 
-  // Computed filtered token list
+  // -------------------
+  // Search & sort handlers
+  // -------------------
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    setNextCursor(null);
+    setHasMore(true);
+  };
+
+  const handleSort = (option: SortOption) => {
+    setSort(option);
+    setNextCursor(null);
+    setHasMore(true);
+    setSearchQuery('');
+  };
+
+  // -------------------
+  // Derived lists
+  // -------------------
+  // Server đã filter q + range, giữ client range filter nhẹ cho safety (q bỏ để tránh double filter)
   const filteredTokens = useMemo(() => {
     let list = tokens?.data ?? [];
     if (!list.length) return [];
-
-    const query = searchQuery.toLowerCase();
-    if (query) {
-      list = list.filter((t: any) =>
-        (t?.name || '').toLowerCase().includes(query) ||
-        (t?.symbol || '').toLowerCase().includes(query)
-      );
-    }
 
     if (activeFilter) {
       const { mcapMin, mcapMax, volMin, volMax } = activeFilter;
@@ -358,26 +449,7 @@ const Home: React.FC = () => {
     }
 
     return list;
-  }, [tokens, searchQuery, activeFilter]);
-
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    if (query.trim()) setCurrentPage(1);
-  };
-
-  const handleSort = (option: SortOption) => {
-    setSort(option);
-    setCurrentPage(1);
-    setSearchQuery('');
-  };
-
-  // Top 5 trending tokens for marquee
-  const top5Trending = useMemo(() => {
-    const source = allTrendingTokens.length
-      ? allTrendingTokens
-      : (tokens?.data as Token[]) || [];
-    return source.slice(0, 5);
-  }, [allTrendingTokens, tokens]);
+  }, [tokens, activeFilter]);
 
   return (
     <Layout>
@@ -393,15 +465,10 @@ const Home: React.FC = () => {
         </div>
       )}
 
-      <HowItWorksPopup
-        isVisible={showHowItWorks}
-        onClose={() => setShowHowItWorks(false)}
-      />
+      <HowItWorksPopup isVisible={showHowItWorks} onClose={() => setShowHowItWorks(false)} />
 
-      {/* Container căn giữa */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 xl:px-16">
         <div className="text-center mb-4">
-          {/* Banner Marquee 1 */}
           <Marquee speed={18} height={96}>
             <div className="flex items-center gap-6 px-6">
               <span className="font-bold tracking-widest">
@@ -410,9 +477,9 @@ const Home: React.FC = () => {
             </div>
           </Marquee>
 
-          {/* Trending Marquee 2 */}
+          {/* ✅ ALWAYS trending marquee (independent from sort/search list) */}
           <Marquee speed={22}>
-            {top5Trending.map((token, index) => {
+            {(marqueeTokens ?? []).map((token, index) => {
               const rawAddr =
                 (token as any)?.address ||
                 (token as any)?.mint ||
@@ -421,9 +488,7 @@ const Home: React.FC = () => {
                 null;
 
               const addr = rawAddr ? encodeURIComponent(String(rawAddr)) : null;
-              const href = addr
-                ? `${TOKEN_BASE_PATH}/${addr}`
-                : getTokenHref(token);
+              const href = addr ? `${TOKEN_BASE_PATH}/${addr}` : getTokenHref(token);
               const isExternal = /^https?:\/\//i.test(href);
 
               const handleClick = () => {
@@ -441,58 +506,65 @@ const Home: React.FC = () => {
                   className="inline-flex items-center gap-3 px-3 py-2 mr-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card)] hover:shadow-xl cursor-pointer"
                   style={{ minWidth: 220 }}
                 >
-                  <div className="w-12 h-12 rounded-xl overflow-hidden border border-[var(--card-border)] shrink-0">
-                    <Image
-                      src={
-                        (token as any)?.image ||
-                        (token as any)?.logo ||
-                        '/placeholder-token.png'
-                      }
-                      alt={(token as any)?.name || 'token'}
-                      width={48}
-                      height={48}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <div className="font-bold truncate">
-                    {(token as any)?.name || 'Unnamed'}
-                  </div>
+                  <div className="w-12 h-12 rounded-xl overflow-hidden border border-[var(--card-border)] shrink-0" />
+                  <div className="font-bold truncate">{(token as any)?.name || 'Unnamed'}</div>
                 </Link>
               );
             })}
           </Marquee>
 
-          {/* Search, Sort, Switches & Filter */}
           <div className="mb-4">
             <SearchFilter onSearch={handleSearch} />
 
             <div className="mt-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
               <SortOptions onSort={handleSort} currentSort={sort} />
 
-              <div className="flex items-center gap-3 justify-center md:justify-end relative">
-                <span className="text-sm">NSFW</span>
-                <Switch
-                  checked={showNewTokens}
-                  onCheckedChange={() => setShowNewTokens((v) => !v)}
-                  className={`${
-                    showNewTokens
-                      ? 'bg-[var(--primary)]'
-                      : 'bg-[var(--card-border)]'
-                  } relative inline-flex h-6 w-11 items-center rounded-full transition-colors`}
-                >
-                  <span
+              <div className="flex items-center gap-5 justify-center md:justify-end relative">
+                {/* NSFW include */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">NSFW</span>
+                  <Switch
+                    checked={includeNsfw}
+                    onCheckedChange={() => {
+                      setIncludeNsfw((v) => !v);
+                      setNextCursor(null);
+                      setHasMore(true);
+                    }}
                     className={`${
-                      showNewTokens ? 'translate-x-6' : 'translate-x-1'
-                    } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
-                  />
-                </Switch>
+                      includeNsfw ? 'bg-[var(--primary)]' : 'bg-[var(--card-border)]'
+                    } relative inline-flex h-6 w-11 items-center rounded-full transition-colors`}
+                  >
+                    <span
+                      className={`${
+                        includeNsfw ? 'translate-x-6' : 'translate-x-1'
+                      } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+                    />
+                  </Switch>
+                </div>
 
-                {!showNewTokens && newTokensBuffer.length > 0 && (
-                  <span className="text-xs text-[var(--primary)]">
-                    {newTokensBuffer.length} new{' '}
-                    {newTokensBuffer.length === 1 ? 'token' : 'tokens'}
-                  </span>
-                )}
+                {/* Websocket new tokens injection */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">Live</span>
+                  <Switch
+                    checked={showNewTokens}
+                    onCheckedChange={() => setShowNewTokens((v) => !v)}
+                    className={`${
+                      showNewTokens ? 'bg-[var(--primary)]' : 'bg-[var(--card-border)]'
+                    } relative inline-flex h-6 w-11 items-center rounded-full transition-colors`}
+                  >
+                    <span
+                      className={`${
+                        showNewTokens ? 'translate-x-6' : 'translate-x-1'
+                      } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+                    />
+                  </Switch>
+
+                  {!showNewTokens && newTokensBuffer.length > 0 && (
+                    <span className="text-xs text-[var(--primary)]">
+                      {newTokensBuffer.length} new {newTokensBuffer.length === 1 ? 'token' : 'tokens'}
+                    </span>
+                  )}
+                </div>
 
                 {/* Filter Button */}
                 <button
@@ -508,10 +580,9 @@ const Home: React.FC = () => {
                   </svg>
                 </button>
 
-                {/* Filter Popover */}
                 {isFilterOpen && (
                   <div className="absolute top-10 right-0 z-40 w-[420px] rounded-2xl border border-[var(--card-border)] bg-[var(--background)] text-[var(--foreground)] p-5 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
-                    {/* Market Cap Filter */}
+                    {/* Mcap */}
                     <div className="mb-6">
                       <div className="flex items-center justify-between mb-2">
                         <div className="font-semibold">Mcap</div>
@@ -551,18 +622,13 @@ const Home: React.FC = () => {
                         <input
                           placeholder="e.g., 10k, 1m"
                           value={pending.mcapMinText}
-                          onChange={(e) =>
-                            setPending((p) => ({ ...p, mcapMinText: e.target.value }))
-                          }
+                          onChange={(e) => setPending((p) => ({ ...p, mcapMinText: e.target.value }))}
                           onBlur={() => {
                             const v = parseAbbrev(pending.mcapMinText);
-                            if (!isNaN(v)) {
+                            if (!Number.isNaN(v)) {
                               setPending((p) => ({
                                 ...p,
-                                mcapMin: Math.min(
-                                  Math.max(v, DEFAULTS.mcapMin),
-                                  p.mcapMax - 1
-                                ),
+                                mcapMin: Math.min(Math.max(v, DEFAULTS.mcapMin), p.mcapMax - 1),
                               }));
                             }
                           }}
@@ -571,18 +637,13 @@ const Home: React.FC = () => {
                         <input
                           placeholder="e.g., 10k, 1m"
                           value={pending.mcapMaxText}
-                          onChange={(e) =>
-                            setPending((p) => ({ ...p, mcapMaxText: e.target.value }))
-                          }
+                          onChange={(e) => setPending((p) => ({ ...p, mcapMaxText: e.target.value }))}
                           onBlur={() => {
                             const v = parseAbbrev(pending.mcapMaxText);
-                            if (!isNaN(v)) {
+                            if (!Number.isNaN(v)) {
                               setPending((p) => ({
                                 ...p,
-                                mcapMax: Math.max(
-                                  Math.min(v, DEFAULTS.mcapMax),
-                                  p.mcapMin + 1
-                                ),
+                                mcapMax: Math.max(Math.min(v, DEFAULTS.mcapMax), p.mcapMin + 1),
                               }));
                             }
                           }}
@@ -591,7 +652,7 @@ const Home: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* 24h Volume Filter */}
+                    {/* Vol */}
                     <div className="mb-6">
                       <div className="flex items-center justify-between mb-2">
                         <div className="font-semibold">24h Vol</div>
@@ -631,18 +692,13 @@ const Home: React.FC = () => {
                         <input
                           placeholder="e.g., 5k, 100k"
                           value={pending.volMinText}
-                          onChange={(e) =>
-                            setPending((p) => ({ ...p, volMinText: e.target.value }))
-                          }
+                          onChange={(e) => setPending((p) => ({ ...p, volMinText: e.target.value }))}
                           onBlur={() => {
                             const v = parseAbbrev(pending.volMinText);
-                            if (!isNaN(v)) {
+                            if (!Number.isNaN(v)) {
                               setPending((p) => ({
                                 ...p,
-                                volMin: Math.min(
-                                  Math.max(v, DEFAULTS.volMin),
-                                  p.volMax - 1
-                                ),
+                                volMin: Math.min(Math.max(v, DEFAULTS.volMin), p.volMax - 1),
                               }));
                             }
                           }}
@@ -651,18 +707,13 @@ const Home: React.FC = () => {
                         <input
                           placeholder="e.g., 5k, 100k"
                           value={pending.volMaxText}
-                          onChange={(e) =>
-                            setPending((p) => ({ ...p, volMaxText: e.target.value }))
-                          }
+                          onChange={(e) => setPending((p) => ({ ...p, volMaxText: e.target.value }))}
                           onBlur={() => {
                             const v = parseAbbrev(pending.volMaxText);
-                            if (!isNaN(v)) {
+                            if (!Number.isNaN(v)) {
                               setPending((p) => ({
                                 ...p,
-                                volMax: Math.max(
-                                  Math.min(v, DEFAULTS.volMax),
-                                  p.volMin + 1
-                                ),
+                                volMax: Math.max(Math.min(v, DEFAULTS.volMax), p.volMin + 1),
                               }));
                             }
                           }}
@@ -697,37 +748,28 @@ const Home: React.FC = () => {
               <Spinner size="medium" />
             </div>
           ) : error ? (
-            <div className="text-center text-[var(--primary)] text-xl mt-10">
-              {error}
-            </div>
-          ) : noRecentTokens ? (
-            <div className="text-center text-[var(--primary)] text-xs mt-10">
-              No tokens created in the last 24 hours. Check back soon.
-            </div>
-          ) : noLiquidityTokens ? (
-            <div className="text-center text-[var(--primary)] text-xs mt-10">
-              No tokens Listed Yet.
-            </div>
-          ) : (tokens?.totalPages || 1) > 0 ? (
+            <div className="text-center text-[var(--primary)] text-xl mt-10">{error}</div>
+          ) : (tokens?.data?.length ?? 0) > 0 ? (
             <TokenList
               tokens={filteredTokens}
-              currentPage={currentPage}
-              totalPages={tokens?.totalPages || 1}
-              onPageChange={setCurrentPage}
               isEnded={sort === 'finalized'}
               sortType={sort}
               itemsPerPage={TOKENS_PER_PAGE}
-              isFullList={tokens?.fullList}
+              isFullList={false}
+              pagination={{
+                mode: 'cursor',
+                hasMore,
+                isLoadingMore,
+                onLoadMore: fetchMore,
+                autoLoad: true,
+              }}
             />
           ) : (
-            <div className="text-center text-[var(--primary)] text-xs mt-10">
-              No tokens found matching your criteria.
-            </div>
+            <div className="text-center text-[var(--primary)] text-xs mt-10">No tokens found matching your criteria.</div>
           )}
         </div>
       </div>
 
-      {/* Custom slider styles */}
       <style jsx>{`
         .slider-accent {
           appearance: none;
@@ -736,13 +778,11 @@ const Home: React.FC = () => {
           height: 8px;
           background: transparent;
         }
-
         .slider-accent::-webkit-slider-runnable-track {
           height: 8px;
           border-radius: 999px;
           background: var(--accent);
         }
-
         .slider-accent::-webkit-slider-thumb {
           -webkit-appearance: none;
           width: 18px;
@@ -753,19 +793,16 @@ const Home: React.FC = () => {
           border: 2px solid var(--accent);
           cursor: pointer;
         }
-
         .slider-accent::-moz-range-track {
           height: 8px;
           border-radius: 999px;
           background: var(--accent);
         }
-
         .slider-accent::-moz-range-progress {
           height: 8px;
           border-radius: 999px;
           background: var(--accent);
         }
-
         .slider-accent::-moz-range-thumb {
           width: 18px;
           height: 18px;
@@ -774,12 +811,10 @@ const Home: React.FC = () => {
           border: 2px solid var(--accent);
           cursor: pointer;
         }
-
         .slider-accent::-ms-fill-lower,
         .slider-accent::-ms-fill-upper {
           background: var(--accent);
         }
-
         .slider-accent::-ms-thumb {
           width: 18px;
           height: 18px;

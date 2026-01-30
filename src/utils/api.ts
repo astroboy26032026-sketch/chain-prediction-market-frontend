@@ -11,11 +11,12 @@ import {
   USDHistoricalPrice,
   TokenHolder,
   TransactionResponse,
+  CursorPaginatedResponse,
 } from '@/interface/types';
 import { ethers } from 'ethers';
 
 // =====================
-// AUTH base & token helpers (NEW)
+// AUTH base & token helpers
 // =====================
 export const AUTH_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ||
@@ -35,18 +36,16 @@ export function setStoredToken(token: string | null) {
 }
 
 /**
- * Axios instance for AUTH endpoints (NO proxy)
- * -> calls directly to https://dev.pumpfunclone2025.win/auth/...
+ * Axios instance for direct BE calls (NO proxy)
+ * (Giữ lại cho các endpoint bạn thực sự muốn gọi thẳng,
+ * nhưng /token/search sẽ KHÔNG dùng nữa để tránh CORS)
  */
 export const authApi = axios.create({
   baseURL: AUTH_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
-  // withCredentials: true, // bật nếu BE dùng cookie/session
+  // withCredentials: true,
 });
 
-/**
- * Set token for authApi (and persist it)
- */
 export function setAuthToken(token: string | null, persist = true) {
   if (persist) setStoredToken(token);
 
@@ -60,19 +59,51 @@ if (typeof window !== 'undefined') {
   if (token) setAuthToken(token, false);
 }
 
-// (Optional) Keep light interceptor - do NOT auto-refresh here
 authApi.interceptors.response.use(
   (res) => res,
   (err) => Promise.reject(err)
 );
 
 // =====================
-// Base & helpers (ports via proxy - EXISTING)
+// Token search (BE) types
+// =====================
+export type TokenCategory =
+  | 'trending'
+  | 'marketcap'
+  | 'new'
+  | 'finalized'
+  | 'pre-active'
+  | 'all';
+
+export type TokenSearchFilters = {
+  category?: TokenCategory;
+  includeNsfw?: boolean | null;
+  mcapMin?: number | null;
+  mcapMax?: number | null;
+  volMin?: number | null;
+  volMax?: number | null;
+};
+
+type TokenSearchParams = {
+  q?: string;
+  category?: TokenCategory;
+  includeNsfw?: boolean | null;
+
+  mcapMin?: number | null;
+  mcapMax?: number | null;
+  volMin?: number | null;
+  volMax?: number | null;
+
+  limit?: number; // 1..50
+  cursor?: string;
+};
+
+// =====================
+// Proxy helpers
 // =====================
 const PROXY_BASE = '/api/proxy';
 const isServer = typeof window === 'undefined';
 
-// Ưu tiên NEXT_PUBLIC_SITE_URL; nếu thiếu, dùng VERCEL_URL; cuối cùng fallback localhost (dev)
 const computeSiteUrl = () => {
   if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
@@ -80,17 +111,61 @@ const computeSiteUrl = () => {
 };
 const SITE_URL = computeSiteUrl();
 
-// Trả về URL đầy đủ. SSR cần absolute, CSR để nguyên relative.
 const absProxy = (path: string) =>
   isServer ? `${SITE_URL}${PROXY_BASE}${path}` : `${PROXY_BASE}${path}`;
 
-const getViaProxy = async <T = any>(path: string, params?: any) => {
+const getViaProxy = async <T = any>(path: string, params?: any, headers?: Record<string, string>) => {
   const url = absProxy(path);
-  return axios.get<T>(url, { params });
+  return axios.get<T>(url, { params, headers });
 };
 
+const clampLimit = (n: number, min = 1, max = 50) => Math.min(Math.max(n, min), max);
+
+/**
+ * Map cursor response -> legacy PaginatedResponse
+ * (UI cũ vẫn dùng data/currentPage/totalPages)
+ */
+const toLegacyPaginated = <T>(
+  items: T[],
+  nextCursor: string | null | undefined
+): PaginatedResponse<T> => ({
+  data: items,
+  tokens: [], // compat
+  totalCount: items.length, // BE không trả total => tạm dùng length
+  currentPage: 1,
+  totalPages: 1,
+  nextCursor: nextCursor ?? null,
+});
+
 // =====================
-// API calls (qua proxy)
+// Core helper: /token/search  (✅ VIA PROXY to avoid CORS)
+// =====================
+async function tokenSearch(params: TokenSearchParams): Promise<CursorPaginatedResponse<Token>> {
+  const safe: TokenSearchParams = {
+    ...params,
+    includeNsfw: params.includeNsfw ?? false,
+    limit: clampLimit(params.limit ?? 20),
+  };
+
+  // Không gửi q rỗng
+  if (safe.q !== undefined && !String(safe.q).trim()) delete safe.q;
+
+  // Optional: forward bearer token qua proxy (nếu BE có auth)
+  const token = getStoredToken();
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+
+  // ✅ IMPORTANT: gọi qua proxy thay vì authApi trực tiếp
+  // => FE gọi same-origin => không dính CORS
+  const { data } = await getViaProxy<CursorPaginatedResponse<Token>>('/token/search', safe, headers);
+
+  return {
+    items: data.items ?? [],
+    nextCursor: data.nextCursor ?? null,
+  };
+}
+
+// =====================
+// API calls
 // =====================
 
 export async function getAllTokens(page = 1, pageSize = 13): Promise<PaginatedResponse<Token>> {
@@ -98,9 +173,42 @@ export async function getAllTokens(page = 1, pageSize = 13): Promise<PaginatedRe
   return data;
 }
 
-export async function getAllTokensTrends(): Promise<Token[]> {
-  const { data } = await getViaProxy<Token[]>('/homepage/trending');
-  return data;
+/**
+ * ✅ GIỮ TÊN CŨ: getAllTokensTrends
+ * Nhưng thực chất là "fetch by category" theo BE mới.
+ *
+ * VD:
+ * getAllTokensTrends({ category: 'marketcap', limit: 19, includeNsfw: false })
+ */
+export async function getAllTokensTrends(opts?: {
+  category?: TokenCategory;
+  includeNsfw?: boolean | null;
+  limit?: number;
+  cursor?: string;
+
+  // filters optional
+  mcapMin?: number | null;
+  mcapMax?: number | null;
+  volMin?: number | null;
+  volMax?: number | null;
+
+  // search optional
+  q?: string;
+}): Promise<{ items: Token[]; nextCursor: string | null }> {
+  const res = await tokenSearch({
+    q: opts?.q,
+    category: opts?.category ?? 'trending',
+    includeNsfw: opts?.includeNsfw ?? false,
+    limit: opts?.limit ?? 20,
+    cursor: opts?.cursor,
+
+    mcapMin: opts?.mcapMin ?? undefined,
+    mcapMax: opts?.mcapMax ?? undefined,
+    volMin: opts?.volMin ?? undefined,
+    volMax: opts?.volMax ?? undefined,
+  });
+
+  return { items: res.items, nextCursor: res.nextCursor ?? null };
 }
 
 export async function getAllTokensWithoutLiquidity(): Promise<Token[]> {
@@ -123,6 +231,9 @@ export async function getTotalTokenCount(): Promise<{ totalTokens: number }> {
   return data;
 }
 
+/**
+ * legacy: giữ cho các trang khác (nếu có)
+ */
 export async function getRecentTokens(
   page = 1,
   pageSize = 20,
@@ -141,27 +252,48 @@ export async function getRecentTokens(
   }
 }
 
+/**
+ * ✅ Search dùng BE mới (/token/search?q=...)
+ * Return legacy PaginatedResponse để UI cũ dùng `data` + `nextCursor`.
+ */
 export async function searchTokens(
   query: string,
   page = 1,
-  pageSize = 20
+  pageSize = 20,
+  cursor?: string,
+  filters?: TokenSearchFilters
 ): Promise<PaginatedResponse<Token>> {
-  const { data } = await getViaProxy<PaginatedResponse<Token>>('/ports/searchTokens', {
+  const limit = clampLimit(pageSize);
+
+  // page>1 mà không đưa cursor => không map chuẩn được
+  if (page > 1 && !cursor) return toLegacyPaginated<Token>([], null);
+
+  const res = await tokenSearch({
     q: query,
-    page,
-    pageSize,
+    category: filters?.category,
+    includeNsfw: filters?.includeNsfw ?? false,
+    mcapMin: filters?.mcapMin ?? undefined,
+    mcapMax: filters?.mcapMax ?? undefined,
+    volMin: filters?.volMin ?? undefined,
+    volMax: filters?.volMax ?? undefined,
+    limit,
+    cursor,
   });
-  return data;
+
+  return toLegacyPaginated<Token>(res.items ?? [], res.nextCursor ?? null);
 }
 
+/**
+ * legacy: giữ cho token detail/old page
+ */
 export async function getTokensWithLiquidity(
   page = 1,
   pageSize = 20
 ): Promise<PaginatedResponse<TokenWithLiquidityEvents>> {
-  const { data } = await getViaProxy<PaginatedResponse<TokenWithLiquidityEvents>>('/ports/getTokensWithLiquidity', {
-    page,
-    pageSize,
-  });
+  const { data } = await getViaProxy<PaginatedResponse<TokenWithLiquidityEvents>>(
+    '/ports/getTokensWithLiquidity',
+    { page, pageSize }
+  );
   return data;
 }
 
@@ -225,13 +357,11 @@ export async function getTokenUSDPriceHistory(address: string): Promise<USDHisto
   }
 }
 
-// ---- NEW: getAllTokenAddresses (phù hợp với pages/api/ports/getAllTokenAddresses.ts)
 export async function getAllTokenAddresses(): Promise<string[]> {
   const { data } = await getViaProxy<string[]>('/ports/getAllTokenAddresses');
   return data;
 }
 
-// ---- NEW: getTokensByCreator (phù hợp với pages/api/ports/getTokensByCreator.ts)
 export async function getTokensByCreator(
   creator: string,
   page = 1,
@@ -245,7 +375,6 @@ export async function getTokensByCreator(
   return data;
 }
 
-// Mở rộng để nhận tokenomics (optional) cho phù hợp Create page
 type TokenomicsUpdate = {
   initialSupply?: number | string;
   distribution?: {
@@ -271,7 +400,7 @@ export async function updateToken(
     discord?: string;
     twitter?: string;
     youtube?: string;
-    tokenomics?: TokenomicsUpdate; // <- thêm để tránh lỗi TS khi gọi từ trang Create
+    tokenomics?: TokenomicsUpdate;
   }
 ): Promise<Token> {
   const url = absProxy('/ports/updateToken');
@@ -303,7 +432,9 @@ export async function addChatMessage(
   return data;
 }
 
-export async function getChatMessages(token: string): Promise<
+export async function getChatMessages(
+  token: string
+): Promise<
   Array<{
     id: number;
     user: string;
@@ -317,7 +448,11 @@ export async function getChatMessages(token: string): Promise<
   return data as any;
 }
 
-// Gọi thẳng block explorer (không qua proxy)
+/**
+ * NOTE:
+ * Đây là call THẲNG sang shibariumscan.
+ * Nếu chỗ này cũng dính CORS ở browser, cách fix là cho đi qua proxy tương tự.
+ */
 export async function getTokenHolders(tokenAddress: string): Promise<TokenHolder[]> {
   try {
     const response = await axios.get(`https://www.shibariumscan.io/api/v2/tokens/${tokenAddress}/holders`);

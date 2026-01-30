@@ -1,66 +1,38 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 
-export type SortOption = 'trending' | 'new' | 'finalized' | 'marketcap';
+export type SortOption = 'trending' | 'marketcap' | 'new' | 'finalized';
 
 interface SortOptionsProps {
   onSort: (option: SortOption) => void;
   currentSort: SortOption;
 }
 
-/**
- * Segmented control (pill) với highlight trượt theo nút active
- * - Giữ nguyên chức năng:
- *    • Trending <-> Market Cap toggle
- *    • New
- *    • Finalized
- * - Chỉ thay đổi hình dạng nút theo style giống ảnh (capsule, kính, glow nhẹ)
- */
 const SortOptions: React.FC<SortOptionsProps> = ({ onSort, currentSort }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const btnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [indicator, setIndicator] = useState<{ left: number; width: number }>({ left: 0, width: 0 });
 
-  const handleTrendingClick = () => {
-    onSort(currentSort === 'marketcap' ? 'trending' : 'marketcap');
-  };
+  const activeKey = currentSort;
 
-  // Danh sách nút hiển thị (Market Cap chỉ hiện khi nhóm Trending đang active)
-  const items = useMemo(() => {
-    const base = [
-      { key: 'trending', label: 'Trending', onClick: () => onSort('trending') },
-    ] as const;
-
-    const maybeMarketCap =
-      currentSort === 'trending' || currentSort === 'marketcap'
-        ? [{ key: 'marketcap', label: 'Market Cap', onClick: handleTrendingClick }] as const
-        : ([] as const);
-
-    const tail = [
-      { key: 'new', label: 'New', onClick: () => onSort('new') },
-      { key: 'finalized', label: 'Finalized', onClick: () => onSort('finalized') },
-    ] as const;
-
-    return [...base, ...maybeMarketCap, ...tail];
-  }, [currentSort, onSort]);
-
-  // Xác định key đang active (ưu tiên marketcap nếu có)
-  const activeKey = useMemo(() => {
-    if (currentSort === 'marketcap') return 'marketcap';
-    if (currentSort === 'trending') return 'trending';
-    if (currentSort === 'new') return 'new';
-    return 'finalized';
-  }, [currentSort]);
-
-  // Helper ref setter để đảm bảo ref callback trả về void
   const setBtnRef = useCallback(
-    (key: string) => (node: HTMLButtonElement | null) => {
+    (key: SortOption) => (node: HTMLButtonElement | null) => {
       btnRefs.current[key] = node;
     },
     []
   );
 
-  // Cập nhật vị trí/width của highlight indicator
-  useEffect(() => {
+  const items = useMemo(
+    () =>
+      [
+        { key: 'trending', label: 'Trending', onClick: () => onSort('trending') },
+        { key: 'marketcap', label: 'Market Cap', onClick: () => onSort('marketcap') },
+        { key: 'new', label: 'New', onClick: () => onSort('new') },
+        { key: 'finalized', label: 'Finalized', onClick: () => onSort('finalized') },
+      ] as const,
+    [onSort]
+  );
+
+  const recalcIndicator = useCallback(() => {
     const el = btnRefs.current[activeKey];
     const wrap = containerRef.current;
     if (!el || !wrap) return;
@@ -68,21 +40,16 @@ const SortOptions: React.FC<SortOptionsProps> = ({ onSort, currentSort }) => {
     const elRect = el.getBoundingClientRect();
     const wrapRect = wrap.getBoundingClientRect();
     setIndicator({ left: elRect.left - wrapRect.left, width: elRect.width });
-  }, [items.length, activeKey, currentSort]);
-
-  // Recalc khi resize
-  useEffect(() => {
-    const onResize = () => {
-      const el = btnRefs.current[activeKey];
-      const wrap = containerRef.current;
-      if (!el || !wrap) return;
-      const elRect = el.getBoundingClientRect();
-      const wrapRect = wrap.getBoundingClientRect();
-      setIndicator({ left: elRect.left - wrapRect.left, width: elRect.width });
-    };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
   }, [activeKey]);
+
+  useEffect(() => {
+    recalcIndicator();
+  }, [recalcIndicator, items.length]);
+
+  useEffect(() => {
+    window.addEventListener('resize', recalcIndicator);
+    return () => window.removeEventListener('resize', recalcIndicator);
+  }, [recalcIndicator]);
 
   return (
     <div
@@ -99,7 +66,6 @@ const SortOptions: React.FC<SortOptionsProps> = ({ onSort, currentSort }) => {
       role="tablist"
       aria-label="Sort options"
     >
-      {/* Highlight trượt */}
       <span
         className="absolute top-1 bottom-1 rounded-full transition-all duration-300 ease-out will-change-transform"
         style={{
@@ -111,7 +77,6 @@ const SortOptions: React.FC<SortOptionsProps> = ({ onSort, currentSort }) => {
         aria-hidden="true"
       />
 
-      {/* Các nút */}
       <div className="relative z-[1] flex gap-1">
         {items.map((item) => {
           const isActive = item.key === activeKey;
@@ -127,9 +92,7 @@ const SortOptions: React.FC<SortOptionsProps> = ({ onSort, currentSort }) => {
                 'transition-colors duration-200',
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/70',
                 'text-sm md:text-[15px]',
-                isActive
-                  ? 'text-white'
-                  : 'text-[rgba(243,239,234,0.82)] hover:text-[var(--primary)]',
+                isActive ? 'text-white' : 'text-[rgba(243,239,234,0.82)] hover:text-[var(--primary)]',
               ].join(' ')}
             >
               {item.label}
@@ -139,10 +102,8 @@ const SortOptions: React.FC<SortOptionsProps> = ({ onSort, currentSort }) => {
       </div>
 
       <style jsx>{`
-        /* Nhẹ nhàng hơn khi hover container */
         div[role='tablist']:hover {
-          box-shadow: 0 10px 28px rgba(201, 142, 107, 0.12),
-            0 8px 24px rgba(0, 0, 0, 0.35);
+          box-shadow: 0 10px 28px rgba(201, 142, 107, 0.12), 0 8px 24px rgba(0, 0, 0, 0.35);
         }
       `}</style>
     </div>

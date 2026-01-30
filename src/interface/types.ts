@@ -1,61 +1,88 @@
-// types.ts
+// src/interface/types.ts
 
 export interface LiquidityEvent {
-    id: string;
-    ethAmount: string;
-    tokenAmount: string;
-    timestamp: string;
-  }
-  
-  export interface Token {
-    map: any;
-    id: string;
-    chainId: number;
-    address: string;
-    creatorAddress: string;
-    name: string;
-    symbol: string;
-    logo: string;
-    marketCap:number;
-    priceUsd:number;
-    description: string;
-    createdAt: string;
-    updatedAt: string;
-    website: string;
-    youtube: string;
-    discord: string;
-    twitter: string;
-    telegram: string;
-    latestTransactionTimestamp: string;
-    _count: {
-      liquidityEvents: number;
-    };
-  }
-  
-  export interface TokenWithLiquidityEvents extends Token {
-    liquidityEvents: LiquidityEvent[];
-  }
-  
-  export interface PaginatedResponse<T> {
-    [x: string]: any;//wad added
-    tokens: never[];
-    data: T[];
-    totalCount: number;
-    currentPage: number;
-    totalPages: number;
-  }
+  id: string;
+  ethAmount: string;
+  tokenAmount: string;
+  timestamp: string;
+}
 
-  export interface TokenWithTransactions extends Token {
-    transactions: {
-      data: Transaction[];
-      pagination: {
-        currentPage: number;
-        pageSize: number;
-        totalCount: number;
-        totalPages: number;
-      };
-    };
-  }
+export interface Token {
+  id: string;
+  chainId: number;
+
+  address: string;
+  creatorAddress: string;
+
+  name: string;
+  symbol: string;
+
+  logo: string;
+  description: string;
+
+  createdAt: string;
+  updatedAt: string;
+
+  website: string;
+  telegram: string;
+  discord: string;
+  twitter: string;
+  youtube: string;
+
+  latestTransactionTimestamp: string;
+
+  // ===== metrics =====
+  marketCap: number;
+
+  // optional vì một số môi trường/mock có thể chưa trả
+  // (nhiều BE trả string) -> để an toàn:
+  priceUsd?: number | string;
+
+  // ✅ theo BE mới
+  volume24h?: number;
+  status?: string;
+  isNSFW?: boolean;
+
+  // BE có thể không trả _count ở endpoint search
+  _count?: {
+    liquidityEvents: number;
+  };
+
+  // ✅ allow extra fields từ BE (ví dụ: external_url, attributes...)
+  [key: string]: any;
+}
+
+export interface TokenWithLiquidityEvents extends Token {
+  liquidityEvents: LiquidityEvent[];
+}
+
+/**
+ * Cursor pagination response từ BE mới
+ * GET /token/search -> { items, nextCursor }
+ */
+export interface CursorPaginatedResponse<T> {
+  items: T[];
+  nextCursor?: string | null;
+}
+
+/**
+ * FE cũ đang dùng PaginatedResponse kiểu page/pageSize.
+ * BE mới dùng cursor-based và trả `{ items, nextCursor }`.
+ *
+ * => Để không vỡ FE: giữ fields cũ + thêm nextCursor.
+ */
+export interface PaginatedResponse<T> {
+  tokens: T[];
+  data: T[];
+  totalCount: number;
+  currentPage: number;
+  totalPages: number;
+
+  // ✅ cursor pagination
+  nextCursor?: string | null;
+
+  [key: string]: any;
+}
 
 export interface Transaction {
   id: string;
@@ -69,6 +96,17 @@ export interface Transaction {
   timestamp: string;
 }
 
+export interface TokenWithTransactions extends Token {
+  transactions: {
+    data: Transaction[];
+    pagination: {
+      currentPage: number;
+      pageSize: number;
+      totalCount: number;
+      totalPages: number;
+    };
+  };
+}
 
 export interface PriceResponse {
   price: string;
@@ -89,7 +127,11 @@ export interface TokenHolder {
   balance: string;
 }
 
-export interface TransactionResponse extends Omit<PaginatedResponse<Transaction>, 'data'> {
+/**
+ * TransactionResponse: giữ logic cũ.
+ */
+export interface TransactionResponse
+  extends Omit<PaginatedResponse<Transaction>, 'data' | 'tokens'> {
   transactions: Transaction[];
 }
 

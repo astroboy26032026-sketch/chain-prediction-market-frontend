@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import TokenCard from './TokenCard';
 import { Token, TokenWithLiquidityEvents } from '@/interface/types';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
@@ -14,38 +14,61 @@ interface TokenLiquidityData {
   [key: string]: bigint;
 }
 
-/**
- * Props cho TokenList
- * - tokens: danh sách token (raw hoặc đã có liquidity events)
- * - currentPage / totalPages: pagination state (controlled từ parent)
- * - isFullList: nếu true → pagination xử lý tại đây
- */
-interface TokenListProps {
-  tokens: (Token | TokenWithLiquidityEvents)[];
+type Mode = 'page' | 'cursor';
+
+interface CursorPaginationProps {
+  mode: 'cursor';
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  onLoadMore: () => Promise<void> | void;
+
+  /**
+   * Auto-load khi scroll tới cuối list.
+   * Nếu false -> chỉ hiển thị nút "Load more".
+   */
+  autoLoad?: boolean;
+}
+
+interface PagePaginationProps {
+  mode?: 'page'; // default
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
+}
+
+/**
+ * Props cho TokenList
+ * - tokens: danh sách token (raw hoặc đã có liquidity events)
+ * - sortType: để sort (marketcap/liquidity)
+ * - itemsPerPage/isFullList: giữ logic cũ
+ * - pagination: chọn mode page hoặc cursor
+ */
+interface TokenListProps {
+  tokens: (Token | TokenWithLiquidityEvents)[];
   isEnded: boolean;
   sortType: SortOption;
+
+  // Client-side paginate cho trường hợp "full list"
   itemsPerPage: number;
   isFullList?: boolean;
+
+  // Pagination mode
+  pagination: CursorPaginationProps | PagePaginationProps;
 }
 
 /**
  * TokenList
  * - Render grid token
  * - Sort theo liquidity nếu chọn marketcap
- * - Pagination (client-side)
+ * - Pagination: page-based (cũ) hoặc cursor-based (mới)
  */
 const TokenList: React.FC<TokenListProps> = ({
   tokens,
-  currentPage,
-  totalPages,
-  onPageChange,
   isEnded,
   sortType,
   itemsPerPage,
-  isFullList
+  isFullList,
+  pagination,
 }) => {
   const router = useRouter();
 
@@ -54,6 +77,8 @@ const TokenList: React.FC<TokenListProps> = ({
 
   // Cache liquidity từng token (key = address)
   const [liquidityData, setLiquidityData] = useState<TokenLiquidityData>({});
+
+  const mode: Mode = pagination.mode ?? 'page';
 
   /**
    * Khi click token → chuyển trang
@@ -73,16 +98,16 @@ const TokenList: React.FC<TokenListProps> = ({
    * Mỗi card fetch xong liquidity sẽ update vào đây
    */
   const updateLiquidityData = (tokenAddress: string, amount: bigint) => {
-    setLiquidityData(prev => ({
+    setLiquidityData((prev) => ({
       ...prev,
-      [tokenAddress]: amount
+      [tokenAddress]: amount,
     }));
   };
 
   /**
    * useMemo để:
    * - Sort token (nếu sortType = marketcap)
-   * - Paginate nếu isFullList = true
+   * - Paginate nếu isFullList = true (page mode cũ)
    */
   const displayTokens = useMemo(() => {
     const sortedTokens = [...tokens];
@@ -98,32 +123,93 @@ const TokenList: React.FC<TokenListProps> = ({
       });
     }
 
-    // Pagination chỉ áp dụng khi là full list
-    if (isFullList) {
-      const startIndex = (currentPage - 1) * itemsPerPage;
+    // Page mode + full list => slice theo currentPage
+    if (mode === 'page' && isFullList) {
+      const p = (pagination as PagePaginationProps).currentPage ?? 1;
+      const startIndex = (p - 1) * itemsPerPage;
       const endIndex = startIndex + itemsPerPage;
       return sortedTokens.slice(startIndex, endIndex);
     }
 
     return sortedTokens;
-  }, [tokens, sortType, liquidityData, currentPage, itemsPerPage, isFullList]);
+  }, [tokens, sortType, liquidityData, itemsPerPage, isFullList, mode, pagination]);
+
+  // =====================
+  // Cursor infinite scroll support
+  // =====================
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const loadingMoreRef = useRef(false);
+
+  const canAutoLoad =
+    mode === 'cursor' && (pagination as CursorPaginationProps).autoLoad !== false;
+
+  useEffect(() => {
+    if (mode !== 'cursor') return;
+    if (!canAutoLoad) return;
+
+    const { hasMore, isLoadingMore, onLoadMore } = pagination as CursorPaginationProps;
+    if (!sentinelRef.current) return;
+
+    const el = sentinelRef.current;
+
+    const io = new IntersectionObserver(
+      async (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
+
+        // tránh spam
+        if (loadingMoreRef.current) return;
+
+        const stillHasMore = (pagination as CursorPaginationProps).hasMore;
+        const stillLoading = (pagination as CursorPaginationProps).isLoadingMore;
+
+        if (!stillHasMore || stillLoading) return;
+
+        loadingMoreRef.current = true;
+        try {
+          await onLoadMore();
+        } finally {
+          loadingMoreRef.current = false;
+        }
+      },
+      { root: null, rootMargin: '300px', threshold: 0.01 }
+    );
+
+    io.observe(el);
+    return () => io.disconnect();
+  }, [mode, canAutoLoad, pagination]);
+
+  // =====================
+  // Render
+  // =====================
+  const pageCurrent = mode === 'page' ? (pagination as PagePaginationProps).currentPage : 1;
+  const pageTotal = mode === 'page' ? (pagination as PagePaginationProps).totalPages : 1;
+
+  const showPagePagination = mode === 'page' && pageTotal > 1;
+
+  const showCursorLoadMore = mode === 'cursor';
+  const hasMore = showCursorLoadMore ? (pagination as CursorPaginationProps).hasMore : false;
+  const isLoadingMore = showCursorLoadMore ? (pagination as CursorPaginationProps).isLoadingMore : false;
 
   return (
     <>
       {/* Grid token */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-7xl mx-auto">
-        {displayTokens.map(token => (
+        {displayTokens.map((token) => (
           <TokenCard
-            key={token.id}
+            key={(token as any).id ?? token.address}
             token={token}
             isEnded={isEnded}
             onTokenClick={handleTokenClick}
-            onLiquidityUpdate={(amount) =>
-              updateLiquidityData(token.address, amount)
-            }
+            onLiquidityUpdate={(amount) => updateLiquidityData(token.address, amount)}
           />
         ))}
       </div>
+
+      {/* Sentinel (auto load) */}
+      {mode === 'cursor' && canAutoLoad && (
+        <div ref={sentinelRef} className="h-10 w-full" />
+      )}
 
       {/* Loading overlay khi chuyển trang */}
       {isLoading && (
@@ -132,13 +218,26 @@ const TokenList: React.FC<TokenListProps> = ({
         </div>
       )}
 
-      {/* Pagination */}
-      {totalPages > 1 && (
+      {/* Cursor: Load more */}
+      {showCursorLoadMore && (
+        <div className="flex justify-center mt-8">
+          <button
+            onClick={() => (pagination as CursorPaginationProps).onLoadMore()}
+            disabled={!hasMore || isLoadingMore}
+            className="px-5 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] hover:shadow disabled:opacity-50"
+          >
+            {isLoadingMore ? 'Loading...' : hasMore ? 'Load more' : 'No more tokens'}
+          </button>
+        </div>
+      )}
+
+      {/* Page-based Pagination (cũ) */}
+      {showPagePagination && (
         <div className="flex justify-center items-center space-x-2 mt-8">
           {/* Prev */}
           <button
-            onClick={() => onPageChange(currentPage - 1)}
-            disabled={currentPage === 1}
+            onClick={() => (pagination as PagePaginationProps).onPageChange(pageCurrent - 1)}
+            disabled={pageCurrent === 1}
             className="btn-secondary p-2 rounded-md disabled:opacity-50"
           >
             <ChevronLeftIcon className="h-5 w-5" />
@@ -146,15 +245,11 @@ const TokenList: React.FC<TokenListProps> = ({
 
           {/* Page numbers */}
           <div className="flex items-center space-x-1">
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+            {Array.from({ length: pageTotal }, (_, i) => i + 1).map((page) => (
               <button
                 key={page}
-                onClick={() => onPageChange(page)}
-                className={
-                  currentPage === page
-                    ? 'btn btn-primary'
-                    : 'btn-secondary'
-                }
+                onClick={() => (pagination as PagePaginationProps).onPageChange(page)}
+                className={pageCurrent === page ? 'btn btn-primary' : 'btn-secondary'}
               >
                 {page}
               </button>
@@ -163,8 +258,8 @@ const TokenList: React.FC<TokenListProps> = ({
 
           {/* Next */}
           <button
-            onClick={() => onPageChange(currentPage + 1)}
-            disabled={currentPage === totalPages}
+            onClick={() => (pagination as PagePaginationProps).onPageChange(pageCurrent + 1)}
+            disabled={pageCurrent === pageTotal}
             className="btn-secondary p-2 rounded-md disabled:opacity-50"
           >
             <ChevronRightIcon className="h-5 w-5" />

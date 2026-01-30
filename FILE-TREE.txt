@@ -1,0 +1,180 @@
+├── bun.lock
+├── docker-compose.fe-dev.yml
+├── dockerfile
+├── eventsdemo.txt
+├── file-hash-cache.json
+├── next-env.d.ts
+├── next.config.mjs
+├── package-lock.json
+├── package.json
+├── postcss.config.mjs
+├── public
+│   ├── chats
+│   │   ├── 1.png
+│   │   ├── 10.png
+│   │   ├── 2.png
+│   │   ├── 3.png
+│   │   ├── 4.png
+│   │   ├── 5.png
+│   │   ├── 6.png
+│   │   ├── 7.png
+│   │   ├── 8.png
+│   │   ├── 9.png
+│   │   └── noimg.svg
+│   ├── favicon.ico
+│   ├── logo
+│   │   ├── ethereum.png
+│   │   ├── icon.svg
+│   │   ├── logo.svg
+│   │   ├── Untitled.svg
+│   │   └── wbone.png
+│   ├── logo-seed.png
+│   ├── next.svg
+│   ├── seo
+│   │   ├── create.jpg
+│   │   ├── dash.jpg
+│   │   └── home.jpg
+│   ├── tree-loader.gif
+│   └── vercel.svg
+├── README.md
+├── src
+│   ├── abi
+│   │   ├── BondingCurveManager.json
+│   │   ├── ERC20.json
+│   │   ├── old_token.json
+│   │   └── old_token1.json
+│   ├── chain
+│   │   └── config.ts
+│   ├── components
+│   │   ├── auth
+│   │   │   ├── remove.SiweAuth.tsx
+│   │   │   └── SolanaAuth.tsx
+│   │   ├── charts
+│   │   │   ├── pol
+│   │   │   └── TradingViewChart.tsx
+│   │   ├── events
+│   │   │   ├── ChristmasEvent.tsx
+│   │   │   └── Valentine.tsx
+│   │   ├── layout
+│   │   │   ├── Footer.tsx
+│   │   │   ├── Layout.tsx
+│   │   │   └── Navbar.tsx
+│   │   ├── notifications
+│   │   │   ├── HowItWorksPopup.tsx
+│   │   │   ├── LiveNotifications.tsx
+│   │   │   ├── Modal.tsx
+│   │   │   └── PurchaseConfirmationPopup.tsx
+│   │   ├── PriceLiquidity.tsx
+│   │   ├── providers
+│   │   │   ├── AuthProvider.tsx
+│   │   │   └── WebSocketProvider.tsx
+│   │   ├── seo
+│   │   │   ├── OGPreview.tsx
+│   │   │   └── SEO.tsx
+│   │   ├── token
+│   │   │   └── TokenUpdateModal.tsx
+│   │   ├── TokenDetails
+│   │   │   ├── Chats.tsx
+│   │   │   ├── TokenHolders.tsx
+│   │   │   ├── TokenInfo.tsx
+│   │   │   └── TransactionHistory.tsx
+│   │   ├── tokens
+│   │   │   ├── TokenCard.tsx
+│   │   │   └── TokenList.tsx
+│   │   └── ui
+│   │       ├── ldspinner.tsx
+│   │       ├── LoadingBar.tsx
+│   │       ├── Marquee.tsx
+│   │       ├── SearchFilter.tsx
+│   │       ├── ShareButton.tsx
+│   │       ├── SortOptions.tsx
+│   │       ├── Spinner.tsx
+│   │       ├── switch.tsx
+│   │       └── TokenFilter.tsx
+│   ├── interface
+│   │   ├── auth.type.ts
+│   │   └── types.ts
+│   ├── mock
+│   │   ├── chat.factory.ts
+│   │   ├── factories
+│   │   │   ├── tokenChart.factory.ts
+│   │   │   ├── tokenDetail.factory.ts
+│   │   │   ├── tokenHolders.factory.ts
+│   │   │   └── tokenLiquidity.factory.ts
+│   │   └── token.ts
+│   ├── pages
+│   │   ├── 404.tsx
+│   │   ├── about.tsx
+│   │   ├── api
+│   │   │   ├── auth
+│   │   │   │   ├── remove.nonce.ts
+│   │   │   │   ├── remove.user.ts
+│   │   │   │   └── remove.verify.ts
+│   │   │   ├── hello.ts
+│   │   │   ├── ports
+│   │   │   │   ├── addChatMessage.ts
+│   │   │   │   ├── getAllTokenAddresses.ts
+│   │   │   │   ├── getAllTokens.ts
+│   │   │   │   ├── getAllTokensTrends.ts
+│   │   │   │   ├── getAllTokensWithoutLiquidity.ts
+│   │   │   │   ├── getChatMessages.ts
+│   │   │   │   ├── getCurrentPrice.ts
+│   │   │   │   ├── getHistoricalPriceData.ts
+│   │   │   │   ├── getRecentTokens.ts
+│   │   │   │   ├── getTokenByAddress.ts
+│   │   │   │   ├── getTokenInfoAndTransactions.ts
+│   │   │   │   ├── getTokenLiquidityEvents.ts
+│   │   │   │   ├── getTokensByCreator.ts
+│   │   │   │   ├── getTokensWithLiquidity.ts
+│   │   │   │   ├── getTotalTokenCount.ts
+│   │   │   │   ├── getTransactionsByAddress.ts
+│   │   │   │   ├── getVolumeRange.ts
+│   │   │   │   ├── searchTokens.ts
+│   │   │   │   └── updateToken.ts
+│   │   │   ├── proxy
+│   │   │   │   └── [...path].ts
+│   │   │   ├── robots.ts
+│   │   │   └── upload-to-ipfs.ts
+│   │   ├── create.tsx
+│   │   ├── dashboard.tsx
+│   │   ├── FAQ.tsx
+│   │   ├── home.tsx
+│   │   ├── index.tsx
+│   │   ├── leaderboard.tsx
+│   │   ├── point.tsx
+│   │   ├── profile
+│   │   │   └── [address].tsx
+│   │   ├── referrals.tsx
+│   │   ├── reward.tsx
+│   │   ├── stake.tsx
+│   │   ├── token
+│   │   │   └── [address].tsx
+│   │   ├── _app.tsx
+│   │   └── _document.tsx
+│   ├── styles
+│   │   ├── components
+│   │   │   └── marquee.css
+│   │   ├── globals.css
+│   │   └── reward.css
+│   ├── types
+│   │   ├── contracts
+│   │   │   ├── BondingCurveManager.ts
+│   │   │   ├── common.ts
+│   │   │   ├── factories
+│   │   │   │   ├── BondingCurveManager__factory.ts
+│   │   │   │   └── index.ts
+│   │   │   └── index.ts
+│   │   ├── heroicons.d.ts
+│   │   └── siwe.d.ts
+│   └── utils
+│       ├── api.index.ts
+│       ├── api.mock.ts
+│       ├── api.ts
+│       ├── authApi.ts
+│       ├── blockchainUtils.mock.ts
+│       ├── blockchainUtils.ts
+│       └── chatUtils.ts
+├── structure.txt
+├── tailwind.config.ts
+├── tsconfig.json
+└── yarn.lock
