@@ -24,7 +24,7 @@ interface CursorPaginationProps {
 
   /**
    * Auto-load khi scroll tới cuối list.
-   * Nếu false -> chỉ hiển thị nút "Load more".
+   * Nếu false -> hiển thị nút "Load more".
    */
   autoLoad?: boolean;
 }
@@ -36,32 +36,17 @@ interface PagePaginationProps {
   onPageChange: (page: number) => void;
 }
 
-/**
- * Props cho TokenList
- * - tokens: danh sách token (raw hoặc đã có liquidity events)
- * - sortType: để sort (marketcap/liquidity)
- * - itemsPerPage/isFullList: giữ logic cũ
- * - pagination: chọn mode page hoặc cursor
- */
 interface TokenListProps {
   tokens: (Token | TokenWithLiquidityEvents)[];
   isEnded: boolean;
   sortType: SortOption;
 
-  // Client-side paginate cho trường hợp "full list"
   itemsPerPage: number;
   isFullList?: boolean;
 
-  // Pagination mode
   pagination: CursorPaginationProps | PagePaginationProps;
 }
 
-/**
- * TokenList
- * - Render grid token
- * - Sort theo liquidity nếu chọn marketcap
- * - Pagination: page-based (cũ) hoặc cursor-based (mới)
- */
 const TokenList: React.FC<TokenListProps> = ({
   tokens,
   isEnded,
@@ -78,12 +63,8 @@ const TokenList: React.FC<TokenListProps> = ({
   // Cache liquidity từng token (key = address)
   const [liquidityData, setLiquidityData] = useState<TokenLiquidityData>({});
 
-  const mode: Mode = pagination.mode ?? 'page';
+  const mode: Mode = (pagination as any)?.mode ?? 'page';
 
-  /**
-   * Khi click token → chuyển trang
-   * Có loading overlay để tránh spam click
-   */
   const handleTokenClick = async (tokenAddress: string) => {
     setIsLoading(true);
     try {
@@ -93,10 +74,6 @@ const TokenList: React.FC<TokenListProps> = ({
     }
   };
 
-  /**
-   * Callback cho TokenCard
-   * Mỗi card fetch xong liquidity sẽ update vào đây
-   */
   const updateLiquidityData = (tokenAddress: string, amount: bigint) => {
     setLiquidityData((prev) => ({
       ...prev,
@@ -104,26 +81,19 @@ const TokenList: React.FC<TokenListProps> = ({
     }));
   };
 
-  /**
-   * useMemo để:
-   * - Sort token (nếu sortType = marketcap)
-   * - Paginate nếu isFullList = true (page mode cũ)
-   */
   const displayTokens = useMemo(() => {
     const sortedTokens = [...tokens];
 
-    // Sort theo liquidity (marketcap proxy)
+    // Sort theo liquidity (marketcap proxy) — giữ logic cũ
     if (sortType === 'marketcap') {
       sortedTokens.sort((a, b) => {
-        const liquidityA = liquidityData[a.address] || BigInt(0);
-        const liquidityB = liquidityData[b.address] || BigInt(0);
-
+        const liquidityA = liquidityData[(a as any).address] || BigInt(0);
+        const liquidityB = liquidityData[(b as any).address] || BigInt(0);
         if (liquidityA === liquidityB) return 0;
         return liquidityB > liquidityA ? 1 : -1;
       });
     }
 
-    // Page mode + full list => slice theo currentPage
     if (mode === 'page' && isFullList) {
       const p = (pagination as PagePaginationProps).currentPage ?? 1;
       const startIndex = (p - 1) * itemsPerPage;
@@ -140,14 +110,19 @@ const TokenList: React.FC<TokenListProps> = ({
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const loadingMoreRef = useRef(false);
 
-  const canAutoLoad =
-    mode === 'cursor' && (pagination as CursorPaginationProps).autoLoad !== false;
+  const cursor = mode === 'cursor' ? (pagination as CursorPaginationProps) : null;
+  const canAutoLoad = mode === 'cursor' && cursor?.autoLoad !== false;
+
+  const hasMore = mode === 'cursor' ? Boolean(cursor?.hasMore) : false;
+  const isLoadingMore = mode === 'cursor' ? Boolean(cursor?.isLoadingMore) : false;
+
+  // ✅ Sentinel chỉ tồn tại khi hasMore=true (để tránh gọi hoài)
+  const shouldRenderSentinel = mode === 'cursor' && canAutoLoad && hasMore;
 
   useEffect(() => {
     if (mode !== 'cursor') return;
     if (!canAutoLoad) return;
-
-    const { hasMore, isLoadingMore, onLoadMore } = pagination as CursorPaginationProps;
+    if (!hasMore) return; // ✅ hết dữ liệu thì không observe nữa
     if (!sentinelRef.current) return;
 
     const el = sentinelRef.current;
@@ -157,17 +132,15 @@ const TokenList: React.FC<TokenListProps> = ({
         const entry = entries[0];
         if (!entry?.isIntersecting) return;
 
-        // tránh spam
         if (loadingMoreRef.current) return;
+        if (!cursor) return;
 
-        const stillHasMore = (pagination as CursorPaginationProps).hasMore;
-        const stillLoading = (pagination as CursorPaginationProps).isLoadingMore;
-
-        if (!stillHasMore || stillLoading) return;
+        // ✅ đọc state mới nhất từ cursor
+        if (!cursor.hasMore || cursor.isLoadingMore) return;
 
         loadingMoreRef.current = true;
         try {
-          await onLoadMore();
+          await cursor.onLoadMore();
         } finally {
           loadingMoreRef.current = false;
         }
@@ -177,19 +150,21 @@ const TokenList: React.FC<TokenListProps> = ({
 
     io.observe(el);
     return () => io.disconnect();
-  }, [mode, canAutoLoad, pagination]);
+  }, [mode, canAutoLoad, hasMore, cursor]);
 
   // =====================
   // Render
   // =====================
   const pageCurrent = mode === 'page' ? (pagination as PagePaginationProps).currentPage : 1;
   const pageTotal = mode === 'page' ? (pagination as PagePaginationProps).totalPages : 1;
-
   const showPagePagination = mode === 'page' && pageTotal > 1;
 
-  const showCursorLoadMore = mode === 'cursor';
-  const hasMore = showCursorLoadMore ? (pagination as CursorPaginationProps).hasMore : false;
-  const isLoadingMore = showCursorLoadMore ? (pagination as CursorPaginationProps).isLoadingMore : false;
+  // ✅ cursor mode: nếu autoLoad=true => không show button
+  const showManualLoadMoreButton = mode === 'cursor' && !canAutoLoad && hasMore;
+  const showManualNoMore = mode === 'cursor' && !canAutoLoad && !hasMore && !isLoadingMore;
+
+  // ✅ cursor mode + autoLoad: chỉ show loader nhỏ khi đang load
+  const showAutoLoadSpinner = mode === 'cursor' && canAutoLoad && isLoadingMore;
 
   return (
     <>
@@ -197,19 +172,17 @@ const TokenList: React.FC<TokenListProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-7xl mx-auto">
         {displayTokens.map((token) => (
           <TokenCard
-            key={(token as any).id ?? token.address}
+            key={(token as any).id ?? (token as any).address}
             token={token}
             isEnded={isEnded}
             onTokenClick={handleTokenClick}
-            onLiquidityUpdate={(amount) => updateLiquidityData(token.address, amount)}
+            onLiquidityUpdate={(amount) => updateLiquidityData((token as any).address, amount)}
           />
         ))}
       </div>
 
-      {/* Sentinel (auto load) */}
-      {mode === 'cursor' && canAutoLoad && (
-        <div ref={sentinelRef} className="h-10 w-full" />
-      )}
+      {/* ✅ Sentinel (auto load) - chỉ render khi hasMore=true */}
+      {shouldRenderSentinel && <div ref={sentinelRef} className="h-10 w-full" />}
 
       {/* Loading overlay khi chuyển trang */}
       {isLoading && (
@@ -218,16 +191,32 @@ const TokenList: React.FC<TokenListProps> = ({
         </div>
       )}
 
-      {/* Cursor: Load more */}
-      {showCursorLoadMore && (
+      {/* ✅ Auto-load spinner (nhẹ) */}
+      {showAutoLoadSpinner && (
+        <div className="flex justify-center mt-8">
+          <div className="px-5 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] opacity-80">
+            Loading...
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Manual load more (chỉ khi autoLoad=false) */}
+      {showManualLoadMoreButton && (
         <div className="flex justify-center mt-8">
           <button
-            onClick={() => (pagination as CursorPaginationProps).onLoadMore()}
+            onClick={() => cursor?.onLoadMore()}
             disabled={!hasMore || isLoadingMore}
             className="px-5 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] hover:shadow disabled:opacity-50"
           >
-            {isLoadingMore ? 'Loading...' : hasMore ? 'Load more' : 'No more tokens'}
+            {isLoadingMore ? 'Loading...' : 'Load more'}
           </button>
+        </div>
+      )}
+
+      {/* ✅ Manual no more (ẩn hẳn khi autoLoad=true) */}
+      {showManualNoMore && (
+        <div className="flex justify-center mt-8">
+          <div className="text-sm opacity-70">No more tokens</div>
         </div>
       )}
 

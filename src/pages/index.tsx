@@ -1,4 +1,4 @@
-// pages/index.tsx (Home) — marquee ALWAYS from category=trending (independent), stable load-more, fixed types
+// pages/index.tsx — marquee ALWAYS from category=trending (independent), stable load-more, fixed types
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
@@ -88,7 +88,16 @@ const fmtAbbrev = (n: number): string =>
         : `$${Math.max(0, Math.floor(n))}`;
 
 const getMcap = (t: any): number =>
-  Number(t?.mcapUsd ?? t?.marketcapUsd ?? t?.marketCapUsd ?? t?.marketcap ?? t?.marketCap ?? t?.mcap ?? t?.mc ?? 0);
+  Number(
+    t?.mcapUsd ??
+      t?.marketcapUsd ??
+      t?.marketCapUsd ??
+      t?.marketcap ??
+      t?.marketCap ??
+      t?.mcap ??
+      t?.mc ??
+      0
+  );
 
 const getVol24h = (t: any): number =>
   Number(t?.vol24hUsd ?? t?.volume24hUsd ?? t?.volume24h ?? t?.vol24h ?? t?.vol ?? 0);
@@ -137,6 +146,9 @@ const Home: React.FC = () => {
   const [tokens, setTokens] = useState<PaginatedResponse<Token | TokenWithLiquidityEvents> | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
+
+  // ✅ guard cursor loop (load more)
+  const lastCursorRef = useRef<string | null>(null);
 
   // -------------------
   // Marquee trending tokens (ALWAYS trending)
@@ -266,6 +278,7 @@ const Home: React.FC = () => {
     setIsLoading(true);
     setError(null);
 
+    lastCursorRef.current = null; // ✅ reset when loading first page
     const myReq = ++reqIdRef.current;
 
     try {
@@ -288,7 +301,7 @@ const Home: React.FC = () => {
       });
 
       setNextCursor(nc);
-      setHasMore(Boolean(nc)); // ✅ cursor null => hết
+      setHasMore(Boolean(nc));
     } catch (e) {
       console.error('fetchFirst error:', e);
       setError('Failed to fetch tokens. Please try again later.');
@@ -310,11 +323,18 @@ const Home: React.FC = () => {
   const fetchMore = useCallback(async () => {
     if (!hasMore) return;
     if (isLoadingMore) return;
-    if (!nextCursor) {
-      // ✅ guard: nếu cursor null mà UI vẫn gọi
+
+    const cur = nextCursor ?? null;
+
+    // ✅ guard: cursor null => stop
+    if (!cur) {
       setHasMore(false);
       return;
     }
+
+    // ✅ guard: prevent calling same cursor repeatedly (autoLoad spam)
+    if (lastCursorRef.current === cur) return;
+    lastCursorRef.current = cur;
 
     setIsLoadingMore(true);
     setError(null);
@@ -325,11 +345,21 @@ const Home: React.FC = () => {
       const filters = buildFilters();
       const q = searchQuery.trim();
 
-      const fetched = await searchTokens(q, 1, TOKENS_PER_PAGE, nextCursor ?? undefined, filters);
+      const fetched = await searchTokens(q, 1, TOKENS_PER_PAGE, cur, filters);
       if (myReq !== reqIdRef.current) return;
 
       const items = (fetched?.data ?? []) as any[];
       const nc = (fetched?.nextCursor ?? null) as string | null;
+
+      // ✅ END CONDITIONS:
+      // - items rỗng
+      // - nextCursor null
+      // - nextCursor không đổi (cursor stuck)
+      if (items.length === 0 || !nc || nc === cur) {
+        setHasMore(false);
+        setNextCursor(null);
+        return;
+      }
 
       setTokens((prev) => {
         const prevData = prev?.data ?? [];
@@ -359,7 +389,7 @@ const Home: React.FC = () => {
       });
 
       setNextCursor(nc);
-      setHasMore(Boolean(nc)); // ✅ cursor null => stop, hide spinner
+      setHasMore(true);
     } catch (e) {
       console.error('fetchMore error:', e);
       setError('Failed to load more tokens.');
@@ -370,6 +400,7 @@ const Home: React.FC = () => {
 
   // main effect: refetch when sort/search/includeNsfw/filter change
   useEffect(() => {
+    lastCursorRef.current = null; // ✅ reset load-more cursor history
     setNextCursor(null);
     setHasMore(true);
     fetchFirst();
@@ -399,6 +430,7 @@ const Home: React.FC = () => {
       volMaxText: '',
     });
     setActiveFilter(null);
+    lastCursorRef.current = null;
     setNextCursor(null);
     setHasMore(true);
   };
@@ -410,6 +442,7 @@ const Home: React.FC = () => {
       volMin: pending.volMin,
       volMax: pending.volMax,
     });
+    lastCursorRef.current = null;
     setNextCursor(null);
     setHasMore(true);
     setIsFilterOpen(false);
@@ -420,12 +453,14 @@ const Home: React.FC = () => {
   // -------------------
   const handleSearch = (query: string) => {
     setSearchQuery(query);
+    lastCursorRef.current = null;
     setNextCursor(null);
     setHasMore(true);
   };
 
   const handleSort = (option: SortOption) => {
     setSort(option);
+    lastCursorRef.current = null;
     setNextCursor(null);
     setHasMore(true);
     setSearchQuery('');
@@ -527,6 +562,7 @@ const Home: React.FC = () => {
                     checked={includeNsfw}
                     onCheckedChange={() => {
                       setIncludeNsfw((v) => !v);
+                      lastCursorRef.current = null;
                       setNextCursor(null);
                       setHasMore(true);
                     }}
@@ -761,11 +797,13 @@ const Home: React.FC = () => {
                 hasMore,
                 isLoadingMore,
                 onLoadMore: fetchMore,
-                autoLoad: true,
+                autoLoad: false,
               }}
             />
           ) : (
-            <div className="text-center text-[var(--primary)] text-xs mt-10">No tokens found matching your criteria.</div>
+            <div className="text-center text-[var(--primary)] text-xs mt-10">
+              No tokens found matching your criteria.
+            </div>
           )}
         </div>
       </div>

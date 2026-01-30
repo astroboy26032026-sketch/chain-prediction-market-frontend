@@ -1,6 +1,4 @@
 // src/utils/api.index.ts
-import type { Token } from '@/interface/types';
-
 import * as realApi from './api';
 import * as mockApi from './api.mock';
 
@@ -13,26 +11,6 @@ const impl = USE_MOCK ? (mockApi as any) : (realApi as any);
  * - giữ API cũ nơi cần thiết (đặc biệt getAllTokensTrends)
  */
 
-/**
- * ✅ BACKWARD-COMPAT:
- * realApi.getAllTokensTrends() (hướng B) trả về { items, nextCursor }
- * nhưng FE cũ (index.tsx hiện tại) đang expect Token[]
- *
- * => bọc lại để luôn return Token[]
- */
-export const getAllTokensTrends = async (
-  ...args: Parameters<typeof realApi.getAllTokensTrends>
-): Promise<Token[]> => {
-  const res = await impl.getAllTokensTrends(...args);
-
-  // realApi/mockApi mới: { items, nextCursor }
-  if (res && typeof res === 'object' && Array.isArray(res.items)) return res.items as Token[];
-
-  // fallback: nếu mock cũ trả thẳng Token[]
-  if (Array.isArray(res)) return res as Token[];
-
-  return [];
-};
 
 export const getRecentTokens = (...args: Parameters<typeof realApi.getRecentTokens>) =>
   (impl as typeof realApi).getRecentTokens(...args);

@@ -4,7 +4,7 @@ import SEO from "@/components/seo/SEO";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { getAllTokensTrends } from "@/utils/api";
+//import { getAllTokensTrends } from "@/utils/api";
 import { Token } from "@/interface/types";
 import LoadingBar from "@/components/ui/LoadingBar";
 

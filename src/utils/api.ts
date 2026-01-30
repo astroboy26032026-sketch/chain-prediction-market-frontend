@@ -173,44 +173,6 @@ export async function getAllTokens(page = 1, pageSize = 13): Promise<PaginatedRe
   return data;
 }
 
-/**
- * ✅ GIỮ TÊN CŨ: getAllTokensTrends
- * Nhưng thực chất là "fetch by category" theo BE mới.
- *
- * VD:
- * getAllTokensTrends({ category: 'marketcap', limit: 19, includeNsfw: false })
- */
-export async function getAllTokensTrends(opts?: {
-  category?: TokenCategory;
-  includeNsfw?: boolean | null;
-  limit?: number;
-  cursor?: string;
-
-  // filters optional
-  mcapMin?: number | null;
-  mcapMax?: number | null;
-  volMin?: number | null;
-  volMax?: number | null;
-
-  // search optional
-  q?: string;
-}): Promise<{ items: Token[]; nextCursor: string | null }> {
-  const res = await tokenSearch({
-    q: opts?.q,
-    category: opts?.category ?? 'trending',
-    includeNsfw: opts?.includeNsfw ?? false,
-    limit: opts?.limit ?? 20,
-    cursor: opts?.cursor,
-
-    mcapMin: opts?.mcapMin ?? undefined,
-    mcapMax: opts?.mcapMax ?? undefined,
-    volMin: opts?.volMin ?? undefined,
-    volMax: opts?.volMax ?? undefined,
-  });
-
-  return { items: res.items, nextCursor: res.nextCursor ?? null };
-}
-
 export async function getAllTokensWithoutLiquidity(): Promise<Token[]> {
   const { data } = await getViaProxy<Token[]>('/ports/getAllTokensWithoutLiquidity');
   return data;
