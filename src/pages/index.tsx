@@ -504,7 +504,7 @@ const Home: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 xl:px-16">
         <div className="text-center mb-4">
-          <Marquee speed={18} height={96}>
+          <Marquee speed={30} height={96}>
             <div className="flex items-center gap-6 px-6">
               <span className="font-bold tracking-widest">
                 PUMP FUN CLONE • MAKE MONEY ON THE MEMECONOMY • FAIR LAUNCH • NO BOT DRAMA
@@ -513,7 +513,7 @@ const Home: React.FC = () => {
           </Marquee>
 
           {/* ✅ ALWAYS trending marquee (independent from sort/search list) */}
-          <Marquee speed={22}>
+          <Marquee speed={90}>
             {(marqueeTokens ?? []).map((token, index) => {
               const rawAddr =
                 (token as any)?.address ||
