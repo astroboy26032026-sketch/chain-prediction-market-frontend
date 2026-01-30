@@ -99,6 +99,38 @@ type TokenSearchParams = {
 };
 
 // =====================
+// Leaderboard (BE) types (local to avoid touching interface/types.ts)
+// =====================
+export type LeaderboardTopItem = {
+  rank: number;
+  tokenAddress: string;
+  name: string;
+  symbol: string;
+  subtitle?: string;
+  creatorAddress: string;
+  marketCap: number;
+  marketCapChange24h: number;
+  volume24h: number;
+  volumeChange24h: number;
+  createdAt: string;
+};
+
+export type LeaderboardListItem = {
+  rank: number;
+  tokenAddress: string;
+  name: string;
+  symbol: string;
+  creatorAddress: string;
+  holders: number;
+  marketCap: number;
+  marketCapChange24h: number;
+};
+
+export type LeaderboardListResponse = {
+  items: LeaderboardListItem[];
+};
+
+// =====================
 // Proxy helpers
 // =====================
 const PROXY_BASE = '/api/proxy';
@@ -243,6 +275,34 @@ export async function searchTokens(
   });
 
   return toLegacyPaginated<Token>(res.items ?? [], res.nextCursor ?? null);
+}
+
+/**
+ * ✅ Leaderboard (NEW BE API)
+ * - Dùng proxy để né CORS luôn cho chắc
+ */
+export async function getLeaderboardTop(limit = 3): Promise<LeaderboardTopItem[]> {
+  const safeLimit = Math.min(Math.max(limit, 1), 10);
+  const { data } = await getViaProxy<LeaderboardTopItem[]>('/leaderboard/top', { limit: safeLimit });
+  return data ?? [];
+}
+
+export async function getLeaderboardList(params?: {
+  limit?: number;
+  sort?: 'marketCap' | 'volume24h';
+  order?: 'asc' | 'desc';
+}): Promise<LeaderboardListResponse> {
+  const limit = Math.min(Math.max(params?.limit ?? 50, 1), 200);
+  const sort = params?.sort ?? 'marketCap';
+  const order = params?.order ?? 'desc';
+
+  const { data } = await getViaProxy<LeaderboardListResponse>('/leaderboard/list', {
+    limit,
+    sort,
+    order,
+  });
+
+  return { items: data?.items ?? [] };
 }
 
 /**
@@ -428,4 +488,3 @@ export async function getTokenHolders(tokenAddress: string): Promise<TokenHolder
     throw new Error('Failed to fetch token holders');
   }
 }
-

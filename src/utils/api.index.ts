@@ -35,5 +35,12 @@ export const getChatMessages = (...args: Parameters<typeof realApi.getChatMessag
 export const addChatMessage = (...args: Parameters<typeof realApi.addChatMessage>) =>
   realApi.addChatMessage(...args);
 
+export const getLeaderboardTop = (...args: Parameters<typeof realApi.getLeaderboardTop>) =>
+  realApi.getLeaderboardTop(...args);
+
+export const getLeaderboardList = (...args: Parameters<typeof realApi.getLeaderboardList>) =>
+  realApi.getLeaderboardList(...args);
+
+
 // Nếu dự án bạn còn dùng các hàm khác từ ./api (vd getAllTokensTrends)
 // thì export thêm ở đây theo cùng pattern để tránh breaking import.

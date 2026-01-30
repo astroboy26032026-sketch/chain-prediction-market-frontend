@@ -1,15 +1,15 @@
+// src/pages/leaderboard.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import Layout from "@/components/layout/Layout";
 import SEO from "@/components/seo/SEO";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/router";
-//import { getAllTokensTrends } from "@/utils/api";
-import { Token } from "@/interface/types";
 import LoadingBar from "@/components/ui/LoadingBar";
+import { getLeaderboardTop, getLeaderboardList } from "@/utils/api.index";
 
 /* =========================
-   Types
+   Types (GIỮ UI)
 ========================= */
 type LeaderItem = {
   id: string;
@@ -28,58 +28,7 @@ type LeaderItem = {
 };
 
 /* =========================
-   Mock data fallback
-========================= */
-const MOCK_TOP: LeaderItem[] = [
-  {
-    id: "kuma",
-    address: "kuma_address",
-    rank: 1,
-    name: "KUMA",
-    subtitle: "Captain KUMA",
-    icon: "/tokens/kuma.png",
-    creator: { handle: "6LuR...rsWe", avatar: "/avatars/avatar1.png" },
-    mcapUsd: 7084300,
-    vol24hUsd: 9896.67,
-    mcapChangePct: 3.54,
-    volChangePct: 48.45,
-    createdAgo: "5mos 16d 4h ago",
-    followers: 12450,
-  },
-  {
-    id: "fumble",
-    address: "fumble_address",
-    rank: 2,
-    name: "FUMBLE",
-    subtitle: "Fucked Up My Bag Lost Everything",
-    icon: "/tokens/fumble.png",
-    creator: { handle: "H3qx...7imC", avatar: "/avatars/avatar2.png" },
-    mcapUsd: 2348200,
-    vol24hUsd: 0,
-    mcapChangePct: 0,
-    volChangePct: 0,
-    createdAgo: "3mos 12d 2h ago",
-    followers: "n/a",
-  },
-  {
-    id: "dachu",
-    address: "dachu_address",
-    rank: 3,
-    name: "DACHU",
-    subtitle: "DACHU THE CHEF",
-    icon: "/tokens/dachu.png",
-    creator: { handle: "BJno...rDvQ", avatar: "/avatars/avatar3.png" },
-    mcapUsd: 551890,
-    vol24hUsd: 4.34,
-    mcapChangePct: -3.29,
-    volChangePct: 100,
-    createdAgo: "1mos 3d 9h ago",
-    followers: 3911,
-  },
-];
-
-/* =========================
-   Helpers
+   Helpers (GIỮ UI)
 ========================= */
 const usd = (n: number) =>
   n >= 1_000_000
@@ -110,44 +59,75 @@ const timeAgo = (ts?: string | number | Date): string => {
   return `${mos}mos ${days}d ${hours}h ago`;
 };
 
-const mapTokenToLeader = (t: Token, rank: number): LeaderItem => {
-  const name = (t as any).symbol || (t as any).name || t.id || "UNKNOWN";
-  const icon = (t as any).image || (t as any).logo || "/placeholder-token.png";
-  const creatorHandle =
-    (t as any).creatorHandle ||
-    (t as any).creator ||
-    (t as any).owner ||
-    (t as any).deployer ||
-    "unknown";
-  const creatorAvatar = (t as any).creatorAvatar || "/avatars/avatar1.png";
-  const mcap = Number((t as any).marketcapUsd) || 0;
-  const vol24 = Number((t as any).volume24hUsd) || 0;
+const shortAddr = (addr?: string) => {
+  if (!addr) return "unknown";
+  return addr.length > 10 ? `${addr.slice(0, 4)}...${addr.slice(-4)}` : addr;
+};
 
+const DEFAULT_ICON = "/placeholder-token.png";
+const DEFAULT_AVATAR = "/avatars/avatar1.png";
+
+/**
+ * Map API /leaderboard/top item -> LeaderItem (GIỮ UI)
+ * API schema:
+ * { rank, tokenAddress, name, symbol, subtitle, creatorAddress, marketCap, marketCapChange24h, volume24h, volumeChange24h, createdAt }
+ */
+const mapTopToLeader = (t: any): LeaderItem => {
+  const address = String(t.tokenAddress || "");
+  const name = String(t.symbol || t.name || "UNKNOWN");
   return {
-    id: t.id,
-    address: (t as any).address || t.id,
-    rank,
+    id: address || `${t.rank ?? ""}-${name}`,
+    address,
+    rank: Number(t.rank ?? 0),
     name,
-    subtitle: (t as any).tagline || (t as any).subtitle || undefined,
-    icon,
-    creator: { handle: String(creatorHandle), avatar: creatorAvatar },
-    mcapUsd: mcap,
-    vol24hUsd: vol24,
-    mcapChangePct: Number((t as any).mcapChangePct ?? 0),
-    volChangePct: Number((t as any).volChangePct ?? 0),
-    createdAgo: timeAgo((t as any).createdAt),
-    followers:
-      typeof (t as any).followers === "number"
-        ? (t as any).followers
-        : (t as any).followers === "n/a"
-        ? "n/a"
-        : undefined,
+    subtitle: t.subtitle ? String(t.subtitle) : undefined,
+    icon: DEFAULT_ICON, // API không có icon => giữ UI, dùng placeholder
+    creator: {
+      handle: String(t.creatorAddress || "unknown"),
+      avatar: DEFAULT_AVATAR, // API không có avatar => placeholder
+    },
+    mcapUsd: Number(t.marketCap ?? 0),
+    vol24hUsd: Number(t.volume24h ?? 0),
+    mcapChangePct: Number(t.marketCapChange24h ?? 0),
+    volChangePct: Number(t.volumeChange24h ?? 0),
+    createdAgo: timeAgo(t.createdAt),
+    followers: "n/a",
   };
 };
 
-/* =========================
-   Page
-========================= */
+/**
+ * Map API /leaderboard/list item -> LeaderItem (GIỮ UI)
+ * API schema:
+ * { rank, tokenAddress, name, symbol, creatorAddress, holders, marketCap, marketCapChange24h }
+ */
+const mapListToLeader = (t: any): LeaderItem => {
+  const address = String(t.tokenAddress || "");
+  const name = String(t.symbol || t.name || "UNKNOWN");
+  return {
+    id: address || `${t.rank ?? ""}-${name}`,
+    address,
+    rank: Number(t.rank ?? 0),
+    name,
+    subtitle: undefined,
+    icon: DEFAULT_ICON,
+    creator: {
+      handle: String(t.creatorAddress || "unknown"),
+      avatar: DEFAULT_AVATAR,
+    },
+    mcapUsd: Number(t.marketCap ?? 0),
+    vol24hUsd: 0, // list schema không có volume => giữ UI, set 0
+    mcapChangePct: Number(t.marketCapChange24h ?? 0),
+    volChangePct: 0,
+    createdAgo: "", // list schema không có createdAt => giữ UI, để rỗng
+    followers:
+      typeof t.holders === "number"
+        ? t.holders
+        : Number.isFinite(Number(t.holders))
+        ? Number(t.holders)
+        : "n/a",
+  };
+};
+
 const LeaderboardPage: React.FC = () => {
   const [items, setItems] = useState<LeaderItem[]>([]);
   const [isPageLoading, setIsPageLoading] = useState(false);
@@ -156,15 +136,35 @@ const LeaderboardPage: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        const tokens = await getAllTokensTrends();
-        const mapped = tokens
-          .filter((t) => !!t)
-          .slice(0, 15)
-          .map((t, i) => mapTokenToLeader(t, i + 1));
-        setItems(mapped);
+        // ✅ NEW API: top 3 cards
+        const top = await getLeaderboardTop(3);
+        const topMapped = (top || []).map(mapTopToLeader);
+
+        // ✅ NEW API: table list (full)
+        const listRes = await getLeaderboardList({
+          limit: 50,
+          sort: "marketCap",
+          order: "desc",
+        });
+
+        const listMapped = (listRes?.items || []).map(mapListToLeader);
+
+        // ✅ Keep UI behavior:
+        // - cards lấy data.slice(0,3) => phải đảm bảo top 3 nằm trước
+        // - table dùng data.map => cần merged list
+        const topAddr = new Set(topMapped.map((x) => x.address));
+        const merged = [
+          ...topMapped,
+          ...listMapped.filter((x) => x.address && !topAddr.has(x.address)),
+        ];
+
+        // fallback nếu BE trả thiếu rank: sort theo rank tăng dần
+        merged.sort((a, b) => (a.rank || 0) - (b.rank || 0));
+
+        setItems(merged);
       } catch (e) {
         console.error("Failed to load leaderboard:", e);
-        setItems(MOCK_TOP);
+        setItems([]); // ✅ xoá mock fallback hoàn toàn
       }
     })();
   }, []);
@@ -180,7 +180,8 @@ const LeaderboardPage: React.FC = () => {
     };
   }, [router.events]);
 
-  const data = useMemo(() => (items.length > 0 ? items : MOCK_TOP), [items]);
+  // ✅ UI giữ nguyên: data = items (không mock)
+  const data = useMemo(() => items, [items]);
 
   const handleBuyClick = (href: string, isExternal = false) => {
     setIsPageLoading(true);
@@ -230,7 +231,7 @@ const LeaderboardPage: React.FC = () => {
                   <div className="flex items-center gap-4 mt-6">
                     <div className="w-20 h-20 rounded-2xl overflow-hidden border border-[var(--card-border)] shrink-0">
                       <Image
-                        src={t.icon || "/placeholder-token.png"}
+                        src={t.icon || DEFAULT_ICON}
                         alt={t.name}
                         width={96}
                         height={96}
@@ -243,19 +244,18 @@ const LeaderboardPage: React.FC = () => {
                       {t.subtitle && <div className="text-xs opacity-75">{t.subtitle}</div>}
                       <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
                         <div>
-                          mc {pctEl(t.mcapChangePct)} <span className="ml-1">{usd(t.mcapUsd)}</span>
+                          mc {pctEl(t.mcapChangePct)}{" "}
+                          <span className="ml-1">{usd(t.mcapUsd)}</span>
                         </div>
                         <div>
-                          24h vol {pctEl(t.volChangePct)} <span className="ml-1">{usd(t.vol24hUsd)}</span>
+                          24h vol {pctEl(t.volChangePct)}{" "}
+                          <span className="ml-1">{usd(t.vol24hUsd)}</span>
                         </div>
                       </div>
                     </div>
 
                     <div className="ml-auto">
-                      <button
-                        onClick={() => handleBuyClick(href)}
-                        className="btn btn-primary"
-                      >
+                      <button onClick={() => handleBuyClick(href)} className="btn btn-primary">
                         buy
                       </button>
                     </div>
@@ -266,8 +266,10 @@ const LeaderboardPage: React.FC = () => {
                       <Image src={t.creator.avatar} width={32} height={32} alt="creator" />
                     </div>
                     <span className="opacity-70">by</span>
-                    <span className="font-semibold">{t.creator.handle}</span>
-                    <span className="opacity-60">• {t.createdAgo}</span>
+                    <span className="font-semibold">{shortAddr(t.creator.handle)}</span>
+                    <span className="opacity-60">
+                      {t.createdAgo ? `• ${t.createdAgo}` : ""}
+                    </span>
                   </div>
                 </article>
               );
@@ -276,7 +278,9 @@ const LeaderboardPage: React.FC = () => {
 
           {/* ===== Table ===== */}
           <div className="card p-0 overflow-hidden">
-            <div className="px-6 pt-5 pb-3 text-sm uppercase tracking-widest opacity-70">token</div>
+            <div className="px-6 pt-5 pb-3 text-sm uppercase tracking-widest opacity-70">
+              token
+            </div>
             <div className="divide-y divide-[var(--card-border)]">
               {data.map((t) => {
                 const href = `/token/${encodeURIComponent(t.address)}`;
@@ -289,7 +293,7 @@ const LeaderboardPage: React.FC = () => {
                     <div className="col-span-5 flex items-center gap-3 min-w-0">
                       <div className="w-10 h-10 rounded-xl overflow-hidden border border-[var(--card-border)] shrink-0">
                         <Image
-                          src={t.icon || "/placeholder-token.png"}
+                          src={t.icon || DEFAULT_ICON}
                           alt={t.name}
                           width={40}
                           height={40}
@@ -298,7 +302,9 @@ const LeaderboardPage: React.FC = () => {
                       </div>
                       <div className="min-w-0">
                         <div className="font-semibold truncate">{t.name}</div>
-                        <div className="text-xs opacity-70 truncate">#{String(t.rank).padStart(3, "0")}</div>
+                        <div className="text-xs opacity-70 truncate">
+                          #{String(t.rank).padStart(3, "0")}
+                        </div>
                       </div>
                     </div>
 
@@ -307,7 +313,7 @@ const LeaderboardPage: React.FC = () => {
                       <div className="w-7 h-7 rounded-full overflow-hidden border border-[var(--card-border)]">
                         <Image src={t.creator.avatar} alt="creator" width={28} height={28} />
                       </div>
-                      <span className="truncate">{t.creator.handle}</span>
+                      <span className="truncate">{shortAddr(t.creator.handle)}</span>
                     </div>
 
                     {/* followers */}
@@ -321,16 +327,18 @@ const LeaderboardPage: React.FC = () => {
 
                     {/* buy */}
                     <div className="col-span-1 mt-3 md:mt-0 md:justify-self-end">
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => handleBuyClick(href)}
-                      >
+                      <button className="btn btn-secondary" onClick={() => handleBuyClick(href)}>
                         buy
                       </button>
                     </div>
                   </div>
                 );
               })}
+
+              {/* ✅ Không đổi UI layout, chỉ thêm fallback text nhẹ (nếu muốn bỏ thì xoá block này) */}
+              {data.length === 0 && (
+                <div className="px-6 py-10 text-center opacity-70">No data</div>
+              )}
             </div>
           </div>
         </div>
