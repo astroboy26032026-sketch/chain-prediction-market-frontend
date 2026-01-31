@@ -18,13 +18,13 @@ type LeaderItem = {
   name: string;
   subtitle?: string;
   icon: string;
-  creator: { handle: string; avatar: string };
+  creator: { handle: string; avatar: string }; // giữ type để không đụng nhiều chỗ
   mcapUsd: number;
   vol24hUsd: number;
   mcapChangePct: number;
   volChangePct: number;
   createdAgo: string;
-  followers?: number | "n/a";
+  followers?: number | "n/a"; // giữ type để không đụng mapper cũ
 };
 
 /* =========================
@@ -70,21 +70,22 @@ const DEFAULT_AVATAR = "/avatars/avatar1.png";
 /**
  * Map API /leaderboard/top item -> LeaderItem (GIỮ UI)
  * API schema:
- * { rank, tokenAddress, name, symbol, subtitle, creatorAddress, marketCap, marketCapChange24h, volume24h, volumeChange24h, createdAt }
+ * { rank, tokenAddress, name, symbol, subtitle, creatorAddress, marketCap, marketCapChange24h, volume24h, volumeChange24h, createdAt, logo }
  */
 const mapTopToLeader = (t: any): LeaderItem => {
   const address = String(t.tokenAddress || "");
   const name = String(t.symbol || t.name || "UNKNOWN");
+
   return {
     id: address || `${t.rank ?? ""}-${name}`,
     address,
     rank: Number(t.rank ?? 0),
     name,
     subtitle: t.subtitle ? String(t.subtitle) : undefined,
-    icon: DEFAULT_ICON, // API không có icon => giữ UI, dùng placeholder
+    icon: (t?.logo as string) || DEFAULT_ICON,
     creator: {
       handle: String(t.creatorAddress || "unknown"),
-      avatar: DEFAULT_AVATAR, // API không có avatar => placeholder
+      avatar: DEFAULT_AVATAR,
     },
     mcapUsd: Number(t.marketCap ?? 0),
     vol24hUsd: Number(t.volume24h ?? 0),
@@ -98,27 +99,28 @@ const mapTopToLeader = (t: any): LeaderItem => {
 /**
  * Map API /leaderboard/list item -> LeaderItem (GIỮ UI)
  * API schema:
- * { rank, tokenAddress, name, symbol, creatorAddress, holders, marketCap, marketCapChange24h }
+ * { rank, tokenAddress, name, symbol, creatorAddress, holders, marketCap, marketCapChange24h, logo }
  */
 const mapListToLeader = (t: any): LeaderItem => {
   const address = String(t.tokenAddress || "");
   const name = String(t.symbol || t.name || "UNKNOWN");
+
   return {
     id: address || `${t.rank ?? ""}-${name}`,
     address,
     rank: Number(t.rank ?? 0),
     name,
     subtitle: undefined,
-    icon: DEFAULT_ICON,
+    icon: (t?.logo as string) || DEFAULT_ICON,
     creator: {
       handle: String(t.creatorAddress || "unknown"),
       avatar: DEFAULT_AVATAR,
     },
     mcapUsd: Number(t.marketCap ?? 0),
-    vol24hUsd: 0, // list schema không có volume => giữ UI, set 0
+    vol24hUsd: 0,
     mcapChangePct: Number(t.marketCapChange24h ?? 0),
     volChangePct: 0,
-    createdAgo: "", // list schema không có createdAt => giữ UI, để rỗng
+    createdAgo: "",
     followers:
       typeof t.holders === "number"
         ? t.holders
@@ -136,40 +138,31 @@ const LeaderboardPage: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        // ✅ NEW API: top 3 cards
         const top = await getLeaderboardTop(3);
         const topMapped = (top || []).map(mapTopToLeader);
 
-        // ✅ NEW API: table list (full)
         const listRes = await getLeaderboardList({
           limit: 50,
           sort: "marketCap",
           order: "desc",
         });
-
         const listMapped = (listRes?.items || []).map(mapListToLeader);
 
-        // ✅ Keep UI behavior:
-        // - cards lấy data.slice(0,3) => phải đảm bảo top 3 nằm trước
-        // - table dùng data.map => cần merged list
         const topAddr = new Set(topMapped.map((x) => x.address));
         const merged = [
           ...topMapped,
           ...listMapped.filter((x) => x.address && !topAddr.has(x.address)),
         ];
 
-        // fallback nếu BE trả thiếu rank: sort theo rank tăng dần
         merged.sort((a, b) => (a.rank || 0) - (b.rank || 0));
-
         setItems(merged);
       } catch (e) {
         console.error("Failed to load leaderboard:", e);
-        setItems([]); // ✅ xoá mock fallback hoàn toàn
+        setItems([]);
       }
     })();
   }, []);
 
-  // ✅ Tắt loading khi route hoàn tất
   useEffect(() => {
     const done = () => setIsPageLoading(false);
     router.events.on("routeChangeComplete", done);
@@ -180,7 +173,6 @@ const LeaderboardPage: React.FC = () => {
     };
   }, [router.events]);
 
-  // ✅ UI giữ nguyên: data = items (không mock)
   const data = useMemo(() => items, [items]);
 
   const handleBuyClick = (href: string, isExternal = false) => {
@@ -261,10 +253,8 @@ const LeaderboardPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="mt-6 flex items-center gap-3 text-sm opacity-90">
-                    <div className="w-8 h-8 rounded-full overflow-hidden border border-[var(--card-border)]">
-                      <Image src={t.creator.avatar} width={32} height={32} alt="creator" />
-                    </div>
+                  {/* ✅ BỎ LOGO CREATOR: chỉ giữ text */}
+                  <div className="mt-6 flex items-center gap-2 text-sm opacity-90">
                     <span className="opacity-70">by</span>
                     <span className="font-semibold">{shortAddr(t.creator.handle)}</span>
                     <span className="opacity-60">
@@ -281,6 +271,7 @@ const LeaderboardPage: React.FC = () => {
             <div className="px-6 pt-5 pb-3 text-sm uppercase tracking-widest opacity-70">
               token
             </div>
+
             <div className="divide-y divide-[var(--card-border)]">
               {data.map((t) => {
                 const href = `/token/${encodeURIComponent(t.address)}`;
@@ -290,7 +281,7 @@ const LeaderboardPage: React.FC = () => {
                     className="grid grid-cols-12 items-center px-4 sm:px-6 py-4 hover:bg-[var(--card-hover)] transition-colors"
                   >
                     {/* token */}
-                    <div className="col-span-5 flex items-center gap-3 min-w-0">
+                    <div className="col-span-6 flex items-center gap-3 min-w-0">
                       <div className="w-10 h-10 rounded-xl overflow-hidden border border-[var(--card-border)] shrink-0">
                         <Image
                           src={t.icon || DEFAULT_ICON}
@@ -308,26 +299,20 @@ const LeaderboardPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* creator */}
-                    <div className="col-span-3 hidden sm:flex items-center gap-2 min-w-0">
-                      <div className="w-7 h-7 rounded-full overflow-hidden border border-[var(--card-border)]">
-                        <Image src={t.creator.avatar} alt="creator" width={28} height={28} />
-                      </div>
+                    {/* creator (✅ bỏ avatar, chỉ còn handle) */}
+                    <div className="col-span-3 hidden sm:flex items-center min-w-0">
                       <span className="truncate">{shortAddr(t.creator.handle)}</span>
                     </div>
 
-                    {/* followers */}
-                    <div className="col-span-2 text-sm opacity-80">{t.followers ?? "n/a"}</div>
-
-                    {/* mcap */}
-                    <div className="col-span-1 text-right md:text-left text-sm font-semibold">
-                      {usd(t.mcapUsd)}
+                    {/* ✅ Thay followers bằng MarketCap */}
+                    <div className="col-span-2 text-sm">
+                      <div className="font-semibold">{usd(t.mcapUsd)}</div>
                       <div className="text-xs opacity-70">{pctEl(t.mcapChangePct)}</div>
                     </div>
 
-                    {/* buy */}
+                    {/* buy (✅ màu giống create: btn-primary) */}
                     <div className="col-span-1 mt-3 md:mt-0 md:justify-self-end">
-                      <button className="btn btn-secondary" onClick={() => handleBuyClick(href)}>
+                      <button className="btn btn-primary" onClick={() => handleBuyClick(href)}>
                         buy
                       </button>
                     </div>
@@ -335,7 +320,6 @@ const LeaderboardPage: React.FC = () => {
                 );
               })}
 
-              {/* ✅ Không đổi UI layout, chỉ thêm fallback text nhẹ (nếu muốn bỏ thì xoá block này) */}
               {data.length === 0 && (
                 <div className="px-6 py-10 text-center opacity-70">No data</div>
               )}

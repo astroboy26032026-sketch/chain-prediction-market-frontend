@@ -137,6 +137,7 @@ export type LeaderboardTopItem = {
   volume24h: number;
   volumeChange24h: number;
   createdAt: string;
+  logo:string
 };
 
 export type LeaderboardListItem = {
@@ -148,6 +149,7 @@ export type LeaderboardListItem = {
   holders: number;
   marketCap: number;
   marketCapChange24h: number;
+  logo:string
 };
 
 export type LeaderboardListResponse = {
