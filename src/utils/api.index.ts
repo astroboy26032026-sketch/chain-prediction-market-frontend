@@ -3,7 +3,7 @@ import * as realApi from './api';
 
 /**
  * RE-EXPORT NAMED FUNCTIONS (REAL API ONLY)
- * - giữ API cũ để không phải sửa nơi import (đặc biệt getAllTokensTrends nếu có)
+ * - giữ API cũ để không phải sửa nơi import
  */
 
 export const getRecentTokens = (...args: Parameters<typeof realApi.getRecentTokens>) =>
@@ -41,6 +41,24 @@ export const getLeaderboardTop = (...args: Parameters<typeof realApi.getLeaderbo
 export const getLeaderboardList = (...args: Parameters<typeof realApi.getLeaderboardList>) =>
   realApi.getLeaderboardList(...args);
 
+// =====================
+// ✅ Referrals exports
+// =====================
 
-// Nếu dự án bạn còn dùng các hàm khác từ ./api (vd getAllTokensTrends)
+export const getReferralSummary = (...args: Parameters<typeof realApi.getReferralSummary>) =>
+  realApi.getReferralSummary(...args);
+
+export const getReferralLink = (...args: Parameters<typeof realApi.getReferralLink>) =>
+  realApi.getReferralLink(...args);
+
+export const getReferralList = (...args: Parameters<typeof realApi.getReferralList>) =>
+  realApi.getReferralList(...args);
+
+export const claimReferralRewards = (...args: Parameters<typeof realApi.claimReferralRewards>) =>
+  realApi.claimReferralRewards(...args);
+
+export const trackReferral = (...args: Parameters<typeof realApi.trackReferral>) =>
+  realApi.trackReferral(...args);
+
+// Nếu dự án bạn còn dùng các hàm khác từ ./api
 // thì export thêm ở đây theo cùng pattern để tránh breaking import.

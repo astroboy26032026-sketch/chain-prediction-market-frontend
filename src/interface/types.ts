@@ -140,7 +140,7 @@ export interface PriceCache {
   timestamp: number;
 }
 
- // ✅ Leader Board
+// ✅ Leader Board
 
 export type LeaderboardTopItem = {
   rank: number;
@@ -169,4 +169,41 @@ export type LeaderboardListItem = {
 
 export type LeaderboardListResponse = {
   items: LeaderboardListItem[];
+};
+
+// =====================
+// ✅ Referrals
+// =====================
+
+export type ReferralSummary = {
+  totalReferrals: number;
+  totalVolumeSol: number;
+  unclaimedRewardsSol: number;
+};
+
+export type ReferralLinkInfo = {
+  referralCode: string;
+  referralLink: string;
+  rewardRate: number; // BE có thể trả 0.2 (=20%) hoặc 20 (=20%)
+};
+
+export type ReferralListItem = {
+  walletAddress: string;
+  joinedAt: string; // ISO datetime string
+  tradingVolumeSol: number;
+  rewardSol: number;
+};
+
+export type ReferralListResponse = {
+  items: ReferralListItem[];
+};
+
+export type ClaimReferralRequest = {
+  amountSol: number;
+};
+
+export type ClaimReferralResponse = {
+  claimedAmountSol: number;
+  txId: string;
+  message: string;
 };

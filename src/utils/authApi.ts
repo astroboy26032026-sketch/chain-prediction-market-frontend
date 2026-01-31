@@ -1,5 +1,6 @@
 // src/utils/authApi.ts
 import axios from 'axios';
+import { setAuthToken } from '@/utils/api'; // ✅ sync token for authApi instance in api.ts
 
 const PROXY_BASE = '/api/proxy';
 const isServer = typeof window === 'undefined';
@@ -14,13 +15,18 @@ const SITE_URL = computeSiteUrl();
 const absProxy = (path: string) =>
   isServer ? `${SITE_URL}${PROXY_BASE}${path}` : `${PROXY_BASE}${path}`;
 
-// ---- token storage (simple) ----
-const TOKEN_KEY = 'access_token';
+// ---- token storage (unified) ----
+// ✅ IMPORTANT: unify with src/utils/api.ts
+const TOKEN_KEY = 'pf_token';
 
 export function setToken(token?: string) {
   if (typeof window === 'undefined') return;
+
   if (!token) localStorage.removeItem(TOKEN_KEY);
   else localStorage.setItem(TOKEN_KEY, token);
+
+  // ✅ also update axios authApi in src/utils/api.ts
+  setAuthToken(token ?? null, false);
 }
 
 export function getToken() {
@@ -61,7 +67,10 @@ export type LoginWalletResponse = {
 export async function loginWallet(wallet: string, signature: string) {
   const url = absProxy('/auth/wallet/login');
   const { data } = await authAxios.post<LoginWalletResponse>(url, { wallet, signature });
+
+  // ✅ unify token
   if (data?.access_token) setToken(data.access_token);
+
   return data;
 }
 
@@ -83,13 +92,19 @@ export async function authMe() {
 export async function refreshAuth() {
   const url = absProxy('/auth/refresh');
   const { data } = await authAxios.post<{ jwt: string; expiresInSec: number }>(url);
+
+  // ✅ unify token
   if (data?.jwt) setToken(data.jwt);
+
   return data;
 }
 
 export async function logoutAuth() {
   const url = absProxy('/auth/logout');
   const { data } = await authAxios.post<{ ok: boolean }>(url);
+
+  // ✅ clear unified token
   setToken(undefined);
+
   return data;
 }

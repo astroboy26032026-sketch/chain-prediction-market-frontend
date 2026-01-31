@@ -12,6 +12,12 @@ import {
   TokenHolder,
   TransactionResponse,
   CursorPaginatedResponse,
+
+  // ✅ Referrals types
+  ReferralSummary,
+  ReferralLinkInfo,
+  ReferralListResponse,
+  ClaimReferralResponse,
 } from '@/interface/types';
 import { ethers } from 'ethers';
 
@@ -38,12 +44,30 @@ export function setStoredToken(token: string | null) {
 /**
  * Axios instance for direct BE calls (NO proxy)
  * (Giữ lại cho các endpoint bạn thực sự muốn gọi thẳng,
- * nhưng /token/search sẽ KHÔNG dùng nữa để tránh CORS)
+ * nhưng browser gọi thẳng sẽ dính CORS nếu BE không allow)
  */
 export const authApi = axios.create({
   baseURL: AUTH_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
   // withCredentials: true,
+});
+
+// (Optional) attach bearer automatically for direct calls
+authApi.interceptors.request.use((config) => {
+  try {
+    if (typeof window !== 'undefined') {
+      const t = localStorage.getItem(AUTH_TOKEN_KEY);
+      if (t) {
+        config.headers = {
+          ...(config.headers || {}),
+          Authorization: `Bearer ${t}`,
+        } as any;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return config;
 });
 
 export function setAuthToken(token: string | null, persist = true) {
@@ -169,6 +193,12 @@ const toLegacyPaginated = <T>(
   nextCursor: nextCursor ?? null,
 });
 
+// auth header (for proxy calls)
+const getAuthHeaders = (): Record<string, string> | undefined => {
+  const t = getStoredToken();
+  return t ? { Authorization: `Bearer ${t}` } : undefined;
+};
+
 // =====================
 // Core helper: /token/search  (✅ VIA PROXY to avoid CORS)
 // =====================
@@ -183,8 +213,7 @@ async function tokenSearch(params: TokenSearchParams): Promise<CursorPaginatedRe
   if (safe.q !== undefined && !String(safe.q).trim()) delete safe.q;
 
   // Optional: forward bearer token qua proxy (nếu BE có auth)
-  const token = getStoredToken();
-  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+  const headers = getAuthHeaders();
 
   // ✅ IMPORTANT: gọi qua proxy thay vì authApi trực tiếp
   // => FE gọi same-origin => không dính CORS
@@ -487,4 +516,56 @@ export async function getTokenHolders(tokenAddress: string): Promise<TokenHolder
     console.error('Error fetching token holders:', error);
     throw new Error('Failed to fetch token holders');
   }
+}
+
+// =====================
+// ✅ Referrals API (AUTH) - VIA PROXY (avoid CORS)
+// =====================
+
+export async function getReferralSummary(): Promise<ReferralSummary> {
+  const url = absProxy('/referrals/summary');
+  const { data } = await axios.get<ReferralSummary>(url, { headers: getAuthHeaders() });
+  return data;
+}
+
+export async function getReferralLink(): Promise<ReferralLinkInfo> {
+  const url = absProxy('/referrals/link');
+  const { data } = await axios.get<ReferralLinkInfo>(url, { headers: getAuthHeaders() });
+  return data;
+}
+
+export async function getReferralList(): Promise<ReferralListResponse> {
+  const url = absProxy('/referrals/list');
+  const { data } = await axios.get<ReferralListResponse>(url, { headers: getAuthHeaders() });
+  return { items: data?.items ?? [] };
+}
+
+export async function claimReferralRewards(amountSol: number): Promise<ClaimReferralResponse> {
+  const url = absProxy('/referrals/claim');
+  const { data } = await axios.post<ClaimReferralResponse>(
+    url,
+    { amountSol },
+    { headers: getAuthHeaders() }
+  );
+  return data;
+}
+
+/**
+ * System endpoint: Track referral join / update volume
+ * (Thường gọi ở join flow hoặc backend job; Referrals page không cần gọi)
+ */
+export async function trackReferral(payload: {
+  walletAddress: string;
+  tradingVolumeSol?: number;
+}): Promise<{ ok: boolean }> {
+  const url = absProxy('/referrals/track');
+  const { data } = await axios.post<{ ok: boolean }>(
+    url,
+    {
+      walletAddress: payload.walletAddress,
+      tradingVolumeSol: payload.tradingVolumeSol ?? 0,
+    },
+    { headers: getAuthHeaders() }
+  );
+  return data;
 }
