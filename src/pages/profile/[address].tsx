@@ -1,15 +1,25 @@
 // src/pages/profile/[address].tsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/router';
-import { useAccount } from 'wagmi';
+import { useWallet } from '@solana/wallet-adapter-react';
+
 import Layout from '@/components/layout/Layout';
-import { getTransactionsByAddress, getAllTokenAddresses, getTokensByCreator } from '@/utils/api';
-import { Transaction, PaginatedResponse, Token } from '@/interface/types';
-import { formatTimestamp, formatAddressV2, formatAmountV3, useERC20Balance } from '@/utils/blockchainUtils';
-import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/20/solid';
 import SEO from '@/components/seo/SEO';
 import LoadingBar from '@/components/ui/LoadingBar';
 import TokenUpdateModal from '@/components/token/TokenUpdateModal';
+
+import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/20/solid';
+
+import {
+  getProfileInfo,
+  // getTransactionsByAddress,
+  // getAllTokenAddresses,
+  // getTokensByCreator,
+} from '@/utils/api.index';
+
+import { Transaction, PaginatedResponse, Token } from '@/interface/types';
+import { formatTimestamp, formatAddressV2, formatAmountV3 } from '@/utils/blockchainUtils';
 
 /* =========================
    Types
@@ -21,7 +31,6 @@ interface TransactionResponse extends Omit<PaginatedResponse<Transaction>, 'data
 interface TokenBalanceItemProps {
   tokenAddress: string;
   symbol: string;
-  userAddress: string;
   onClick: () => void;
 }
 
@@ -31,22 +40,43 @@ type AddrSymbol = { address: string; symbol: string };
 // Type guard để phân biệt khi API trả về đúng dạng hoặc chỉ string[]
 const isAddrSymbolArray = (v: unknown): v is AddrSymbol[] =>
   Array.isArray(v) &&
-  v.every(
-    (i) =>
-      i &&
-      typeof i === 'object' &&
-      'address' in (i as any) &&
-      'symbol' in (i as any)
-  );
+  v.every((i) => i && typeof i === 'object' && 'address' in (i as any) && 'symbol' in (i as any));
+
+type ProfileInfo = Awaited<ReturnType<typeof getProfileInfo>>;
+
+/* =========================
+   Helpers
+========================= */
+function getQueryAddress(v: unknown): string {
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) return v[0] ?? '';
+  return '';
+}
+
+/**
+ * Normalize image URL:
+ * - keep relative (/...) as-is
+ * - convert ipfs://CID or ipfs://ipfs/CID -> https://gateway.pinata.cloud/ipfs/CID
+ * - otherwise keep http(s)
+ */
+function normalizeImageUrl(input?: string | null): string {
+  const s = (input || '').trim();
+  if (!s) return '';
+  if (s.startsWith('/')) return s;
+
+  if (s.startsWith('ipfs://')) {
+    const rest = s.replace('ipfs://', '');
+    const cid = rest.startsWith('ipfs/') ? rest.slice('ipfs/'.length) : rest;
+    return `https://gateway.pinata.cloud/ipfs/${cid}`;
+  }
+  return s;
+}
 
 /* =========================
    Token Balance Item
+   (GIỮ UI, BỎ on-chain balance)
 ========================= */
-const TokenBalanceItem: React.FC<TokenBalanceItemProps> = ({ tokenAddress, symbol, userAddress, onClick }) => {
-  const { balance } = useERC20Balance(tokenAddress as `0x${string}`, userAddress as `0x${string}`);
-
-  if (!balance || balance.toString() === '0') return null;
-
+const TokenBalanceItem: React.FC<TokenBalanceItemProps> = ({ tokenAddress, symbol, onClick }) => {
   const handleAddressClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     window.open(`https://shibariumscan.io/address/${tokenAddress}`, '_blank');
@@ -58,13 +88,13 @@ const TokenBalanceItem: React.FC<TokenBalanceItemProps> = ({ tokenAddress, symbo
       onClick={onClick}
     >
       <h3 className="text-xs sm:text-sm font-semibold text-[var(--accent)] mb-2">{symbol}</h3>
-      <p className="text-gray-400 text-[10px] sm:text-xs">Balance: {formatAmountV3(balance.toString())}</p>
+
+      {/* giữ dòng balance để UI không thay đổi layout (nhưng không gọi chain) */}
+      <p className="text-gray-400 text-[10px] sm:text-xs">Balance: --</p>
+
       <p className="text-gray-400 text-[10px] sm:text-xs mt-2">
         Address:
-        <span
-          className="text-[var(--primary)] hover:underline ml-1 cursor-pointer"
-          onClick={handleAddressClick}
-        >
+        <span className="text-[var(--primary)] hover:underline ml-1 cursor-pointer" onClick={handleAddressClick}>
           {formatAddressV2(tokenAddress)}
         </span>
       </p>
@@ -73,7 +103,7 @@ const TokenBalanceItem: React.FC<TokenBalanceItemProps> = ({ tokenAddress, symbo
 };
 
 /* =========================
-   Pagination
+   Pagination (GIỮ NGUYÊN)
 ========================= */
 interface PaginationProps {
   currentPage: number;
@@ -91,6 +121,7 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
       >
         <ChevronLeftIcon className="h-4 w-4 sm:h-5 sm:w-5" />
       </button>
+
       <div className="flex items-center space-x-1">
         {[...Array(totalPages)].map((_, index) => {
           const page = index + 1;
@@ -118,6 +149,7 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
           return null;
         })}
       </div>
+
       <button
         onClick={() => onPageChange(currentPage + 1)}
         disabled={currentPage === totalPages}
@@ -130,7 +162,7 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
 };
 
 /* =========================
-   Token Tab
+   Token Tab (GIỮ NGUYÊN)
 ========================= */
 interface TokenTabProps {
   title: string;
@@ -156,90 +188,140 @@ const TokenTab: React.FC<TokenTabProps> = ({ title, isActive, onClick }) => (
 ========================= */
 const ProfilePage: React.FC = () => {
   const router = useRouter();
-  const { address: connectedAddress } = useAccount();
-  const { address: profileAddress } = router.query;
+  const { publicKey } = useWallet();
 
+  // connected wallet (Solana)
+  const connectedAddress = useMemo(() => publicKey?.toBase58() || '', [publicKey]);
+
+  // profile address from route
+  const profileAddress = getQueryAddress(router.query.address);
+
+  // address precedence: URL -> connected wallet
+  const addressToUse = (profileAddress || connectedAddress || '').trim();
+
+  // NEW: profile info
+  const [profileInfo, setProfileInfo] = useState<ProfileInfo | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+
+  // Transactions
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Luôn giữ state là { address, symbol }[]
+  // Tokens held list (still from old API)
   const [tokenAddresses, setTokenAddresses] = useState<AddrSymbol[]>([]);
   const [isTokenLoading, setIsTokenLoading] = useState(false);
 
+  // Tabs & Created tokens
   const [activeTab, setActiveTab] = useState<'held' | 'created'>('held');
   const [createdTokens, setCreatedTokens] = useState<Token[]>([]);
   const [createdTokensPage, setCreatedTokensPage] = useState(1);
   const [createdTokensTotalPages, setCreatedTokensTotalPages] = useState(1);
+
+  // Modal update token
   const [selectedToken, setSelectedToken] = useState<Token | null>(null);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
 
-  const addressToUse = (profileAddress as string) || connectedAddress || '';
-
-  const fetchTransactions = useCallback(async (address: string, page: number) => {
-    setIsLoading(true);
+  const fetchProfile = useCallback(async (walletAddress: string) => {
+    if (!walletAddress) return;
+    setProfileLoading(true);
     try {
-      const response: TransactionResponse = await getTransactionsByAddress(address, page);
-      setTransactions(response.transactions);
-      setTotalPages(response.totalPages);
+      const data = await getProfileInfo(walletAddress);
+      setProfileInfo({
+        ...data,
+        avatar: normalizeImageUrl((data as any).avatar),
+      } as any);
     } catch (error) {
-      console.error('Error fetching transactions:', error);
-      setTransactions([]);
+      console.error('Error fetching profile info:', error);
+      setProfileInfo(null);
     } finally {
-      setIsLoading(false);
+      setProfileLoading(false);
     }
   }, []);
 
-  // Sửa theo KIỂU A: chấp nhận API có thể trả string[] và chuẩn hóa
-  const fetchTokenAddresses = useCallback(async () => {
-    try {
-      const res = await getAllTokenAddresses();
+  // const fetchTransactions = useCallback(async (address: string, page: number) => {
+  //   setIsLoading(true);
+  //   try {
+  //     const response: TransactionResponse = await getTransactionsByAddress(address, page);
+  //     setTransactions(response.transactions || []);
+  //     setTotalPages(response.totalPages || 1);
+  //   } catch (error) {
+  //     console.error('Error fetching transactions:', error);
+  //     setTransactions([]);
+  //     setTotalPages(1);
+  //   } finally {
+  //     setIsLoading(false);
+  //   }
+  // }, []);
 
-      if (isAddrSymbolArray(res)) {
-        // API đã trả đúng dạng { address, symbol }[]
-        setTokenAddresses(res);
-      } else if (Array.isArray(res)) {
-        // API trả string[] -> map sang { address, symbol: 'Unknown' }
-        setTokenAddresses((res as string[]).map((addr) => ({ address: addr, symbol: 'Unknown' })));
-      } else {
-        setTokenAddresses([]);
-      }
-    } catch (error) {
-      console.error('Error fetching token addresses:', error);
-      setTokenAddresses([]);
-    }
-  }, []);
+  // accept API can return string[] or {address,symbol}[]
+  // const fetchTokenAddresses = useCallback(async () => {
+  //   try {
+  //     const res = await getAllTokenAddresses();
 
-  const fetchCreatedTokens = useCallback(async (creatorAddress: string, page: number) => {
-    setIsLoading(true);
-    try {
-      const response = await getTokensByCreator(creatorAddress, page);
-      setCreatedTokens(response.tokens);
-      setCreatedTokensTotalPages(response.totalPages);
-    } catch (error) {
-      console.error('Error fetching created tokens:', error);
-      setCreatedTokens([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  //     if (isAddrSymbolArray(res)) {
+  //       setTokenAddresses(res);
+  //     } else if (Array.isArray(res)) {
+  //       setTokenAddresses((res as string[]).map((addr) => ({ address: addr, symbol: 'Unknown' })));
+  //     } else {
+  //       setTokenAddresses([]);
+  //     }
+  //   } catch (error) {
+  //     console.error('Error fetching token addresses:', error);
+  //     setTokenAddresses([]);
+  //   }
+  // }, []);
 
-  const handleTokenUpdate = useCallback(async () => {
-    if (addressToUse) {
-      await fetchCreatedTokens(addressToUse, createdTokensPage);
-    }
-  }, [addressToUse, createdTokensPage, fetchCreatedTokens]);
+  // const fetchCreatedTokens = useCallback(async (creatorAddress: string, page: number) => {
+  //   setIsLoading(true);
+  //   try {
+  //     const response = await getTokensByCreator(creatorAddress, page);
+  //     setCreatedTokens(response.tokens || []);
+  //     setCreatedTokensTotalPages(response.totalPages || 1);
+  //   } catch (error) {
+  //     console.error('Error fetching created tokens:', error);
+  //     setCreatedTokens([]);
+  //     setCreatedTokensTotalPages(1);
+  //   } finally {
+  //     setIsLoading(false);
+  //   }
+  // }, []);
 
+  // const handleTokenUpdate = useCallback(async () => {
+  //   if (addressToUse) {
+  //     await fetchCreatedTokens(addressToUse, createdTokensPage);
+  //   }
+  // }, [addressToUse, createdTokensPage, fetchCreatedTokens]);
+
+  // fetch all data
   useEffect(() => {
-    if (addressToUse) {
-      fetchTransactions(addressToUse, currentPage);
-      fetchTokenAddresses();
-      fetchCreatedTokens(addressToUse, createdTokensPage);
-    }
-  }, [addressToUse, currentPage, createdTokensPage, fetchTransactions, fetchTokenAddresses, fetchCreatedTokens]);
+    if (!addressToUse) return;
+
+    fetchProfile(addressToUse);
+
+    // keep old APIs for now
+    // fetchTransactions(addressToUse, currentPage);
+    // fetchTokenAddresses();
+    // fetchCreatedTokens(addressToUse, createdTokensPage);
+  }, [
+    addressToUse,
+    currentPage,
+    createdTokensPage,
+    fetchProfile,
+    // fetchTransactions,
+    // fetchTokenAddresses,
+    // fetchCreatedTokens,
+  ]);
+
+  // if address changes, reset pages (avoid invalid page state)
+  useEffect(() => {
+    setCurrentPage(1);
+    setCreatedTokensPage(1);
+  }, [addressToUse]);
 
   const handlePageChange = (newPage: number) => setCurrentPage(newPage);
+  const handleCreatedTokensPageChange = (newPage: number) => setCreatedTokensPage(newPage);
 
   const getTokenSymbol = (tokenAddress: string) => {
     const token = tokenAddresses.find((t) => t.address.toLowerCase() === tokenAddress.toLowerCase());
@@ -251,12 +333,16 @@ const ProfilePage: React.FC = () => {
     router.push(`/token/${tokenAddress}`).finally(() => setIsTokenLoading(false));
   };
 
-  const handleCreatedTokensPageChange = (newPage: number) => setCreatedTokensPage(newPage);
-
   const isTokenIncomplete = (token: Token) => {
-    const socialCount = [token.website, token.telegram, token.discord, token.twitter, token.youtube].filter(Boolean).length;
+    const socialCount = [token.website, token.telegram, token.discord, token.twitter, token.youtube].filter(Boolean)
+      .length;
     return !token.logo || !token.description || socialCount < 3;
   };
+
+  const isOwner =
+    !!connectedAddress && !!addressToUse && connectedAddress.toLowerCase() === addressToUse.toLowerCase();
+
+  const avatarSrc = useMemo(() => normalizeImageUrl(profileInfo?.avatar), [profileInfo?.avatar]);
 
   return (
     <Layout>
@@ -266,14 +352,69 @@ const ProfilePage: React.FC = () => {
         image="seo/profile.jpg"
       />
 
-      {/* === Container === */}
       <div className="min-h-screen flex flex-col items-center justify-start py-10">
         <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-10 xl:px-16">
           {/* Title aligned LEFT */}
           <div className="w-full mb-6">
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-left">
-              {addressToUse === connectedAddress ? 'Your Profile' : `Profile: ${formatAddressV2(addressToUse)}`}
+              {isOwner ? 'Your Profile' : `Profile: ${formatAddressV2(addressToUse)}`}
             </h1>
+          </div>
+
+          {/* ✅ User Info (NEW) */}
+          <div className="w-full mb-8">
+            <div className="bg-[var(--card)] rounded-lg p-4 sm:p-5">
+              {profileLoading ? (
+                <div className="flex justify-center py-3">
+                  <LoadingBar size="medium" />
+                </div>
+              ) : profileInfo ? (
+                <div className="flex items-start gap-4">
+                  <div className="relative w-12 h-12 rounded-lg bg-[var(--card2)] overflow-hidden flex items-center justify-center">
+                    {avatarSrc ? (
+                      <Image src={avatarSrc} alt="avatar" fill sizes="48px" className="object-cover" />
+                    ) : (
+                      <span className="text-gray-500 text-xs">No Avatar</span>
+                    )}
+                  </div>
+
+                  <div className="flex-1">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <div>
+                        <p className="text-sm sm:text-base font-semibold text-[var(--accent)]">
+                          {profileInfo.username || 'Anonymous'}
+                        </p>
+                        <p className="text-gray-400 text-[10px] sm:text-xs">
+                          {formatAddressV2(profileInfo.walletAddress)}
+                        </p>
+                      </div>
+
+                      <div className="flex gap-2 sm:gap-3 flex-wrap">
+                        <div className="bg-[var(--card2)] rounded-lg px-3 py-2">
+                          <p className="text-[10px] text-gray-400">Created</p>
+                          <p className="text-xs font-semibold">{profileInfo.totalTokensCreated}</p>
+                        </div>
+                        <div className="bg-[var(--card2)] rounded-lg px-3 py-2">
+                          <p className="text-[10px] text-gray-400">Bought</p>
+                          <p className="text-xs font-semibold">{profileInfo.totalTokensBought}</p>
+                        </div>
+                        <div className="bg-[var(--card2)] rounded-lg px-3 py-2">
+                          <p className="text-[10px] text-gray-400">Sold</p>
+                          <p className="text-xs font-semibold">{profileInfo.totalTokensSold}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {profileInfo.bio ? <p className="text-gray-300 text-xs mt-2">{profileInfo.bio}</p> : null}
+                    {profileInfo.joinedAt ? (
+                      <p className="text-gray-500 text-[10px] mt-2">Joined: {profileInfo.joinedAt}</p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-gray-400 text-sm">No profile info.</p>
+              )}
+            </div>
           </div>
 
           {/* Tabs */}
@@ -293,7 +434,6 @@ const ProfilePage: React.FC = () => {
                         key={token.address}
                         tokenAddress={token.address}
                         symbol={token.symbol}
-                        userAddress={addressToUse}
                         onClick={() => handleTokenClick(token.address)}
                       />
                     ))}
@@ -313,15 +453,16 @@ const ProfilePage: React.FC = () => {
                   </div>
                 ) : createdTokens.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {createdTokens.map((token) => (
-                      <div
-                        key={token.address}
-                        className="bg-[var(--card)] rounded-lg p-3 sm:p-4 cursor-pointer hover:bg-[var(--card-hover)] transition-colors duration-200 flex items-start relative"
-                        onClick={() => handleTokenClick(token.address)}
-                      >
-                        {connectedAddress &&
-                          connectedAddress.toLowerCase() === addressToUse.toLowerCase() &&
-                          isTokenIncomplete(token) && (
+                    {createdTokens.map((token) => {
+                      const logoSrc = normalizeImageUrl(token.logo || '/chats/noimg.svg');
+
+                      return (
+                        <div
+                          key={token.address}
+                          className="bg-[var(--card)] rounded-lg p-3 sm:p-4 cursor-pointer hover:bg-[var(--card-hover)] transition-colors duration-200 flex items-start relative"
+                          onClick={() => handleTokenClick(token.address)}
+                        >
+                          {isOwner && isTokenIncomplete(token) && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -340,25 +481,31 @@ const ProfilePage: React.FC = () => {
                               </svg>
                             </button>
                           )}
-                        {token.logo && (
-                          <img
-                            src={token.logo || '/chats/noimg.svg'}
-                            alt={`${token.name} logo`}
-                            className="w-16 h-16 mr-3 sm:mr-4 rounded-lg"
-                          />
-                        )}
-                        <div>
-                          <h3 className="text-xs sm:text-sm font-semibold text-[var(--accent)] mb-1">
-                            {token.name} <span className="text-gray-400">({token.symbol})</span>
-                          </h3>
-                          <p className="text-gray-400 text-[9px] sm:text-xs">{token.description}</p>
+
+                          <div className="relative w-16 h-16 mr-3 sm:mr-4 rounded-lg overflow-hidden bg-[var(--card2)]">
+                            <Image
+                              src={logoSrc}
+                              alt={`${token.name} logo`}
+                              fill
+                              sizes="64px"
+                              className="object-cover"
+                            />
+                          </div>
+
+                          <div>
+                            <h3 className="text-xs sm:text-sm font-semibold text-[var(--accent)] mb-1">
+                              {token.name} <span className="text-gray-400">({token.symbol})</span>
+                            </h3>
+                            <p className="text-gray-400 text-[9px] sm:text-xs">{token.description}</p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="text-gray-400 text-center text-sm sm:text-base">No tokens created</p>
                 )}
+
                 {createdTokensTotalPages > 1 && (
                   <Pagination
                     currentPage={createdTokensPage}
@@ -372,9 +519,8 @@ const ProfilePage: React.FC = () => {
 
           {/* Transactions */}
           <div className="w-full">
-            <h2 className="text-lg sm:text-xl font-semibold text-[var(--accent)] mb-4 text-left">
-              Recent Transactions
-            </h2>
+            <h2 className="text-lg sm:text-xl font-semibold text-[var(--accent)] mb-4 text-left">Recent Transactions</h2>
+
             {isLoading ? (
               <div className="flex justify-center py-8">
                 <LoadingBar size="medium" />
@@ -384,32 +530,49 @@ const ProfilePage: React.FC = () => {
                 <table className="min-w-full divide-y divide-[var(--card-boarder)]">
                   <thead className="bg-[var(--card2)]">
                     <tr>
-                      <th className="px-4 py-3 text-left text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">Type</th>
-                      <th className="px-4 py-3 text-left text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">Token</th>
-                      <th className="px-4 py-3 text-left text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">Amount</th>
-                      <th className="px-4 py-3 text-left text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">Bone</th>
-                      <th className="px-4 py-3 text-left text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">Date</th>
+                      <th className="px-4 py-3 text-left text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">
+                        Type
+                      </th>
+                      <th className="px-4 py-3 text-left text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">
+                        Token
+                      </th>
+                      <th className="px-4 py-3 text-left text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">
+                        Amount
+                      </th>
+                      <th className="px-4 py-3 text-left text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">
+                        Bone
+                      </th>
+                      <th className="px-4 py-3 text-left text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">
+                        Date
+                      </th>
                     </tr>
                   </thead>
+
                   <tbody className="divide-y divide-[var(--card-boarder)]">
                     {transactions.map((tx) => (
                       <tr key={tx.id} className="hover:bg-[var(--card-hover)] transition-colors duration-150">
-                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">{tx.type}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">{getTokenSymbol(tx.recipientAddress)}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">{formatAmountV3(tx.tokenAmount)}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">
-                          {formatAmountV3(tx.ethAmount)} BONE
+                          {(tx as any).type}
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">{formatTimestamp(tx.timestamp)}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">
+                          {getTokenSymbol((tx as any).recipientAddress)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">
+                          {formatAmountV3((tx as any).tokenAmount)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">
+                          {formatAmountV3((tx as any).ethAmount)} BONE
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">
+                          {formatTimestamp((tx as any).timestamp)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             ) : (
-              <p className="text-gray-400 bg-[var(--card)] rounded-lg p-4 text-center">
-                No recent transactions.
-              </p>
+              <p className="text-gray-400 bg-[var(--card)] rounded-lg p-4 text-center">No recent transactions.</p>
             )}
 
             {totalPages > 1 && (
@@ -427,7 +590,7 @@ const ProfilePage: React.FC = () => {
       )}
 
       {/* Update Modal */}
-      {selectedToken && (
+      {/* {selectedToken && (
         <TokenUpdateModal
           token={selectedToken}
           isOpen={isUpdateModalOpen}
@@ -437,7 +600,7 @@ const ProfilePage: React.FC = () => {
           }}
           onUpdate={handleTokenUpdate}
         />
-      )}
+      )} */}
     </Layout>
   );
 };

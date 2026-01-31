@@ -569,3 +569,39 @@ export async function trackReferral(payload: {
   );
   return data;
 }
+
+// =====================
+// ✅ Profile API (NEW)
+// =====================
+export type ProfileInfo = {
+  walletAddress: string;
+  username: string;
+  avatar: string;
+  bio: string;
+  joinedAt: string;
+  totalTokensCreated: number;
+  totalTokensBought: number;
+  totalTokensSold: number;
+};
+
+export async function getProfileInfo(walletAddress: string): Promise<ProfileInfo> {
+  const wa = (walletAddress || '').trim();
+  if (!wa) throw new Error('Missing walletAddress');
+
+  const headers = getAuthHeaders();
+
+  // ✅ IMPORTANT: call new BE endpoint via proxy
+  const { data } = await getViaProxy<ProfileInfo>('/profile/info', { walletAddress: wa }, headers);
+
+  // normalize to avoid UI crash if BE returns null fields
+  return {
+    walletAddress: data?.walletAddress ?? wa,
+    username: data?.username ?? '',
+    avatar: data?.avatar ?? '',
+    bio: data?.bio ?? '',
+    joinedAt: data?.joinedAt ?? '',
+    totalTokensCreated: Number((data as any)?.totalTokensCreated ?? 0),
+    totalTokensBought: Number((data as any)?.totalTokensBought ?? 0),
+    totalTokensSold: Number((data as any)?.totalTokensSold ?? 0),
+  };
+}

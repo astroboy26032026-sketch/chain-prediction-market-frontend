@@ -62,3 +62,11 @@ export const trackReferral = (...args: Parameters<typeof realApi.trackReferral>)
 
 // Nếu dự án bạn còn dùng các hàm khác từ ./api
 // thì export thêm ở đây theo cùng pattern để tránh breaking import.
+
+// =====================
+// ✅ Profile exports (NEW)
+// =====================
+
+export const getProfileInfo = (
+  ...args: Parameters<typeof realApi.getProfileInfo>
+) => realApi.getProfileInfo(...args);
