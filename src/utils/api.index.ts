@@ -21,6 +21,28 @@ export const getTokenLiquidity = (...args: Parameters<typeof realApi.getTokenLiq
   realApi.getTokenLiquidity(...args);
 
 // =====================
+// ✅ NEW BE API (Solana): Create Token Flow
+// =====================
+
+export const prepareMint = (...args: Parameters<typeof realApi.prepareMint>) =>
+  realApi.prepareMint(...args);
+
+export const confirmMint = (...args: Parameters<typeof realApi.confirmMint>) =>
+  realApi.confirmMint(...args);
+
+export const uploadTokenImage = (...args: Parameters<typeof realApi.uploadTokenImage>) =>
+  realApi.uploadTokenImage(...args);
+
+export const createTokenDraft = (...args: Parameters<typeof realApi.createTokenDraft>) =>
+  realApi.createTokenDraft(...args);
+
+export const previewInitialBuy = (...args: Parameters<typeof realApi.previewInitialBuy>) =>
+  realApi.previewInitialBuy(...args);
+
+export const finalizeTokenCreation = (...args: Parameters<typeof realApi.finalizeTokenCreation>) =>
+  realApi.finalizeTokenCreation(...args);
+
+// =====================
 // Existing exports (still used)
 // =====================
 
@@ -67,6 +89,24 @@ export const trackReferral = (...args: Parameters<typeof realApi.trackReferral>)
 
 export const getProfileInfo = (...args: Parameters<typeof realApi.getProfileInfo>) =>
   realApi.getProfileInfo(...args);
+
+// =====================
+// Still-used existing APIs (non-chart)
+// (Bạn có thể comment nếu muốn “khóa” hết /ports)
+// =====================
+
+export const getTransactionsByAddress = (...args: Parameters<typeof realApi.getTransactionsByAddress>) =>
+  realApi.getTransactionsByAddress(...args);
+
+export const getTokensByCreator = (...args: Parameters<typeof realApi.getTokensByCreator>) =>
+  realApi.getTokensByCreator(...args);
+
+export const getAllTokenAddresses = (...args: Parameters<typeof realApi.getAllTokenAddresses>) =>
+  realApi.getAllTokenAddresses(...args);
+
+// Nếu còn page nào update metadata kiểu cũ thì giữ, còn không thì comment.
+export const updateToken = (...args: Parameters<typeof realApi.updateToken>) =>
+  realApi.updateToken(...args);
 
 // =====================================================================
 // ⚠️ LEGACY CHART / PRICE / LIQUIDITY / TOKEN DETAIL APIs (DISABLED)

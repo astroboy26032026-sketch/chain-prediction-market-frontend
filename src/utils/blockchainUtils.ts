@@ -5,11 +5,22 @@
  * - Các hooks EVM (wagmi/viem) đã bị loại khỏi runtime để tránh:
  *   WagmiProviderNotFoundError
  *
- * - Để app không crash nếu còn component nào lỡ gọi các hook EVM cũ,
- *   tất cả EVM hooks dưới đây sẽ trả về object "disabled" thay vì throw.
- *
- * Khi bạn migrate xong, hãy xóa hẳn các exports EVM này hoặc tách sang file evm riêng.
+ * ✅ IMPORTANT:
+ * - Các hook EVM cũ sẽ được giữ dạng "disabled" để không crash UI nếu còn import.
+ * - Nhưng Create Token flow mới (Solana) sẽ dùng hook `useCreateTokenSolana()`.
  */
+
+import { useCallback, useMemo, useState } from 'react';
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
+import { VersionedTransaction } from '@solana/web3.js';
+
+import {
+  prepareMint,
+  confirmMint,
+  type PrepareMintRequest,
+  type PrepareMintResponse,
+  type ConfirmMintResponse,
+} from '@/utils/api';
 
 /* =========================
    Common helpers (SAFE)
@@ -20,7 +31,6 @@ const BI_0 = BigInt(0);
 const BI_10 = BigInt(10);
 
 function pow10BigInt(decimals: number): bigint {
-  // handle weird inputs safely
   const d = Number.isFinite(decimals) ? Math.max(0, Math.floor(decimals)) : 0;
   let out = BigInt(1);
   for (let i = 0; i < d; i++) out = out * BI_10;
@@ -41,6 +51,7 @@ export function formatUnitsSafe(value: bigint, decimals = 18): string {
   const frac = f.toString().padStart(decimals, '0').replace(/0+$/, '');
   return `${neg ? '-' : ''}${i.toString()}${frac ? '.' + frac : ''}`;
 }
+
 /**
  * Parse amount safely for both:
  * - EVM integer string (wei-like): "1000000000000000000"
@@ -55,29 +66,20 @@ export function parseAmountToNumber(amount: string | number, decimals = 18): num
   const str = String(amount).trim();
   if (!str) return null;
 
-  // If it's already a normal decimal representation => parse directly
-  // (Solana / BE new)
   if (str.includes('.') || str.includes('e') || str.includes('E')) {
     const n = Number(str);
     return Number.isFinite(n) ? n : null;
   }
 
-  // Integer string case (EVM wei-like). BigInt can handle it.
   try {
     const n = Number(formatUnitsSafe(BigInt(str), decimals));
     return Number.isFinite(n) ? n : null;
   } catch {
-    // Fallback: parseFloat as last resort (never crash)
     const n = Number(str);
     return Number.isFinite(n) ? n : null;
   }
 }
 
-/**
- * Generic compact formatter used by formatAmount* helpers.
- * - k/M/B/T for large
- * - variable decimals for small
- */
 export function formatCompactNumber(value: number): string {
   const format = (v: number, maxDecimals: number) => {
     const rounded = v.toFixed(maxDecimals);
@@ -99,21 +101,13 @@ export function formatCompactNumber(value: number): string {
    Amount/time formatting (SAFE)
 ========================= */
 
-/**
- * ✅ FIXED for Solana:
- * - Accepts decimal string OR integer string
- * - Never BigInt(decimal)
- * - Never throws
- */
 export const formatAmountV3 = (amount: string | number, decimals: number = 18) => {
   const n = parseAmountToNumber(amount, decimals);
   if (n === null) return '0';
 
   const format = (value: number, maxDecimals: number) => {
     const rounded = value.toFixed(maxDecimals);
-    // Keep same behavior as your old code: parseFloat(toString()) removes trailing zeros
-    const withoutTrailingZeros = Number(rounded).toString();
-    return withoutTrailingZeros;
+    return Number(rounded).toString();
   };
 
   const abs = Math.abs(n);
@@ -124,7 +118,6 @@ export const formatAmountV3 = (amount: string | number, decimals: number = 18) =
   if (abs >= 1e3) return `${format(n / 1e3, 2)}k`;
   if (abs >= 1) return format(n, 2);
 
-  // Small number: dynamic decimals similar to your logic, but safe for n=0
   const safe = abs > 0 ? abs : 1e-9;
   const dec = Math.min(6, Math.max(2, 3 - Math.floor(Math.log10(safe))));
   return format(n, dec);
@@ -190,10 +183,6 @@ export function formatTimestampV1(timestamp: string): string {
   return `${diffInYears}yr`;
 }
 
-/**
- * ✅ FIXED: do not BigInt(decimal)
- * (giữ output style cũ)
- */
 export const formatAmount = (amount: string | number, decimals: number = 18) => {
   const n = parseAmountToNumber(amount, decimals);
   if (n === null) return '0';
@@ -206,10 +195,6 @@ export const formatAmount = (amount: string | number, decimals: number = 18) => 
   return n.toFixed(8);
 };
 
-/**
- * ✅ FIXED: do not BigInt(decimal)
- * (giữ output style cũ)
- */
 export const formatAmountV2 = (amount: string | number, decimals: number = 18) => {
   const n = parseAmountToNumber(amount, decimals);
   if (n === null) return '0';
@@ -227,27 +212,94 @@ export function formatAddressV2(address: string): string {
   return `${lastSix}`;
 }
 
-/**
- * Legacy helper: UI cũ dùng shortenAddress cho EVM (0x..).
- * Với Solana address, fallback sẽ rút gọn kiểu 4...4.
- */
 export function shortenAddress(address: string): string {
   if (!address) return '';
   if (address.startsWith('0x') && address.length >= 10) return address.slice(2, 8);
   return address.length > 8 ? `${address.slice(0, 4)}...${address.slice(-4)}` : address;
 }
 
-/**
- * Explorer URL (legacy).
- * Bạn có thể đổi sang Solana explorer sau:
- * https://explorer.solana.com/tx/<sig>?cluster=devnet
- */
 export function getExplorerUrl(txHash: string): string {
+  // legacy
   return `https://shibariumscan.io/tx/${txHash}`;
 }
 
 /* =========================
+   ✅ Solana Create Token Hook (NEW)
+========================= */
+
+export type CreateMintResult = {
+  mint: string;
+  ata: string;
+  txBase64: string;
+  signature: string;
+  confirmed?: ConfirmMintResponse;
+  prepared: PrepareMintResponse;
+};
+
+export function useCreateTokenSolana() {
+  const { publicKey, signTransaction, sendTransaction } = useWallet();
+  const { connection } = useConnection();
+
+  const [isLoading, setIsLoading] = useState(false);
+
+  const canSign = useMemo(() => !!publicKey && !!signTransaction, [publicKey, signTransaction]);
+
+  const createMint = useCallback(
+    async (payload: PrepareMintRequest): Promise<CreateMintResult> => {
+      if (!publicKey) throw new Error('Wallet not connected');
+      if (!sendTransaction) throw new Error('Wallet adapter does not support sendTransaction');
+
+      setIsLoading(true);
+      try {
+        // 1) call BE: prepare mint (unsigned tx base64)
+        const prepared = await prepareMint(payload);
+
+        // 2) decode base64 -> VersionedTransaction
+        const txBytes = Buffer.from(prepared.txBase64, 'base64');
+        const tx = VersionedTransaction.deserialize(txBytes);
+
+        // 3) send tx (wallet signs + sends)
+        const signature = await sendTransaction(tx, connection);
+
+        // 4) optional: confirm transaction on chain (safe)
+        try {
+          await connection.confirmTransaction(signature, 'confirmed');
+        } catch {
+          // ignore: still allow backend confirm
+        }
+
+        // 5) confirm mint in BE (persist)
+        const confirmed = await confirmMint({
+          mint: prepared.mint,
+          symbol: prepared.symbol,
+          name: prepared.name,
+        });
+
+        return {
+          mint: prepared.mint,
+          ata: prepared.ata,
+          txBase64: prepared.txBase64,
+          signature,
+          confirmed,
+          prepared,
+        };
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [publicKey, sendTransaction, connection]
+  );
+
+  return {
+    createMint,
+    isLoading,
+    canSign,
+  };
+}
+
+/* =========================
    EVM Hooks: NO-THROW disabled stubs
+   (keep to avoid crashing legacy pages)
 ========================= */
 
 type DisabledHookBase = { disabled: true };
@@ -270,106 +322,41 @@ type DisabledWriteHook = DisabledHookBase & {
   isPending?: false;
 };
 
-/** Kept for TS compatibility. */
-export const getBondingCurveAddress = (_tokenAddress: any): any => {
-  // return undefined but do not throw
-  return undefined;
-};
+export const getBondingCurveAddress = (_tokenAddress: any): any => undefined;
 
 export function useCurrentTokenPrice(_tokenAddress: any): DisabledReadHook<bigint> {
-  return {
-    disabled: true,
-    data: undefined,
-    refetch: async () => {},
-  };
+  return { disabled: true, data: undefined, refetch: async () => {} };
 }
-
 export function useTotalSupply(_tokenAddress: any): DisabledReadHook<bigint> {
-  return {
-    disabled: true,
-    data: undefined,
-    refetch: async () => {},
-  };
+  return { disabled: true, data: undefined, refetch: async () => {} };
 }
-
 export function useMarketCap(_tokenAddress: any): DisabledReadHook<bigint> {
-  return {
-    disabled: true,
-    data: undefined,
-    refetch: async () => {},
-  };
+  return { disabled: true, data: undefined, refetch: async () => {} };
 }
 
-// Liquidity transform types from your old code:
 type TransformedLiquidityData = [string, bigint, bigint, boolean] | undefined;
-
 export const useTokenLiquidity = (_tokenAddress: any): DisabledQueryHook<TransformedLiquidityData> => {
-  return {
-    disabled: true,
-    data: undefined,
-    isError: false,
-    isLoading: false,
-    refetch: async () => {},
-  };
+  return { disabled: true, data: undefined, isError: false, isLoading: false, refetch: async () => {} };
 };
 
-export function useCalcBuyReturn(
-  _tokenAddress: any,
-  _ethAmount: any
-): DisabledHookBase & { data: bigint | undefined; isLoading: false } {
-  return {
-    disabled: true,
-    data: undefined,
-    isLoading: false,
-  };
+export function useCalcBuyReturn(_tokenAddress: any, _ethAmount: any) {
+  return { disabled: true as const, data: undefined as bigint | undefined, isLoading: false as const };
+}
+export function useCalcSellReturn(_tokenAddress: any, _tokenAmount: any) {
+  return { disabled: true as const, data: undefined as bigint | undefined, isLoading: false as const };
+}
+export function useUserBalance(_userAddress: any, _tokenAddress: any) {
+  return { disabled: true as const, ethBalance: undefined as bigint | undefined, tokenBalance: undefined as bigint | undefined, refetch: () => {} };
+}
+export function useERC20Balance(_tokenAddress: any, _walletAddress: any) {
+  return { disabled: true as const, data: undefined as bigint | undefined, balance: undefined as bigint | undefined, refetch: async () => {} };
+}
+export function useTokenAllowance(_tokenAddress: any, _owner: any, _spender: any) {
+  return { disabled: true as const, data: undefined as bigint | undefined };
 }
 
-export function useCalcSellReturn(
-  _tokenAddress: any,
-  _tokenAmount: any
-): DisabledHookBase & { data: bigint | undefined; isLoading: false } {
-  return {
-    disabled: true,
-    data: undefined,
-    isLoading: false,
-  };
-}
-
-export function useUserBalance(
-  _userAddress: any,
-  _tokenAddress: any
-): DisabledHookBase & {
-  ethBalance: bigint | undefined;
-  tokenBalance: bigint | undefined;
-  refetch: () => void;
-} {
-  return {
-    disabled: true,
-    ethBalance: undefined,
-    tokenBalance: undefined,
-    refetch: () => {},
-  };
-}
-
-export function useERC20Balance(
-  _tokenAddress: any,
-  _walletAddress: any
-): DisabledReadHook<bigint> & { balance: bigint | undefined } {
-  return {
-    disabled: true,
-    data: undefined,
-    balance: undefined,
-    refetch: async () => {},
-  };
-}
-
-export function useTokenAllowance(_tokenAddress: any, _owner: any, _spender: any): DisabledHookBase & { data: bigint | undefined } {
-  return {
-    disabled: true,
-    data: undefined,
-  };
-}
-
+// ❌ REMOVE old hook name to prevent new code from using it by accident
+// (Nếu project còn import ở đâu đó, bạn phải đổi import sang useCreateTokenSolana hoặc API flow mới.)
 export function useCreateToken(): DisabledHookBase & {
   createToken: (..._args: any[]) => Promise<never>;
   isLoading: false;
@@ -377,18 +364,15 @@ export function useCreateToken(): DisabledHookBase & {
 } {
   return {
     disabled: true,
-    // Calling this should clearly fail, but not crash on import/render.
     createToken: async () => {
-      throw new Error('[EVM_DISABLED] createToken is not available on Solana setup.');
+      throw new Error('[EVM_DISABLED] useCreateToken is removed. Use useCreateTokenSolana() or API create-token flow.');
     },
     isLoading: false,
     UserRejectedRequestError: undefined,
   };
 }
 
-export function useBuyTokens(_tokenAddress?: any): DisabledWriteHook & {
-  buyTokens: (..._args: any[]) => Promise<never>;
-} {
+export function useBuyTokens(_tokenAddress?: any): DisabledWriteHook & { buyTokens: (..._args: any[]) => Promise<never> } {
   return {
     disabled: true,
     isPending: false,
@@ -397,10 +381,7 @@ export function useBuyTokens(_tokenAddress?: any): DisabledWriteHook & {
     },
   };
 }
-
-export function useSellTokens(_tokenAddress?: any): DisabledWriteHook & {
-  sellTokens: (..._args: any[]) => Promise<never>;
-} {
+export function useSellTokens(_tokenAddress?: any): DisabledWriteHook & { sellTokens: (..._args: any[]) => Promise<never> } {
   return {
     disabled: true,
     isPending: false,
@@ -409,10 +390,7 @@ export function useSellTokens(_tokenAddress?: any): DisabledWriteHook & {
     },
   };
 }
-
-export function useApproveTokens(): DisabledWriteHook & {
-  approveTokens: (..._args: any[]) => Promise<never>;
-} {
+export function useApproveTokens(): DisabledWriteHook & { approveTokens: (..._args: any[]) => Promise<never> } {
   return {
     disabled: true,
     isPending: false,

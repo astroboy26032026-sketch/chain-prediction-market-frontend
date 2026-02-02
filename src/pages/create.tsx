@@ -1,12 +1,19 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+// src/pages/create.tsx
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import { toast } from 'react-hot-toast';
-import axios from 'axios';
 
 import Layout from '@/components/layout/Layout';
 import SEO from '@/components/seo/SEO';
-import { useCreateToken } from '@/utils/blockchainUtils';
-import { updateToken } from '@/utils/api';
+
+import {
+  uploadTokenImage,
+  createTokenDraft,
+  previewInitialBuy,
+  finalizeTokenCreation,
+  type CreateTokenDraftResponse,
+  type PreviewInitialBuyResponse,
+} from '@/utils/api';
 
 import {
   ChevronDownIcon,
@@ -19,22 +26,51 @@ import {
 import PurchaseConfirmationPopup from '@/components/notifications/PurchaseConfirmationPopup';
 import Modal from '@/components/notifications/Modal';
 
-type Step = 1 | 2 | 3;
-type Badge = 'Bronze' | 'Silver' | 'Gold' | null;
+// ✅ Optional: Solana wallet adapter
+// If you don't have wallet-adapter set up yet, you can REMOVE these 2 lines and the small banner below.
+import { useWallet } from '@solana/wallet-adapter-react';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 
-const MAX_FILE_SIZE = 1024 * 1024;
-const toLamports = (n: number) => BigInt(Math.round(n * 1e9));
+type Step = 1 | 2 | 3;
+
+const MAX_FILE_SIZE = 1024 * 1024; // 1MB
+
 const makeSymbol = (name: string) =>
   ((name || 'TOKEN').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 6) || 'TOKEN');
 
+function readFileAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ''));
+    r.onerror = () => reject(new Error('Failed to read file'));
+    r.readAsDataURL(file);
+  });
+}
+
+function safeErrMsg(e: any, fallback: string) {
+  return e?.response?.data?.message || e?.response?.data?.error || e?.message || fallback;
+}
+
+function isExpiredDraftStatus(status?: number) {
+  return status === 410;
+}
+
 const CreateToken: React.FC = () => {
   const router = useRouter();
+
+  // ✅ wallet (optional)
+  const { connected } = useWallet();
+  const showConnectHint = !connected;
+
+  // ===== Step control =====
   const [step, setStep] = useState<Step>(1);
 
-  /* ========= Step 1: Create New Token ========= */
+  // ===== Step 1: Basic =====
   const [tokenName, setTokenName] = useState('');
   const [tokenSymbol, setTokenSymbol] = useState('');
   const [tokenDescription, setTokenDescription] = useState('');
+  const [isNSFW, setIsNSFW] = useState(false);
+
   const [tokenImageUrl, setTokenImageUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -45,7 +81,10 @@ const CreateToken: React.FC = () => {
   const [youtube, setYoutube] = useState('');
   const [isSocialExpanded, setIsSocialExpanded] = useState(false);
 
-  // Upload
+  // Draft from BE
+  const [draft, setDraft] = useState<CreateTokenDraftResponse | null>(null);
+
+  // Upload input
   const fileInputRef = useRef<HTMLInputElement>(null);
   const openFilePicker = useCallback(() => {
     if (fileInputRef.current) {
@@ -53,75 +92,76 @@ const CreateToken: React.FC = () => {
       fileInputRef.current.click();
     }
   }, []);
-  const onImagePicked = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    await uploadToIPFS(f);
-  }, []);
-  const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault(); e.stopPropagation();
-  }, []);
-  const onDrop = useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault(); e.stopPropagation();
-    const f = e.dataTransfer.files?.[0];
-    if (!f) return;
-    await uploadToIPFS(f);
-  }, []);
 
-  /* ========= Step 2: Trust Core Setting ========= */
-  const [initialSupply, setInitialSupply] = useState<number | ''>('');
-  const [distCreator, setDistCreator] = useState(40);
-  const [distCommunity, setDistCommunity] = useState(40);
-  const [distLiquidity, setDistLiquidity] = useState(20);
-  const distSum = distCreator + distCommunity + distLiquidity;
+  // ===== Step 2: Curve params =====
+  const [decimals, setDecimals] = useState<number>(6);
+  const [curveType] = useState<'linear'>('linear');
 
-  const [mintAuthority, setMintAuthority] = useState('');
-  const [renounceMint, setRenounceMint] = useState(false);
-  const [freezeEnabled, setFreezeEnabled] = useState<boolean | null>(null);
-  const [lpLockMonths, setLpLockMonths] = useState<0 | 1 | 6>(0);
-  const lockedUntil = lpLockMonths
-    ? (() => {
-        const d = new Date();
-        d.setMonth(d.getMonth() + lpLockMonths);
-        return `${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, '0')}-${`${d.getDate()}`.padStart(2, '0')}`;
-      })()
-    : null;
-  const [badge, setBadge] = useState<Badge>(null);
+  // defaults (tune as needed)
+  const [basePriceLamports, setBasePriceLamports] = useState<number>(1000);
+  const [slopeLamports, setSlopeLamports] = useState<number>(1);
+  const [bondingCurveSupply, setBondingCurveSupply] = useState<string>('1000000000000000');
+  const [graduateTargetLamports, setGraduateTargetLamports] = useState<string>('69000000000');
 
-  /* ========= Step 3 / Create flow ========= */
-  const [creationStep, setCreationStep] =
-    useState<'idle' | 'uploading' | 'creating' | 'updating' | 'completed' | 'error'>('idle');
+  // ===== Step 3: Finalize / Buy =====
+  const [creationStep, setCreationStep] = useState<
+    'idle' | 'uploading' | 'drafting' | 'previewing' | 'finalizing' | 'completed' | 'error'
+  >('idle');
+
+  const [buyAmount, setBuyAmount] = useState<number>(0);
+  const walletBalance = 0; // TODO: replace with wallet adapter balance later
+
+  const [preview, setPreview] = useState<PreviewInitialBuyResponse | null>(null);
+
   const [showPurchasePopup, setShowPurchasePopup] = useState(false);
   const [showPreventNavigationModal, setShowPreventNavigationModal] = useState(false);
 
-  // Finalize – buy panel
-  const [buyAmount, setBuyAmount] = useState<number>(0);
-  const walletBalance = 0;
+  // ===== Liquidity Settings (gear) =====
+  const [showLiquidity, setShowLiquidity] = useState(false);
+  const [liqMode, setLiqMode] = useState<'PSOL' | 'SOL'>('PSOL');
+  const creatorReward = { sol: 2, points: 69 };
 
-  const { createToken, isLoading: isBlockchainLoading, UserRejectedRequestError } = useCreateToken();
+  // ===== derived =====
+  const symbolAuto = useMemo(() => makeSymbol(tokenName), [tokenName]);
+  const symbolFinal = useMemo(() => (tokenSymbol || symbolAuto).trim(), [tokenSymbol, symbolAuto]);
 
-  /* ========= Upload to IPFS ========= */
-  const uploadToIPFS = useCallback(async (file: File) => {
+  const canGoNextStep1 = useMemo(() => {
+    return Boolean(tokenName.trim()) && Boolean(symbolFinal) && Boolean(tokenImageUrl);
+  }, [tokenName, symbolFinal, tokenImageUrl]);
+
+  const isBusy = useMemo(() => creationStep !== 'idle', [creationStep]);
+
+  // ===== helpers: reset flow if draft expired =====
+  const resetDraftAndGoStep1 = useCallback((msg?: string) => {
+    setDraft(null);
+    setPreview(null);
+    setStep(1);
+    if (msg) toast.error(msg);
+  }, []);
+
+  // ===== Upload to BE: /token/upload-image =====
+  const uploadImageToBE = useCallback(async (file: File) => {
     if (file.size > MAX_FILE_SIZE) {
       toast.error('File size exceeds 1MB limit. Please choose a smaller file.');
       return null;
     }
+
     setIsUploading(true);
     setCreationStep('uploading');
-    const formData = new FormData();
-    formData.append('file', file);
+
     try {
-      const res = await axios.post('/api/upload-to-ipfs', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      if (res.data?.url) {
-        setTokenImageUrl(res.data.url);
+      const dataUrl = await readFileAsDataURL(file);
+
+      const res = await uploadTokenImage({ image: dataUrl });
+      if (res?.imageUrl) {
+        setTokenImageUrl(res.imageUrl);
         toast.success('Image uploaded successfully!');
-        return res.data.url;
+        return res.imageUrl;
       }
-      throw new Error('No URL returned');
+
+      throw new Error('No imageUrl returned');
     } catch (e: any) {
-      toast.error(e?.response?.data?.error || 'Failed to upload image.');
+      toast.error(safeErrMsg(e, 'Failed to upload image.'));
       return null;
     } finally {
       setIsUploading(false);
@@ -129,87 +169,155 @@ const CreateToken: React.FC = () => {
     }
   }, []);
 
-  /* ========= Trust score ========= */
-  const hasBronze =
-    initialSupply !== '' &&
-    Number(initialSupply) > 0 &&
-    distSum === 100 &&
-    mintAuthority.trim().length > 0;
+  const onImagePicked = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const f = e.target.files?.[0];
+      if (!f) return;
+      await uploadImageToBE(f);
+    },
+    [uploadImageToBE]
+  );
 
-  const hasSilver = hasBronze && freezeEnabled !== null;
-  const hasGold = hasSilver && lpLockMonths !== 0;
+  const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
 
-  const handleCheckTrust = () => {
-    if (hasGold) setBadge('Gold');
-    else if (hasSilver) setBadge('Silver');
-    else if (hasBronze) setBadge('Bronze');
-    else {
-      setBadge(null);
-      toast('Please complete more details to earn a badge.', { icon: 'ℹ️' });
+  const onDrop = useCallback(
+    async (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const f = e.dataTransfer.files?.[0];
+      if (!f) return;
+      await uploadImageToBE(f);
+    },
+    [uploadImageToBE]
+  );
+
+  // ===== Create Draft: /token/create/draft =====
+  const handleCreateDraftAndNext = useCallback(async () => {
+    if (!tokenImageUrl) {
+      toast.error('Please upload token image.');
+      return;
     }
-  };
 
-  /* ========= Create on-chain + update backend ========= */
-  const runCreate = useCallback(
-    async (purchaseLamports: bigint) => {
-      setCreationStep('creating');
-      let tokenAddress: string | null = null;
+    setCreationStep('drafting');
+
+    try {
+      const res = await createTokenDraft({
+        name: tokenName.trim(),
+        symbol: symbolFinal,
+        description: tokenDescription || '',
+        imageUrl: tokenImageUrl,
+        isNSFW: Boolean(isNSFW),
+        socials: {
+          ...(twitter ? { twitter } : {}),
+          ...(telegram ? { telegram } : {}),
+          ...(website ? { website } : {}),
+          ...(discord ? { discord } : {}),
+          ...(youtube ? { youtube } : {}),
+        },
+      });
+
+      setDraft(res);
+      setPreview(null);
+      toast.success('Draft created!');
+      setStep(2);
+    } catch (e: any) {
+      const status = e?.response?.status;
+      if (status === 401) toast.error('Unauthorized. Please login again.');
+      else toast.error(safeErrMsg(e, 'Create draft failed.'));
+    } finally {
+      setCreationStep('idle');
+    }
+  }, [
+    tokenName,
+    symbolFinal,
+    tokenDescription,
+    tokenImageUrl,
+    isNSFW,
+    twitter,
+    telegram,
+    website,
+    discord,
+    youtube,
+  ]);
+
+  // ===== Preview buy: /token/create/preview-buy =====
+  const handlePreviewBuy = useCallback(async () => {
+    if (!draft?.draftId) {
+      toast.error('Missing draftId. Please go back and create draft again.');
+      return;
+    }
+    if (buyAmount <= 0) {
+      toast.error('Enter buy amount > 0');
+      return;
+    }
+
+    setCreationStep('previewing');
+    try {
+      const res = await previewInitialBuy({
+        draftId: draft.draftId,
+        amountSol: buyAmount,
+      });
+      setPreview(res);
+      toast.success('Preview calculated');
+    } catch (e: any) {
+      const status = e?.response?.status;
+      if (status === 404) toast.error('Draft not found.');
+      else if (isExpiredDraftStatus(status)) resetDraftAndGoStep1('Draft expired. Please create again.');
+      else toast.error(safeErrMsg(e, 'Preview buy failed.'));
+    } finally {
+      setCreationStep('idle');
+    }
+  }, [draft?.draftId, buyAmount, resetDraftAndGoStep1]);
+
+  // ===== Finalize: /token/create/finalize =====
+  const runFinalize = useCallback(
+    async (initialBuySol: number) => {
+      if (!draft?.draftId) {
+        toast.error('Missing draftId. Please go back and create draft again.');
+        return;
+      }
+
+      setCreationStep('finalizing');
       try {
-        const symbol = tokenSymbol || makeSymbol(tokenName);
-        tokenAddress = await createToken(tokenName, symbol, purchaseLamports);
+        const res = await finalizeTokenCreation({
+          draftId: draft.draftId,
+          initialBuySol: initialBuySol || 0,
+          decimals: Number.isFinite(Number(decimals)) ? Number(decimals) : 6,
+          curveType,
+          basePriceLamports: Math.max(0, Number(basePriceLamports) || 0),
+          slopeLamports: Math.max(0, Number(slopeLamports) || 0),
+          bondingCurveSupply: String(bondingCurveSupply || '0'),
+          graduateTargetLamports: String(graduateTargetLamports || '0'),
+        });
 
-        setCreationStep('updating');
-        // giả lập chờ indexer/back-end cập nhật
-        await new Promise((r) => setTimeout(r, 4000));
+        setCreationStep('completed');
+        toast.success('Token created successfully!');
+        router.push(`/token/${res.tokenAddress}`);
+      } catch (e: any) {
+        const status = e?.response?.status;
 
-        if (tokenAddress && tokenImageUrl) {
-          // Chuẩn hoá payload tokenomics để tránh lỗi type (và không gửi field rỗng)
-          const tokenomicsPayload = {
-            ...(initialSupply !== '' ? { initialSupply: Number(initialSupply) } : {}),
-            distribution: {
-              creator: distCreator,
-              community: distCommunity,
-              liquidity: distLiquidity,
-            },
-            ...(mintAuthority.trim() ? { mintAuthority: mintAuthority.trim() } : {}),
-            renounceMint,
-            ...(freezeEnabled !== null ? { freezeEnabled } : {}),
-            lpLockMonths,
-            ...(lockedUntil ? { lockedUntil } : {}),
-            ...(badge ? { trustBadge: badge } : {}),
-          } as const;
+        if (status === 401) toast.error('Unauthorized. Please login again.');
+        else if (status === 403) toast.error('Forbidden: you can only finalize your own draft.');
+        else if (status === 404) toast.error('Draft not found.');
+        else if (isExpiredDraftStatus(status)) resetDraftAndGoStep1('Draft expired. Please create again.');
+        else toast.error(safeErrMsg(e, 'Finalize failed.'));
 
-          await updateToken(tokenAddress, {
-            logo: tokenImageUrl,
-            description: tokenDescription,
-            ...(website ? { website } : {}),
-            ...(telegram ? { telegram } : {}),
-            ...(discord ? { discord } : {}),
-            ...(twitter ? { twitter } : {}),
-            ...(youtube ? { youtube } : {}),
-            // Nếu api.ts CHƯA khai báo `tokenomics`, cast tạm để không lỗi TS.
-            tokenomics: tokenomicsPayload as any,
-          } as any);
-
-          setCreationStep('completed');
-          toast.success('Token created successfully!');
-          router.push(`/token/${tokenAddress}`);
-        } else {
-          throw new Error('Token address or image URL missing');
-        }
-      } catch (error: any) {
         setCreationStep('idle');
-        if (error instanceof UserRejectedRequestError) toast.error('Transaction was cancelled.');
-        else if (!tokenAddress) toast.error('Failed to create token on blockchain. Please try again.');
-        else toast.error('Created on-chain but failed to update backend. Try later in Portfolio.');
       }
     },
     [
-      tokenName, tokenSymbol, tokenImageUrl, tokenDescription,
-      initialSupply, distCreator, distCommunity, distLiquidity,
-      mintAuthority, renounceMint, freezeEnabled, lpLockMonths, lockedUntil, badge,
-      website, telegram, discord, twitter, youtube,
-      createToken, router, UserRejectedRequestError
+      draft?.draftId,
+      decimals,
+      curveType,
+      basePriceLamports,
+      slopeLamports,
+      bondingCurveSupply,
+      graduateTargetLamports,
+      router,
+      resetDraftAndGoStep1,
     ]
   );
 
@@ -217,18 +325,22 @@ const CreateToken: React.FC = () => {
     if (buyAmount <= 0) return;
     setShowPurchasePopup(true);
   };
+
   const handleConfirmBuy = async () => {
     setShowPurchasePopup(false);
-    await runCreate(toLamports(buyAmount));
-  };
-  const handleCreateWithoutBuy = async () => {
-    await runCreate(BigInt(0));
+    await runFinalize(buyAmount);
   };
 
+  const handleCreateWithoutBuy = async () => {
+    await runFinalize(0);
+  };
+
+  // ===== Prevent navigation while finalizing =====
   useEffect(() => {
     const h = (e: BeforeUnloadEvent) => {
-      if (creationStep === 'creating' || creationStep === 'updating') {
-        e.preventDefault(); e.returnValue = '';
+      if (creationStep === 'finalizing') {
+        e.preventDefault();
+        e.returnValue = '';
       }
     };
     window.addEventListener('beforeunload', h);
@@ -236,29 +348,46 @@ const CreateToken: React.FC = () => {
   }, [creationStep]);
 
   useEffect(() => {
-    setShowPreventNavigationModal(creationStep === 'creating' || creationStep === 'updating');
+    setShowPreventNavigationModal(creationStep === 'finalizing');
   }, [creationStep]);
 
-  /* ========= Liquidity Settings (gear) ========= */
-  const [showLiquidity, setShowLiquidity] = useState(false);
-  const [liqMode, setLiqMode] = useState<'PSOL' | 'SOL'>('PSOL');
-  const creatorReward = { sol: 2, points: 69 };
+  // ===== If user lands on Step2/3 without draft, auto bring back =====
+  useEffect(() => {
+    if ((step === 2 || step === 3) && !draft?.draftId) {
+      setStep(1);
+    }
+  }, [step, draft?.draftId]);
 
   /* ========= Render ========= */
   return (
     <Layout>
-      <SEO title="Create Your Own Token - Bondle" description="Launch a coin that is instantly tradable — fair launch" image="/seo/create.jpg" />
+      <SEO
+        title="Create Your Own Token - Bondle"
+        description="Launch a coin that is instantly tradable — fair launch"
+        image="/seo/create.jpg"
+      />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
-        {/* Title giữ nguyên như trước (center) */}
         <h1 className="text-xl sm:text-2xl font-bold text-orange mb-3 text-center">
           {step === 1 && 'Create New Token'}
-          {step === 2 && 'Trust Score Setting'}
+          {step === 2 && 'Curve Settings'}
           {step === 3 && 'Finalize'}
         </h1>
 
-        {/* Hàng dưới tiêu đề: Info (trái) + Setting (phải) – chỉ Step 1 */}
+        {/* ✅ Just a small hint line (no gate) */}
+        {showConnectHint && (
+          <div className="mb-4 flex items-center justify-center gap-3">
+            <div className="text-xs sm:text-sm text-yellow-200/90">
+              Please connect wallet to avoid authorization errors.
+            </div>
+            {/* optional button */}
+            <div className="scale-[0.9]">
+              <WalletMultiButton />
+            </div>
+          </div>
+        )}
+
+        {/* Under title: Info (left) + Setting (right) – only Step 1 */}
         {step === 1 && (
           <div className="mb-4 flex items-center justify-between">
             <button
@@ -270,7 +399,6 @@ const CreateToken: React.FC = () => {
               Deployment Cost Info
             </button>
 
-            {/* Setting button */}
             <button
               type="button"
               onClick={() => setShowLiquidity(true)}
@@ -285,10 +413,9 @@ const CreateToken: React.FC = () => {
           </div>
         )}
 
-        {/* ==================== STEP 1 – CREATE NEW TOKEN ==================== */}
+        {/* ==================== STEP 1 – BASIC ==================== */}
         {step === 1 && (
           <div className="space-y-6 card gradient-border p-4 sm:p-6">
-            {/* Form */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="block text-[10px] sm:text-xs font-medium text-gray-400 mb-1">Token Name</label>
@@ -299,6 +426,7 @@ const CreateToken: React.FC = () => {
                   placeholder="Enter token name"
                 />
               </div>
+
               <div>
                 <label className="block text-[10px] sm:text-xs font-medium text-gray-400 mb-1">Token Symbol</label>
                 <input
@@ -307,6 +435,9 @@ const CreateToken: React.FC = () => {
                   className="w-full py-2 px-3 bg-[var(--card2)] border-thin rounded-md text-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
                   placeholder="Enter token symbol"
                 />
+                <div className="text-[10px] text-gray-500 mt-1">
+                  Auto: <span className="text-gray-300">{symbolAuto}</span>
+                </div>
               </div>
             </div>
 
@@ -321,9 +452,23 @@ const CreateToken: React.FC = () => {
               />
             </div>
 
+            {/* NSFW */}
+            <div className="flex items-center gap-2">
+              <input
+                id="isNsfw"
+                type="checkbox"
+                checked={isNSFW}
+                onChange={(e) => setIsNSFW(e.target.checked)}
+              />
+              <label htmlFor="isNsfw" className="text-xs text-gray-300">
+                Mark as NSFW
+              </label>
+            </div>
+
             {/* Token Image */}
             <div>
               <label className="block text-[10px] sm:text-xs font-medium text-gray-400 mb-2">Token Image</label>
+
               <input
                 ref={fileInputRef}
                 type="file"
@@ -332,6 +477,7 @@ const CreateToken: React.FC = () => {
                 onChange={onImagePicked}
                 disabled={isUploading}
               />
+
               <div
                 className="mt-1 flex justify-center items-center px-4 py-8 border-thin border-dashed rounded-md hover:border-[var(--primary)] transition bg-[var(--card2)]"
                 onDragOver={onDragOver}
@@ -359,8 +505,10 @@ const CreateToken: React.FC = () => {
               </div>
 
               {isUploading && <p className="text-sm text-gray-400 mt-2">Uploading image...</p>}
+
               {tokenImageUrl && (
                 <div className="mt-4 flex justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={tokenImageUrl}
                     alt="Token preview"
@@ -378,8 +526,13 @@ const CreateToken: React.FC = () => {
                 className="w-full flex justify-between items-center p-3 bg-[var(--card2)] text-white hover:bg-[var(--card-hover)] transition-colors"
               >
                 <span className="font-medium text-[10px] sm:text-xs">Social Media Links (Optional)</span>
-                {isSocialExpanded ? <ChevronUpIcon className="h-5 w-5" /> : <ChevronDownIcon className="h-5 w-5" />}
+                {isSocialExpanded ? (
+                  <ChevronUpIcon className="h-5 w-5" />
+                ) : (
+                  <ChevronDownIcon className="h-5 w-5" />
+                )}
               </button>
+
               {isSocialExpanded && (
                 <div className="p-4 bg-[var(--card)] grid grid-cols-1 sm:grid-cols-2 gap-4 text-[10px] sm:text-xs">
                   {[
@@ -390,7 +543,9 @@ const CreateToken: React.FC = () => {
                     { id: 'youtube', label: 'YouTube', value: youtube, setter: setYoutube },
                   ].map((i) => (
                     <div key={i.id}>
-                      <label className="block text-[10px] sm:text-xs font-medium text-gray-400 mb-1">{i.label}</label>
+                      <label className="block text-[10px] sm:text-xs font-medium text-gray-400 mb-1">
+                        {i.label}
+                      </label>
                       <input
                         value={i.value}
                         onChange={(e) => i.setter(e.target.value)}
@@ -403,175 +558,107 @@ const CreateToken: React.FC = () => {
               )}
             </div>
 
-            {/* Next full-width */}
+            {/* Next -> create draft then go step2 */}
             <div className="flex">
               <button
                 className="btn btn-primary w-full py-3 rounded-md disabled:opacity-50"
-                disabled={!tokenName || !tokenSymbol}
-                onClick={() => {
-                  if (initialSupply === '') setInitialSupply(1000000000);
-                  setStep(2);
-                }}
+                disabled={!canGoNextStep1 || creationStep === 'drafting' || isBusy}
+                onClick={handleCreateDraftAndNext}
               >
-                Next
+                {creationStep === 'drafting' ? 'Creating Draft...' : 'Next'}
               </button>
             </div>
           </div>
         )}
 
-        {/* ==================== STEP 2 – TRUST CORE SETTING ==================== */}
+        {/* ==================== STEP 2 – CURVE SETTINGS ==================== */}
         {step === 2 && (
           <div className="space-y-6 card gradient-border p-4 sm:p-6">
-            {/* Tokenomics */}
             <div className="rounded-lg border-thin p-4 bg-[var(--card2)]">
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-sm font-semibold text-white">1. Vesting Plan – Tokenomics</div>
-                <span className="text-[11px] text-gray-400">Complete all → 🥉 Bronze</span>
-              </div>
+              <div className="text-sm font-semibold text-white mb-3">Bonding Curve Settings</div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">Initial Supply</label>
+                  <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">Decimals</label>
                   <input
                     type="number"
                     min={0}
-                    value={initialSupply}
-                    onChange={(e) => setInitialSupply(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
-                    placeholder="e.g. 1,000,000,000"
+                    max={18}
+                    value={decimals}
+                    onChange={(e) => setDecimals(Number(e.target.value))}
+                    className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">Mint Authority</label>
+                  <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">Curve Type</label>
                   <input
-                    value={mintAuthority}
-                    onChange={(e) => setMintAuthority(e.target.value)}
-                    className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white"
-                    placeholder="Wallet address / program id"
+                    value={curveType}
+                    disabled
+                    className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white opacity-70"
                   />
                 </div>
 
-                <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {[
-                    { label: 'Creator %', value: distCreator, setter: setDistCreator },
-                    { label: 'Community %', value: distCommunity, setter: setDistCommunity },
-                    { label: 'Liquidity %', value: distLiquidity, setter: setDistLiquidity },
-                  ].map((s) => (
-                    <div key={s.label}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] sm:text-xs text-gray-400">{s.label}</span>
-                        <span className="text-[10px] sm:text-xs text-white">{s.value}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        value={s.value}
-                        onChange={(e) => s.setter(Number(e.target.value))}
-                        className="w-full accent-[var(--primary)]"
-                      />
-                    </div>
-                  ))}
-                  <div className="sm:col-span-3 text-[11px] text-gray-400">
-                    Sum: <span className={distSum === 100 ? 'text-green-400' : 'text-red-400'}>{distSum}%</span> (must be 100%)
+                <div>
+                  <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">Base Price (lamports)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={basePriceLamports}
+                    onChange={(e) => setBasePriceLamports(Number(e.target.value))}
+                    className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">Slope (lamports)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={slopeLamports}
+                    onChange={(e) => setSlopeLamports(Number(e.target.value))}
+                    className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">Bonding Curve Supply</label>
+                  <input
+                    value={bondingCurveSupply}
+                    onChange={(e) => setBondingCurveSupply(e.target.value)}
+                    className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white"
+                    placeholder="e.g. 1000000000000000"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">
+                    Graduate Target (lamports)
+                  </label>
+                  <input
+                    value={graduateTargetLamports}
+                    onChange={(e) => setGraduateTargetLamports(e.target.value)}
+                    className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white"
+                    placeholder="e.g. 69000000000"
+                  />
+                </div>
+
+                {draft?.expiresAt && (
+                  <div className="sm:col-span-2 text-xs text-gray-400">
+                    Draft expires at: <span className="text-gray-200">{draft.expiresAt}</span>
                   </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <label className="text-[10px] sm:text-xs text-gray-400">Renounce mint authority</label>
-                  <input type="checkbox" checked={renounceMint} onChange={(e) => setRenounceMint(e.target.checked)} />
-                </div>
+                )}
               </div>
             </div>
 
-            {/* Freeze */}
-            <div className="rounded-lg border-thin p-4 bg-[var(--card2)]">
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-sm font-semibold text-white">2. Freeze Authority</div>
-                <span className="text-[11px] text-gray-400">Complete → 🥈 Silver (+20% trust)</span>
-              </div>
+            <div className="flex items-center justify-between gap-4">
+              <button className="btn-secondary px-8 py-3 min-w-[160px] rounded-md" disabled={isBusy} onClick={() => setStep(1)}>
+                Back
+              </button>
 
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] sm:text-xs text-gray-400">Enable</span>
-                  <input type="radio" name="freeze" checked={freezeEnabled === true} onChange={() => setFreezeEnabled(true)} />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] sm:text-xs text-gray-400">Disable</span>
-                  <input type="radio" name="freeze" checked={freezeEnabled === false} onChange={() => setFreezeEnabled(false)} />
-                </div>
-                <InformationCircleIcon className="h-4 w-4 text-gray-400" title="If enabled, authority can temporarily freeze token accounts." />
-              </div>
-            </div>
-
-            {/* LP Lock */}
-            <div className="rounded-lg border-thin p-4 bg-[var(--card2)]">
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-sm font-semibold text-white">3. LP Lock</div>
-                <span className="text-[11px] text-gray-400">Complete → 🥇 Gold</span>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                {[0, 1, 6].map((m) => {
-                  const active = lpLockMonths === m;
-                  const base = 'px-4 py-2 rounded-full border-thin';
-                  if (m === 0) {
-                    // No lock: chữ luôn trắng
-                    return (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => setLpLockMonths(m as 0 | 1 | 6)}
-                        className={`${base} ${active ? 'bg-[var(--primary)] text-black' : 'bg-[var(--card)] text-white'}`}
-                      >
-                        No lock
-                      </button>
-                    );
-                  }
-                  return (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setLpLockMonths(m as 0 | 1 | 6)}
-                      className={`${base} ${active ? 'bg-[var(--primary)] text-black' : 'bg-[var(--card)] text-gray-200'}`}
-                    >
-                      {m} month{m > 1 ? 's' : ''}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {lockedUntil && (
-                <div className="mt-3 text-[11px] text-white font-medium">
-                  Liquidity will be locked until {lockedUntil}.
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <button className="btn-secondary px-6 py-3 min-w-[160px] rounded-md" onClick={handleCheckTrust}>
-                  Check Trust Score
-                </button>
-                <div className="text-xs flex items-center gap-2">
-                  <span className="text-gray-400">Badge:</span>
-                  {badge === 'Gold' && <span className="text-yellow-300">🥇 Gold</span>}
-                  {badge === 'Silver' && <span className="text-gray-300">🥈 Silver</span>}
-                  {badge === 'Bronze' && <span className="text-amber-400">🥉 Bronze</span>}
-                  {!badge && <span className="text-gray-500">—</span>}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-4">
-                <button className="btn-secondary px-8 py-3 min-w-[160px] rounded-md" onClick={() => setStep(1)}>
-                  Back
-                </button>
-                <button className="btn btn-primary px-8 py-3 min-w-[180px] rounded-md" onClick={() => setStep(3)}>
-                  Next
-                </button>
-              </div>
+              <button className="btn btn-primary px-8 py-3 min-w-[180px] rounded-md" disabled={isBusy || !draft?.draftId} onClick={() => setStep(3)}>
+                Next
+              </button>
             </div>
           </div>
         )}
@@ -611,22 +698,60 @@ const CreateToken: React.FC = () => {
                 </button>
               </div>
 
-              <button
-                type="button"
-                onClick={handleBuy}
-                disabled={buyAmount <= 0}
-                className="btn btn-secondary w-full mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                BUY
-              </button>
+              <div className="mt-4 flex gap-3">
+                <button
+                  type="button"
+                  onClick={handlePreviewBuy}
+                  disabled={!draft?.draftId || buyAmount <= 0 || creationStep === 'previewing' || isBusy}
+                  className="btn-secondary w-1/2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {creationStep === 'previewing' ? 'Previewing...' : 'Preview Buy'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleBuy}
+                  disabled={!draft?.draftId || buyAmount <= 0 || creationStep === 'finalizing' || isBusy}
+                  className="btn btn-secondary w-1/2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  BUY
+                </button>
+              </div>
+
+              {preview && (
+                <div className="mt-4 rounded-xl bg-[var(--card2)] border-thin p-4 text-sm text-gray-200">
+                  <div className="font-semibold mb-2">Preview</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <div className="text-xs text-gray-400">amountSol</div>
+                      <div>{preview.amountSol}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-400">estimatedTokens</div>
+                      <div>{preview.estimatedTokens}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-400">price</div>
+                      <div>{preview.price}</div>
+                    </div>
+                  </div>
+                  {preview.note && <div className="text-xs text-gray-400 mt-2">{preview.note}</div>}
+                </div>
+              )}
             </div>
 
             <div className="flex gap-4 pt-2">
-              <button type="button" onClick={() => setStep(2)} className="btn-secondary w-1/2">
+              <button type="button" onClick={() => setStep(2)} disabled={isBusy} className="btn-secondary w-1/2">
                 Back
               </button>
-              <button type="button" onClick={handleCreateWithoutBuy} className="btn btn-primary w-1/2">
-                Create Without Buying
+
+              <button
+                type="button"
+                onClick={handleCreateWithoutBuy}
+                disabled={!draft?.draftId || creationStep === 'finalizing' || isBusy}
+                className="btn btn-primary w-1/2 disabled:opacity-50"
+              >
+                {creationStep === 'finalizing' ? 'Finalizing...' : 'Create Without Buying'}
               </button>
             </div>
           </div>
@@ -645,22 +770,24 @@ const CreateToken: React.FC = () => {
         {showLiquidity && (
           <Modal isOpen={showLiquidity} onClose={() => setShowLiquidity(false)}>
             <div className="p-4 sm:p-6">
-              {/* Header */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <h3 className="text-base sm:text-lg font-semibold mt-5 text-[var(--foreground)]">Liquidity</h3>
                 </div>
 
-                {/* Pill segmented control */}
                 <div className="flex items-center bg-[var(--card)] border-thin rounded-full p-1">
-                  {(['PSOL','SOL'] as const).map((key) => {
+                  {(['PSOL', 'SOL'] as const).map((key) => {
                     const active = liqMode === key;
                     return (
                       <button
                         key={key}
                         onClick={() => setLiqMode(key)}
                         className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition
-                                    ${active ? 'bg-[var(--primary)] text-black' : 'text-[var(--foreground)]/85 hover:bg-[var(--card2)]'}`}
+                                    ${
+                                      active
+                                        ? 'bg-[var(--primary)] text-black'
+                                        : 'text-[var(--foreground)]/85 hover:bg-[var(--card2)]'
+                                    }`}
                       >
                         {key}
                       </button>
@@ -669,21 +796,16 @@ const CreateToken: React.FC = () => {
                 </div>
               </div>
 
-              {/* Description */}
               <p className="mt-4 text-sm text-[var(--foreground)]/75">
                 pSOL works its magic for everyone — launch with SOL only if you’re strong enough!
               </p>
 
-              {/* Reward strip */}
               <div className="mt-6 rounded-2xl bg-[var(--card2)] border-thin px-4 py-3 flex items-center justify-between">
                 <div className="text-sm font-medium text-[var(--foreground)]/85">
                   <span className="opacity-80 mr-1">Creator Reward:</span>
                   <span className="font-bold">{creatorReward.sol} SOL</span> + {creatorReward.points} points
                 </div>
-                <button
-                  onClick={() => setShowLiquidity(false)}
-                  className="btn-secondary px-4 py-2 rounded-full"
-                >
+                <button onClick={() => setShowLiquidity(false)} className="btn-secondary px-4 py-2 rounded-full">
                   Done
                 </button>
               </div>
@@ -697,7 +819,7 @@ const CreateToken: React.FC = () => {
             <div className="p-6">
               <h3 className="text-lg font-medium text-gray-100 mb-4">Please Wait</h3>
               <p className="text-sm text-gray-500">
-                Your token is being {creationStep === 'creating' ? 'created' : 'updated'}. Please do not close or navigate away.
+                Your token is being finalized. Please do not close or navigate away.
               </p>
             </div>
           </Modal>

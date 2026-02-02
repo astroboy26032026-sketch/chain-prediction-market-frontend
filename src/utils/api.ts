@@ -25,7 +25,6 @@ import {
   ReferralListResponse,
   ClaimReferralResponse,
 } from '@/interface/types';
-import { ethers } from 'ethers';
 
 // =====================
 // AUTH base & token helpers
@@ -187,6 +186,24 @@ const getViaProxy = async <T = any>(
   return axios.get<T>(url, { params, headers });
 };
 
+const postViaProxy = async <T = any>(
+  path: string,
+  body?: any,
+  headers?: Record<string, string>
+) => {
+  const url = absProxy(path);
+  return axios.post<T>(url, body, { headers });
+};
+
+const patchViaProxy = async <T = any>(
+  path: string,
+  body?: any,
+  headers?: Record<string, string>
+) => {
+  const url = absProxy(path);
+  return axios.patch<T>(url, body, { headers });
+};
+
 const clampLimit = (n: number, min = 1, max = 50) =>
   Math.min(Math.max(n, min), max);
 
@@ -284,6 +301,181 @@ export async function getTokenLiquidity(
   const { data } = await getViaProxy<TokenLiquidityResponse>(
     '/token/liquidity',
     { address: addr },
+    headers
+  );
+  return data;
+}
+
+// =====================
+// ✅ Create Token (NEW BE API) - VIA PROXY
+// Spec: prepare-mint / upload-image / draft / preview-buy / finalize / confirm
+// =====================
+
+export type PrepareMintRequest = {
+  seed: string;
+  decimals: number;
+  initialAmount: string;
+  symbol: string;
+  name: string;
+};
+
+export type PrepareMintResponse = {
+  mint: string;
+  ata: string;
+  txBase64: string;
+  symbol: string;
+  name: string;
+  note?: string;
+};
+
+export type UploadTokenImageRequest = {
+  image: string; // base64 data URI OR URL
+};
+
+export type UploadTokenImageResponse = {
+  imageUrl: string;
+  ipfsUri: string;
+  note?: string;
+};
+
+export type CreateTokenDraftRequest = {
+  name: string;
+  symbol: string;
+  description: string;
+  imageUrl: string;
+  isNSFW: boolean;
+  socials?: {
+    twitter?: string;
+    telegram?: string;
+    website?: string;
+    discord?: string;
+    youtube?: string;
+  };
+};
+
+export type CreateTokenDraftResponse = {
+  draftId: string;
+  status: string;
+  expiresAt: string;
+  note?: string;
+};
+
+export type PreviewInitialBuyRequest = {
+  draftId: string;
+  amountSol: number;
+};
+
+export type PreviewInitialBuyResponse = {
+  amountSol: number;
+  estimatedTokens: number;
+  price: number;
+  note?: string;
+};
+
+export type FinalizeTokenRequest = {
+  draftId: string;
+  initialBuySol: number;
+  decimals: number;
+  curveType: 'linear';
+  basePriceLamports: number;
+  slopeLamports: number;
+  bondingCurveSupply: string;
+  graduateTargetLamports: string;
+};
+
+export type FinalizeTokenResponse = {
+  tokenAddress: string;
+  marketAddress: string;
+  txId: string;
+  createdAt: string;
+  initialBuyNote?: string;
+};
+
+export type ConfirmMintRequest = {
+  mint: string;
+  symbol: string;
+  name: string;
+};
+
+export type ConfirmMintResponse = {
+  ok: true;
+  token: {
+    mint: string;
+    symbol: string;
+    name: string;
+    creator: string;
+    status: 'pending' | 'active' | string;
+    createdAt: string;
+  };
+};
+
+export async function prepareMint(
+  payload: PrepareMintRequest
+): Promise<PrepareMintResponse> {
+  const headers = getAuthHeaders();
+  const { data } = await postViaProxy<PrepareMintResponse>(
+    '/api/v1/tokens/prepare-mint',
+    payload,
+    headers
+  );
+  return data;
+}
+
+export async function confirmMint(
+  payload: ConfirmMintRequest
+): Promise<ConfirmMintResponse> {
+  const headers = getAuthHeaders();
+  const { data } = await postViaProxy<ConfirmMintResponse>(
+    '/api/v1/tokens/confirm',
+    payload,
+    headers
+  );
+  return data;
+}
+
+export async function uploadTokenImage(
+  payload: UploadTokenImageRequest
+): Promise<UploadTokenImageResponse> {
+  const headers = getAuthHeaders();
+  const { data } = await postViaProxy<UploadTokenImageResponse>(
+    '/token/upload-image',
+    payload,
+    headers
+  );
+  return data;
+}
+
+export async function createTokenDraft(
+  payload: CreateTokenDraftRequest
+): Promise<CreateTokenDraftResponse> {
+  const headers = getAuthHeaders();
+  const { data } = await postViaProxy<CreateTokenDraftResponse>(
+    '/token/create/draft',
+    payload,
+    headers
+  );
+  return data;
+}
+
+export async function previewInitialBuy(
+  payload: PreviewInitialBuyRequest
+): Promise<PreviewInitialBuyResponse> {
+  const headers = getAuthHeaders();
+  const { data } = await postViaProxy<PreviewInitialBuyResponse>(
+    '/token/create/preview-buy',
+    payload,
+    headers
+  );
+  return data;
+}
+
+export async function finalizeTokenCreation(
+  payload: FinalizeTokenRequest
+): Promise<FinalizeTokenResponse> {
+  const headers = getAuthHeaders();
+  const { data } = await postViaProxy<FinalizeTokenResponse>(
+    '/token/create/finalize',
+    payload,
     headers
   );
   return data;
@@ -561,8 +753,12 @@ export async function updateToken(
     tokenomics?: TokenomicsUpdate;
   }
 ): Promise<Token> {
-  const url = absProxy('/ports/updateToken');
-  const { data } = await axios.patch(url, { address, data: dataUpdate });
+  const headers = getAuthHeaders();
+  const { data } = await patchViaProxy<Token>(
+    '/ports/updateToken',
+    { address, data: dataUpdate },
+    headers
+  );
   return data;
 }
 
