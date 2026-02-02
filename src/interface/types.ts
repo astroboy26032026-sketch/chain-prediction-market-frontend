@@ -154,7 +154,7 @@ export type LeaderboardTopItem = {
   volume24h: number;
   volumeChange24h: number;
   createdAt: string;
-  logo:string
+  logo: string;
 };
 
 export type LeaderboardListItem = {
@@ -166,7 +166,7 @@ export type LeaderboardListItem = {
   holders: number;
   marketCap: number;
   marketCapChange24h: number;
-  logo:string
+  logo: string;
 };
 
 export type LeaderboardListResponse = {
@@ -209,3 +209,98 @@ export type ClaimReferralResponse = {
   txId: string;
   message: string;
 };
+
+// =====================
+// ✅ NEW BE API (Solana): Token Info / Price / Liquidity
+// =====================
+
+/**
+ * Trạng thái bonding curve theo BE mới
+ * (để string fallback cho môi trường dev / mở rộng sau)
+ */
+export type BondingCurveStatus = 'ACTIVE' | 'FINISHED' | 'GRADUATED' | string;
+
+/**
+ * GET /token/info
+ */
+export interface TokenInfoResponse {
+  address: string;
+
+  name: string;
+  symbol: string;
+  logo: string;
+  description: string;
+
+  creatorAddress: string;
+
+  marketCap: number;
+  supply: number;
+  liquidity: number;
+  volume24h: number;
+  holders: number;
+
+  createdAt: string; // ISO datetime
+  bondingCurveStatus: BondingCurveStatus;
+}
+
+/**
+ * Timeframe cho price chart
+ */
+export type TokenPriceTimeframe = '1m' | '5m' | '15m' | '1h' | '4h' | '1d';
+
+/**
+ * 1 điểm giá trong chart
+ */
+export interface TokenPricePoint {
+  timestamp: string; // ISO datetime
+  price: number;
+}
+
+/**
+ * GET /token/price
+ */
+export interface TokenPriceResponse {
+  tokenAddress: string;
+
+  price: number;
+  priceSource: 'CURVE' | 'DEX' | string;
+
+  curvePrice?: number;
+  dexPrice?: number;
+
+  timeframe: TokenPriceTimeframe | string;
+  chart: TokenPricePoint[];
+}
+
+/**
+ * Liquidity event (Solana)
+ */
+export interface TokenLiquidityEvent {
+  type: 'BUY' | 'SELL' | string;
+  from: string;
+
+  solAmount: number;
+  tokenAmount: number;
+  price: number;
+
+  timestamp: string; // ISO datetime
+}
+
+/**
+ * GET /token/liquidity
+ */
+export interface TokenLiquidityResponse {
+  tokenAddress: string;
+
+  isCurveFinished: boolean;
+  reserveBalance: number;
+  totalVolume: number;
+
+  lpMigration?: {
+    migrated: boolean;
+    destinationDex?: string;
+    lpLockedUntil?: string; // ISO datetime
+  };
+
+  events: TokenLiquidityEvent[];
+}

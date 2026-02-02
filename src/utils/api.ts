@@ -13,6 +13,12 @@ import {
   TransactionResponse,
   CursorPaginatedResponse,
 
+  // ✅ NEW BE API (Solana)
+  TokenInfoResponse,
+  TokenPriceResponse,
+  TokenLiquidityResponse,
+  TokenPriceTimeframe,
+
   // ✅ Referrals types
   ReferralSummary,
   ReferralLinkInfo,
@@ -137,7 +143,7 @@ export type LeaderboardTopItem = {
   volume24h: number;
   volumeChange24h: number;
   createdAt: string;
-  logo:string
+  logo: string;
 };
 
 export type LeaderboardListItem = {
@@ -149,7 +155,7 @@ export type LeaderboardListItem = {
   holders: number;
   marketCap: number;
   marketCapChange24h: number;
-  logo:string
+  logo: string;
 };
 
 export type LeaderboardListResponse = {
@@ -172,12 +178,17 @@ const SITE_URL = computeSiteUrl();
 const absProxy = (path: string) =>
   isServer ? `${SITE_URL}${PROXY_BASE}${path}` : `${PROXY_BASE}${path}`;
 
-const getViaProxy = async <T = any>(path: string, params?: any, headers?: Record<string, string>) => {
+const getViaProxy = async <T = any>(
+  path: string,
+  params?: any,
+  headers?: Record<string, string>
+) => {
   const url = absProxy(path);
   return axios.get<T>(url, { params, headers });
 };
 
-const clampLimit = (n: number, min = 1, max = 50) => Math.min(Math.max(n, min), max);
+const clampLimit = (n: number, min = 1, max = 50) =>
+  Math.min(Math.max(n, min), max);
 
 /**
  * Map cursor response -> legacy PaginatedResponse
@@ -204,7 +215,9 @@ const getAuthHeaders = (): Record<string, string> | undefined => {
 // =====================
 // Core helper: /token/search  (✅ VIA PROXY to avoid CORS)
 // =====================
-async function tokenSearch(params: TokenSearchParams): Promise<CursorPaginatedResponse<Token>> {
+async function tokenSearch(
+  params: TokenSearchParams
+): Promise<CursorPaginatedResponse<Token>> {
   const safe: TokenSearchParams = {
     ...params,
     includeNsfw: params.includeNsfw ?? false,
@@ -214,12 +227,12 @@ async function tokenSearch(params: TokenSearchParams): Promise<CursorPaginatedRe
   // Không gửi q rỗng
   if (safe.q !== undefined && !String(safe.q).trim()) delete safe.q;
 
-  // Optional: forward bearer token qua proxy (nếu BE có auth)
   const headers = getAuthHeaders();
-
-  // ✅ IMPORTANT: gọi qua proxy thay vì authApi trực tiếp
-  // => FE gọi same-origin => không dính CORS
-  const { data } = await getViaProxy<CursorPaginatedResponse<Token>>('/token/search', safe, headers);
+  const { data } = await getViaProxy<CursorPaginatedResponse<Token>>(
+    '/token/search',
+    safe,
+    headers
+  );
 
   return {
     items: data.items ?? [],
@@ -228,31 +241,97 @@ async function tokenSearch(params: TokenSearchParams): Promise<CursorPaginatedRe
 }
 
 // =====================
-// API calls
+// ✅ NEW BE API (Solana): /token/info /token/price /token/liquidity
+// - VIA PROXY to avoid CORS
 // =====================
 
-export async function getAllTokens(page = 1, pageSize = 13): Promise<PaginatedResponse<Token>> {
-  const { data } = await getViaProxy<PaginatedResponse<Token>>('/ports/getAllTokens', { page, pageSize });
+export async function getTokenInfo(address: string): Promise<TokenInfoResponse> {
+  const addr = (address || '').trim();
+  if (!addr) throw new Error('Missing token address');
+
+  const headers = getAuthHeaders();
+  const { data } = await getViaProxy<TokenInfoResponse>(
+    '/token/info',
+    { address: addr },
+    headers
+  );
+  return data;
+}
+
+export async function getTokenPrice(
+  address: string,
+  timeframe: TokenPriceTimeframe = '5m'
+): Promise<TokenPriceResponse> {
+  const addr = (address || '').trim();
+  if (!addr) throw new Error('Missing token address');
+
+  const headers = getAuthHeaders();
+  const { data } = await getViaProxy<TokenPriceResponse>(
+    '/token/price',
+    { address: addr, timeframe },
+    headers
+  );
+  return data;
+}
+
+export async function getTokenLiquidity(
+  address: string
+): Promise<TokenLiquidityResponse> {
+  const addr = (address || '').trim();
+  if (!addr) throw new Error('Missing token address');
+
+  const headers = getAuthHeaders();
+  const { data } = await getViaProxy<TokenLiquidityResponse>(
+    '/token/liquidity',
+    { address: addr },
+    headers
+  );
+  return data;
+}
+
+// =====================
+// API calls (legacy + existing)
+// =====================
+
+export async function getAllTokens(
+  page = 1,
+  pageSize = 13
+): Promise<PaginatedResponse<Token>> {
+  const { data } = await getViaProxy<PaginatedResponse<Token>>(
+    '/ports/getAllTokens',
+    { page, pageSize }
+  );
   return data;
 }
 
 export async function getAllTokensWithoutLiquidity(): Promise<Token[]> {
-  const { data } = await getViaProxy<Token[]>('/ports/getAllTokensWithoutLiquidity');
+  const { data } = await getViaProxy<Token[]>(
+    '/ports/getAllTokensWithoutLiquidity'
+  );
   return data;
 }
 
 export async function getTotalVolume(): Promise<{ totalVolume: number }> {
-  const { data } = await getViaProxy<{ totalVolume: number }>('/ports/getTotalVolume');
+  const { data } = await getViaProxy<{ totalVolume: number }>(
+    '/ports/getTotalVolume'
+  );
   return data;
 }
 
-export async function getVolumeRange(hours: number): Promise<{ totalVolume: number }> {
-  const { data } = await getViaProxy<{ totalVolume: number }>('/ports/getVolumeRange', { hours });
+export async function getVolumeRange(
+  hours: number
+): Promise<{ totalVolume: number }> {
+  const { data } = await getViaProxy<{ totalVolume: number }>(
+    '/ports/getVolumeRange',
+    { hours }
+  );
   return data;
 }
 
 export async function getTotalTokenCount(): Promise<{ totalTokens: number }> {
-  const { data } = await getViaProxy<{ totalTokens: number }>('/ports/getTotalTokenCount');
+  const { data } = await getViaProxy<{ totalTokens: number }>(
+    '/ports/getTotalTokenCount'
+  );
   return data;
 }
 
@@ -265,11 +344,14 @@ export async function getRecentTokens(
   hours = 24
 ): Promise<PaginatedResponse<Token> | null> {
   try {
-    const { data } = await getViaProxy<PaginatedResponse<Token>>('/ports/getRecentTokens', {
-      page,
-      pageSize,
-      hours,
-    });
+    const { data } = await getViaProxy<PaginatedResponse<Token>>(
+      '/ports/getRecentTokens',
+      {
+        page,
+        pageSize,
+        hours,
+      }
+    );
     return data;
   } catch (error: any) {
     if (axios.isAxiosError(error) && error.response?.status === 404) return null;
@@ -312,9 +394,14 @@ export async function searchTokens(
  * ✅ Leaderboard (NEW BE API)
  * - Dùng proxy để né CORS luôn cho chắc
  */
-export async function getLeaderboardTop(limit = 3): Promise<LeaderboardTopItem[]> {
+export async function getLeaderboardTop(
+  limit = 3
+): Promise<LeaderboardTopItem[]> {
   const safeLimit = Math.min(Math.max(limit, 1), 10);
-  const { data } = await getViaProxy<LeaderboardTopItem[]>('/leaderboard/top', { limit: safeLimit });
+  const { data } = await getViaProxy<LeaderboardTopItem[]>(
+    '/leaderboard/top',
+    { limit: safeLimit }
+  );
   return data ?? [];
 }
 
@@ -327,88 +414,107 @@ export async function getLeaderboardList(params?: {
   const sort = params?.sort ?? 'marketCap';
   const order = params?.order ?? 'desc';
 
-  const { data } = await getViaProxy<LeaderboardListResponse>('/leaderboard/list', {
-    limit,
-    sort,
-    order,
-  });
+  const { data } = await getViaProxy<LeaderboardListResponse>(
+    '/leaderboard/list',
+    { limit, sort, order }
+  );
 
   return { items: data?.items ?? [] };
 }
 
-/**
- * legacy: giữ cho token detail/old page
- */
-export async function getTokensWithLiquidity(
-  page = 1,
-  pageSize = 20
-): Promise<PaginatedResponse<TokenWithLiquidityEvents>> {
-  const { data } = await getViaProxy<PaginatedResponse<TokenWithLiquidityEvents>>(
-    '/ports/getTokensWithLiquidity',
-    { page, pageSize }
-  );
-  return data;
-}
+// =====================================================================
+// ⚠️ LEGACY CHART / PRICE / LIQUIDITY / TOKEN DETAIL APIs (COMMENTED)
+// Bạn sẽ xoá sau. Hiện tại DISABLE toàn bộ để không chạy API cũ.
+// =====================================================================
 
-export async function getTokenByAddress(address: string): Promise<Token> {
-  const { data } = await getViaProxy<Token>('/ports/getTokenByAddress', { address });
-  return data;
-}
+// /**
+//  * legacy: giữ cho token detail/old page
+//  */
+// export async function getTokensWithLiquidity(
+//   page = 1,
+//   pageSize = 20
+// ): Promise<PaginatedResponse<TokenWithLiquidityEvents>> {
+//   const { data } = await getViaProxy<PaginatedResponse<TokenWithLiquidityEvents>>(
+//     '/ports/getTokensWithLiquidity',
+//     { page, pageSize }
+//   );
+//   return data;
+// }
 
-export async function getTokenLiquidityEvents(
-  tokenId: string,
-  page = 1,
-  pageSize = 20
-): Promise<PaginatedResponse<LiquidityEvent>> {
-  const { data } = await getViaProxy<PaginatedResponse<LiquidityEvent>>('/ports/getTokenLiquidityEvents', {
-    tokenId,
-    page,
-    pageSize,
-  });
-  return data;
-}
+// export async function getTokenByAddress(address: string): Promise<Token> {
+//   const { data } = await getViaProxy<Token>('/ports/getTokenByAddress', {
+//     address,
+//   });
+//   return data;
+// }
 
-export async function getTokenInfoAndTransactions(
-  address: string,
-  transactionPage = 1,
-  transactionPageSize = 10
-): Promise<TokenWithTransactions> {
-  const { data } = await getViaProxy<TokenWithTransactions>('/ports/getTokenInfoAndTransactions', {
-    address,
-    transactionPage,
-    transactionPageSize,
-  });
-  return data;
-}
+// export async function getTokenLiquidityEvents(
+//   tokenId: string,
+//   page = 1,
+//   pageSize = 20
+// ): Promise<PaginatedResponse<LiquidityEvent>> {
+//   const { data } = await getViaProxy<PaginatedResponse<LiquidityEvent>>(
+//     '/ports/getTokenLiquidityEvents',
+//     {
+//       tokenId,
+//       page,
+//       pageSize,
+//     }
+//   );
+//   return data;
+// }
 
-export async function getHistoricalPriceData(address: string): Promise<Token> {
-  const { data } = await getViaProxy<Token>('/ports/getHistoricalPriceData', { address });
-  return data;
-}
+// export async function getTokenInfoAndTransactions(
+//   address: string,
+//   transactionPage = 1,
+//   transactionPageSize = 10
+// ): Promise<TokenWithTransactions> {
+//   const { data } = await getViaProxy<TokenWithTransactions>(
+//     '/ports/getTokenInfoAndTransactions',
+//     { address, transactionPage, transactionPageSize }
+//   );
+//   return data;
+// }
 
-export async function getCurrentPrice(): Promise<string> {
-  const { data } = await getViaProxy<PriceResponse>('/ports/getCurrentPrice');
-  return data.price;
-}
+// export async function getHistoricalPriceData(address: string): Promise<Token> {
+//   const { data } = await getViaProxy<Token>('/ports/getHistoricalPriceData', {
+//     address,
+//   });
+//   return data;
+// }
 
-export async function getTokenUSDPriceHistory(address: string): Promise<USDHistoricalPrice[]> {
-  try {
-    const [ethPrice, historicalPrices] = await Promise.all([getCurrentPrice(), getHistoricalPriceData(address)]);
+// export async function getCurrentPrice(): Promise<string> {
+//   const { data } = await getViaProxy<PriceResponse>('/ports/getCurrentPrice');
+//   return data.price;
+// }
 
-    return (historicalPrices as any as HistoricalPrice[]).map((price) => {
-      const tokenPriceInWei = ethers.BigNumber.from(price.tokenPrice);
-      const tokenPriceInETH = ethers.utils.formatEther(tokenPriceInWei);
-      const tokenPriceUSD = parseFloat(tokenPriceInETH) * parseFloat(ethPrice);
-      return {
-        tokenPriceUSD: tokenPriceUSD.toFixed(9),
-        timestamp: price.timestamp,
-      };
-    });
-  } catch (error) {
-    console.error('Error calculating USD price history:', error);
-    throw new Error('Failed to calculate USD price history');
-  }
-}
+// export async function getTokenUSDPriceHistory(
+//   address: string
+// ): Promise<USDHistoricalPrice[]> {
+//   try {
+//     const [ethPrice, historicalPrices] = await Promise.all([
+//       getCurrentPrice(),
+//       getHistoricalPriceData(address),
+//     ]);
+
+//     return (historicalPrices as any as HistoricalPrice[]).map((price) => {
+//       const tokenPriceInWei = ethers.BigNumber.from(price.tokenPrice);
+//       const tokenPriceInETH = ethers.utils.formatEther(tokenPriceInWei);
+//       const tokenPriceUSD = parseFloat(tokenPriceInETH) * parseFloat(ethPrice);
+//       return {
+//         tokenPriceUSD: tokenPriceUSD.toFixed(9),
+//         timestamp: price.timestamp,
+//       };
+//     });
+//   } catch (error) {
+//     console.error('Error calculating USD price history:', error);
+//     throw new Error('Failed to calculate USD price history');
+//   }
+// }
+
+// =====================
+// Still-used existing APIs (not chart-related)
+// =====================
 
 export async function getAllTokenAddresses(): Promise<string[]> {
   const { data } = await getViaProxy<string[]>('/ports/getAllTokenAddresses');
@@ -420,11 +526,10 @@ export async function getTokensByCreator(
   page = 1,
   pageSize = 20
 ): Promise<PaginatedResponse<Token>> {
-  const { data } = await getViaProxy<PaginatedResponse<Token>>('/ports/getTokensByCreator', {
-    creator,
-    page,
-    pageSize,
-  });
+  const { data } = await getViaProxy<PaginatedResponse<Token>>(
+    '/ports/getTokensByCreator',
+    { creator, page, pageSize }
+  );
   return data;
 }
 
@@ -466,11 +571,10 @@ export async function getTransactionsByAddress(
   page = 1,
   pageSize = 10
 ): Promise<TransactionResponse> {
-  const { data } = await getViaProxy<TransactionResponse>('/ports/getTransactionsByAddress', {
-    address,
-    page,
-    pageSize,
-  });
+  const { data } = await getViaProxy<TransactionResponse>(
+    '/ports/getTransactionsByAddress',
+    { address, page, pageSize }
+  );
   return data;
 }
 
@@ -481,7 +585,12 @@ export async function addChatMessage(
   replyTo?: number
 ): Promise<{ id: number }> {
   const url = absProxy('/ports/addChatMessage');
-  const { data } = await axios.post(url, { user, token, message, reply_to: replyTo });
+  const { data } = await axios.post(url, {
+    user,
+    token,
+    message,
+    reply_to: replyTo,
+  });
   return data;
 }
 
@@ -503,20 +612,26 @@ export async function getChatMessages(
 
 /**
  * NOTE:
- * Đây là call THẲNG sang shibariumscan.
- * Nếu chỗ này cũng dính CORS ở browser, cách fix là cho đi qua proxy tương tự.
+ * Đây là call THẲNG sang shibariumscan (legacy).
+ * Solana project có thể chưa có endpoint tương đương.
+ *
+ * ✅ Fail-soft: trả [] để UI không crash.
  */
-export async function getTokenHolders(tokenAddress: string): Promise<TokenHolder[]> {
+export async function getTokenHolders(
+  tokenAddress: string
+): Promise<TokenHolder[]> {
   try {
-    const response = await axios.get(`https://www.shibariumscan.io/api/v2/tokens/${tokenAddress}/holders`);
+    const response = await axios.get(
+      `https://www.shibariumscan.io/api/v2/tokens/${tokenAddress}/holders`
+    );
     const data = response.data;
-    return data.items.map((item: any) => ({
-      address: item.address.hash,
-      balance: item.value,
+    return (data?.items ?? []).map((item: any) => ({
+      address: item.address?.hash ?? '',
+      balance: item.value ?? '0',
     }));
   } catch (error) {
     console.error('Error fetching token holders:', error);
-    throw new Error('Failed to fetch token holders');
+    return [];
   }
 }
 
@@ -526,23 +641,31 @@ export async function getTokenHolders(tokenAddress: string): Promise<TokenHolder
 
 export async function getReferralSummary(): Promise<ReferralSummary> {
   const url = absProxy('/referrals/summary');
-  const { data } = await axios.get<ReferralSummary>(url, { headers: getAuthHeaders() });
+  const { data } = await axios.get<ReferralSummary>(url, {
+    headers: getAuthHeaders(),
+  });
   return data;
 }
 
 export async function getReferralLink(): Promise<ReferralLinkInfo> {
   const url = absProxy('/referrals/link');
-  const { data } = await axios.get<ReferralLinkInfo>(url, { headers: getAuthHeaders() });
+  const { data } = await axios.get<ReferralLinkInfo>(url, {
+    headers: getAuthHeaders(),
+  });
   return data;
 }
 
 export async function getReferralList(): Promise<ReferralListResponse> {
   const url = absProxy('/referrals/list');
-  const { data } = await axios.get<ReferralListResponse>(url, { headers: getAuthHeaders() });
+  const { data } = await axios.get<ReferralListResponse>(url, {
+    headers: getAuthHeaders(),
+  });
   return { items: data?.items ?? [] };
 }
 
-export async function claimReferralRewards(amountSol: number): Promise<ClaimReferralResponse> {
+export async function claimReferralRewards(
+  amountSol: number
+): Promise<ClaimReferralResponse> {
   const url = absProxy('/referrals/claim');
   const { data } = await axios.post<ClaimReferralResponse>(
     url,
@@ -586,14 +709,20 @@ export type ProfileInfo = {
   totalTokensSold: number;
 };
 
-export async function getProfileInfo(walletAddress: string): Promise<ProfileInfo> {
+export async function getProfileInfo(
+  walletAddress: string
+): Promise<ProfileInfo> {
   const wa = (walletAddress || '').trim();
   if (!wa) throw new Error('Missing walletAddress');
 
   const headers = getAuthHeaders();
 
   // ✅ IMPORTANT: call new BE endpoint via proxy
-  const { data } = await getViaProxy<ProfileInfo>('/profile/info', { walletAddress: wa }, headers);
+  const { data } = await getViaProxy<ProfileInfo>(
+    '/profile/info',
+    { walletAddress: wa },
+    headers
+  );
 
   // normalize to avoid UI crash if BE returns null fields
   return {

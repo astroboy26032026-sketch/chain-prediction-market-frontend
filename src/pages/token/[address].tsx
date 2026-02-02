@@ -1,42 +1,21 @@
+// src/pages/token/[address].tsx
 import { GetServerSideProps } from 'next';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/router';
-import Image from 'next/image';
-import 'chartjs-adapter-date-fns';
-import {
-  ArrowUpDownIcon,
-  Globe,
-  Twitter,
-  Send as Telegram,
-} from 'lucide-react';
+import { ArrowUpDownIcon } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import TradingViewChart from '@/components/charts/TradingViewChart';
+
 import {
-  useCurrentTokenPrice,
-  useTokenLiquidity,
-  useCalcBuyReturn,
-  useCalcSellReturn,
-  useBuyTokens,
-  useSellTokens,
-  useUserBalance,
-  useTokenAllowance,
-  useApproveTokens,
-  formatAmountV2,
-  getBondingCurveAddress,
-} from '@/utils/blockchainUtils';
-import {
-  getTokenInfoAndTransactions,
-  getTokenUSDPriceHistory,
-  getTokenHolders,
-  getTokenLiquidityEvents,
+  getTokenInfo, // ✅ /token/info
+  getTokenLiquidity, // ✅ /token/liquidity
 } from '@/utils/api.index';
-import { parseUnits, formatUnits } from 'viem';
-import { useAccount, useWaitForTransactionReceipt } from 'wagmi';
+
 import { useDebounce } from 'use-debounce';
 import { toast } from 'react-toastify';
 import ShareButton from '@/components/ui/ShareButton';
 import SEO from '@/components/seo/SEO';
-import { TokenWithTransactions } from '@/interface/types';
+import { Token } from '@/interface/types';
 import Spinner from '@/components/ui/Spinner';
 import { Tab } from '@headlessui/react';
 
@@ -46,244 +25,111 @@ import TokenInfo from '@/components/TokenDetails/TokenInfo';
 import Chats from '@/components/TokenDetails/Chats';
 
 interface TokenDetailProps {
-  initialTokenInfo: TokenWithTransactions | null;
+  initialTokenInfo: Token | null;
 }
 
-// Token detail page
 const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
   const router = useRouter();
   const { address } = router.query;
-  const { address: userAddress } = useAccount();
 
-  const [isApproved, setIsApproved] = useState(false);
-  const [tokenInfo, setTokenInfo] = useState<TokenWithTransactions | null>(initialTokenInfo);
+  const tokenAddr = useMemo(() => {
+    const a = Array.isArray(address) ? address[0] : address;
+    return a || undefined;
+  }, [address]);
 
-  const [transactions, setTransactions] = useState<any[]>([]);
+  // ===== Core token info =====
+  const [tokenInfo, setTokenInfo] = useState<Token | null>(initialTokenInfo);
+
+  // ===== Liquidity =====
+  const [liquidityEvents, setLiquidityEvents] = useState<any>(null);
+
+  // ===== Tabs data (legacy removed, UI still keeps) =====
+  const [transactions] = useState<any[]>([]);
   const [transactionPage, setTransactionPage] = useState(1);
-  const [totalTransactionPages, setTotalTransactionPages] = useState(1);
-  const [fromToken, setFromToken] = useState({ symbol: 'BONE', amount: '' });
+  const [totalTransactionPages] = useState(1);
+
+  const [tokenHolders] = useState<any[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // ===== Swap UI state (keep UI/UX; Solana trade chưa tích hợp) =====
+  const isApproved = true;
+  const [fromToken, setFromToken] = useState({ symbol: 'SOL', amount: '' });
   const [toToken, setToToken] = useState({ symbol: '', amount: '' });
   const [isSwapped, setIsSwapped] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
-  const [ethBalance, setEthBalance] = useState('0.000');
-  const [tokenBalance, setTokenBalance] = useState('0.000');
+  const [ethBalance] = useState('0.000');
+  const [tokenBalance] = useState('0.000');
   const [actionButtonText, setActionButtonText] = useState('Buy');
-  const [chartError, setChartError] = useState<string | null>(null);
-  const [chartData, setChartData] = useState<any[]>([]);
   const [isTransacting, setIsTransacting] = useState(false);
-  const [transactionHash, setTransactionHash] = useState<`0x${string}` | undefined>();
-
-  // holders
-  const [tokenHolders, setTokenHolders] = useState<Awaited<ReturnType<typeof getTokenHolders>>>([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [holdersPerPage] = useState(10);
 
   // settings ui state
   const [isSettingsOpenMobile, setIsSettingsOpenMobile] = useState(false);
   const [isSettingsOpenDesktop, setIsSettingsOpenDesktop] = useState(false);
-  const [slippage, setSlippage] = useState<string>('1.0');
   const [antiMEV, setAntiMEV] = useState<boolean>(false);
   const [txSpeed, setTxSpeed] = useState<'auto' | 'manual'>('auto');
-  const [priorityFee, setPriorityFee] = useState<string>('0.002'); // SOL
-  const [bribe, setBribe] = useState<string>('0.01'); // SOL
+  const [priorityFee, setPriorityFee] = useState<string>('0.002');
+  const [bribe, setBribe] = useState<string>('0.01');
 
-  // confirm
-  const { data: transactionReceipt, isError: transactionError, isLoading: isWaiting } = useWaitForTransactionReceipt({
-    hash: transactionHash,
-    confirmations: 2,
-  });
-
+  const [refreshCounter, setRefreshCounter] = useState(0);
   const [debouncedFromAmount] = useDebounce(fromToken.amount, 300);
 
-  const tokenAddr = (address as `0x${string}`) || undefined;
-
-  const { data: currentPrice, refetch: refetchCurrentPrice } = useCurrentTokenPrice(tokenAddr as `0x${string}`);
-  const { data: liquidityData, refetch: refetchLiquidity } = useTokenLiquidity(tokenAddr as `0x${string}`);
-
-  const { data: buyReturnData, isLoading: isBuyCalculating } =
-    useCalcBuyReturn(tokenAddr as `0x${string}`, parseUnits(debouncedFromAmount || '0', 18));
-  const { data: sellReturnData, isLoading: isSellCalculating } =
-    useCalcSellReturn(tokenAddr as `0x${string}`, parseUnits(debouncedFromAmount || '0', 18));
-
-  const {
-    ethBalance: fetchedEthBalance,
-    tokenBalance: fetchedTokenBalance,
-    refetch: refetchUserBalance,
-  } = useUserBalance(userAddress as `0x${string}`, tokenAddr as `0x${string}`);
-
-  const { data: tokenAllowance } = useTokenAllowance(
-    tokenAddr as `0x${string}`,
-    userAddress as `0x${string}`,
-    getBondingCurveAddress(tokenAddr as `0x${string}`)
-  );
-
-  const { buyTokens } = useBuyTokens();
-  const { sellTokens } = useSellTokens();
-  const { approveTokens } = useApproveTokens();
-
-  const [liquidityEvents, setLiquidityEvents] = useState<any>(null);
-  const [refreshCounter, setRefreshCounter] = useState(0);
-
-  const fetchTokenData = useCallback(
-    async (page: number) => {
-      if (!tokenAddr) return;
-      try {
-        const data = await getTokenInfoAndTransactions(tokenAddr as string, page, 10);
-        setTokenInfo(data);
-        setTransactions(data.transactions.data);
-        setTotalTransactionPages(data.transactions.pagination.totalPages);
-      } catch (error) {
-        console.error('Error fetching token data:', error);
-      }
-    },
-    [tokenAddr]
-  );
-
-  const fetchHistoricalPriceData = useCallback(async () => {
+  // ===== Fetch /token/info =====
+  const fetchTokenInfo = useCallback(async () => {
     if (!tokenAddr) return;
     try {
-      const historicalData = await getTokenUSDPriceHistory(tokenAddr as string);
-      if (Array.isArray(historicalData) && historicalData.length > 0) {
-        const formattedData = historicalData.map((item, index, arr) => {
-          const prevItem = arr[index - 1] || item;
-          return {
-            time: new Date(item.timestamp).getTime() / 1000,
-            open: parseFloat(prevItem.tokenPriceUSD),
-            high: Math.max(parseFloat(prevItem.tokenPriceUSD), parseFloat(item.tokenPriceUSD)),
-            low: Math.min(parseFloat(prevItem.tokenPriceUSD), parseFloat(item.tokenPriceUSD)),
-            close: parseFloat(item.tokenPriceUSD),
-          };
-        });
-        setChartData(formattedData);
-      }
-    } catch (error) {
-      console.error('Error fetching historical price data:', error);
-      setChartError('Failed to load chart data');
+      const info = await getTokenInfo(tokenAddr);
+      setTokenInfo(info as any);
+    } catch (e) {
+      console.error('Error fetching /token/info:', e);
     }
   }, [tokenAddr]);
 
-  const fetchTokenHolders = async () => {
+  // ===== Fetch /token/liquidity =====
+  const fetchLiquidity = useCallback(async () => {
     if (!tokenAddr) return;
     try {
-      const holders = await getTokenHolders(tokenAddr as string);
-      setTokenHolders(holders);
-    } catch (error) {
-      console.error('Error fetching token holders:', error);
-      toast.error('Failed to fetch token holders');
+      const lq = await getTokenLiquidity(tokenAddr);
+      setLiquidityEvents(lq?.events ?? []);
+    } catch (e) {
+      console.error('Error fetching /token/liquidity:', e);
+      setLiquidityEvents([]);
     }
-  };
+  }, [tokenAddr]);
 
-  const indexOfLastHolder = currentPage * holdersPerPage;
-  const indexOfFirstHolder = indexOfLastHolder - holdersPerPage;
-  const currentHolders = tokenHolders.slice(indexOfFirstHolder, indexOfLastHolder);
-  const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
-
-  const fetchAllData = useCallback(async () => {
+  // ===== Initial fetch when token changes =====
+  useEffect(() => {
     if (!tokenAddr) return;
+    fetchTokenInfo();
+    fetchLiquidity();
+  }, [tokenAddr, fetchTokenInfo, fetchLiquidity]);
 
-    await fetchTokenData(transactionPage);
-    await fetchHistoricalPriceData();
-    refetchCurrentPrice();
-    refetchLiquidity();
-    fetchTokenHolders();
-    refetchUserBalance();
-
-    try {
-      // Dùng address khi tokenInfo chưa có
-      const idForEvents = tokenInfo?.id ?? (tokenAddr as string);
-      const events = await getTokenLiquidityEvents(idForEvents);
-      setLiquidityEvents(events);
-    } catch (error) {
-      console.error('Error fetching liquidity events:', error);
-    }
-  }, [
-    tokenAddr,
-    transactionPage,
-    fetchTokenData,
-    fetchHistoricalPriceData,
-    refetchCurrentPrice,
-    refetchLiquidity,
-    refetchUserBalance,
-    tokenInfo?.id,
-  ]);
-
-  // Nếu vào trang bằng link list -> sẽ chạy client fetch ngay cả khi SSR fail
-  useEffect(() => {
-    fetchAllData();
-  }, [fetchAllData]);
-
-  useEffect(() => {
-    if (tokenAllowance !== undefined && tokenAddr) {
-      setIsApproved(typeof tokenAllowance === 'bigint' && tokenAllowance > BigInt(0));
-    }
-  }, [tokenAllowance, tokenAddr]);
-
-  useEffect(() => {
-    if (fetchedEthBalance) {
-      setEthBalance(parseFloat(formatUnits(fetchedEthBalance, 18)).toFixed(5));
-    }
-    if (fetchedTokenBalance) {
-      setTokenBalance(parseFloat(formatUnits(fetchedTokenBalance, 18)).toFixed(5));
-    }
-  }, [fetchedEthBalance, fetchedTokenBalance]);
-
-  useEffect(() => {
-    if (transactionReceipt && !transactionError) {
-      if (isSwapped) {
-        if (!isApproved) {
-          setIsApproved(true);
-          toast.success('Token approval successful');
-        } else {
-          toast.success('Tokens sold successfully');
-        }
-      } else {
-        toast.success('Tokens bought successfully');
-      }
-      fetchAllData();
-      setIsTransacting(false);
-      setRefreshCounter((prev) => prev + 1);
-    } else if (transactionError) {
-      toast.error('Transaction failed');
-      setIsTransacting(false);
-    }
-  }, [transactionReceipt, transactionError, isSwapped, isApproved, fetchAllData]);
-
-  // Đồng bộ nhãn token sau khi tokenInfo sẵn sàng
+  // ===== Sync token labels when tokenInfo ready =====
   useEffect(() => {
     if (!tokenInfo) return;
     setFromToken((prev) => ({
-      symbol: isSwapped ? tokenInfo.symbol : 'BONE',
+      symbol: isSwapped ? (tokenInfo as any).symbol : 'SOL',
       amount: prev.amount,
     }));
     setToToken((prev) => ({
-      symbol: isSwapped ? 'BONE' : tokenInfo.symbol,
+      symbol: isSwapped ? 'SOL' : (tokenInfo as any).symbol,
       amount: prev.amount,
     }));
   }, [tokenInfo, isSwapped]);
 
+  // ===== Estimate "To" (page không có priceInfo nữa) =====
   useEffect(() => {
-    if (debouncedFromAmount) {
-      setIsCalculating(true);
-      if (isSwapped) {
-        // Selling tokens
-        if (sellReturnData !== undefined && !isSellCalculating) {
-          const ethAmount = formatUnits(sellReturnData, 18);
-          setToToken((prev) => ({ ...prev, amount: ethAmount }));
-          setIsCalculating(false);
-        }
-      } else {
-        // Buying tokens
-        if (buyReturnData !== undefined && !isBuyCalculating) {
-          const tokenAmount = formatUnits(buyReturnData, 18);
-          setToToken((prev) => ({ ...prev, amount: tokenAmount }));
-          setIsCalculating(false);
-        }
-      }
-    } else {
+    const amt = Number(debouncedFromAmount || 0);
+    if (!amt) {
       setToToken((prev) => ({ ...prev, amount: '' }));
       setIsCalculating(false);
+      return;
     }
-  }, [debouncedFromAmount, buyReturnData, sellReturnData, isSwapped, isBuyCalculating, isSellCalculating]);
+
+    // chưa có price ở page => để trống (tránh hiển thị sai)
+    setIsCalculating(true);
+    setToToken((prev) => ({ ...prev, amount: '' }));
+    setIsCalculating(false);
+  }, [debouncedFromAmount, isSwapped]);
 
   useEffect(() => {
     setActionButtonText(isSwapped ? (isApproved ? 'Sell' : 'Approve') : 'Buy');
@@ -292,14 +138,14 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
   const handleSwap = useCallback(() => {
     setIsSwapped((prev) => !prev);
     setFromToken((prev) => ({
-      symbol: prev.symbol === 'BONE' ? (tokenInfo?.symbol ?? '') : 'BONE',
+      symbol: prev.symbol === 'SOL' ? ((tokenInfo as any)?.symbol ?? '') : 'SOL',
       amount: '',
     }));
     setToToken((prev) => ({
-      symbol: prev.symbol === 'BONE' ? (tokenInfo?.symbol ?? '') : 'BONE',
+      symbol: prev.symbol === 'SOL' ? ((tokenInfo as any)?.symbol ?? '') : 'SOL',
       amount: '',
     }));
-  }, [tokenInfo?.symbol]);
+  }, [tokenInfo]);
 
   const handleFromAmountChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setFromToken((prev) => ({ ...prev, amount: e.target.value }));
@@ -307,66 +153,38 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
   }, []);
 
   const handleAction = useCallback(async () => {
-    if (!tokenAddr || !fromToken.amount || !userAddress) {
+    if (!tokenAddr || !fromToken.amount) {
       toast.error('Missing required information');
       return;
     }
 
-    const amount = parseUnits(fromToken.amount, 18);
     setIsTransacting(true);
-
     try {
-      let txHash;
-      if (isSwapped) {
-        if (!isApproved) {
-          txHash = await approveTokens(tokenAddr as `0x${string}`);
-        } else {
-          txHash = await sellTokens(tokenAddr as `0x${string}`, amount);
-        }
-      } else {
-        txHash = await buyTokens(tokenAddr as `0x${string}`, amount);
-      }
-      setTransactionHash(txHash as `0x${string}`);
-    } catch (error) {
-      console.error('Transaction error:', error);
-      toast.error('Transaction failed to initiate: ' + (error as Error).message);
+      toast.info('Trading is not available yet (Solana integration pending).');
+      setRefreshCounter((prev) => prev + 1);
+    } finally {
       setIsTransacting(false);
     }
-  }, [tokenAddr, fromToken.amount, userAddress, isSwapped, isApproved, approveTokens, sellTokens, buyTokens]);
-
-  useEffect(() => {
-    if (!isWaiting && !transactionError) {
-      setIsTransacting(false);
-      setTransactionHash(undefined);
-    }
-  }, [isWaiting, transactionError]);
+  }, [tokenAddr, fromToken.amount]);
 
   const handlePageChange = useCallback((newPage: number) => {
     setTransactionPage(newPage);
   }, []);
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success('Copied');
-  };
-
   const handleMaxClick = () => {
     if (isSwapped) {
-      if (fetchedTokenBalance) {
-        const exactTokenBalance = formatUnits(fetchedTokenBalance, 18);
-        setFromToken((prev) => ({ ...prev, amount: exactTokenBalance }));
-      }
+      setFromToken((prev) => ({ ...prev, amount: tokenBalance }));
     } else {
-      if (fetchedEthBalance) {
-        const exactEthBalance = formatUnits(fetchedEthBalance, 18);
-        const maxEthAmount = (parseFloat(exactEthBalance) * 0.95).toString();
-        setFromToken((prev) => ({ ...prev, amount: maxEthAmount }));
-      }
+      const maxSol = (Number(ethBalance || 0) * 0.95).toString();
+      setFromToken((prev) => ({ ...prev, amount: maxSol }));
     }
   };
 
+  // holders paging placeholders (UI only)
+  const currentHolders = tokenHolders; // currently empty (UI keeps)
+  const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
+
   if (!tokenInfo) {
-    // Khi SSR fail hoặc đang fetch lần đầu
     return (
       <Layout>
         <div className="flex justify-center items-center min-height-screen min-h-screen">
@@ -378,12 +196,12 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
   return (
     <Layout>
-      <SEO token={tokenInfo} />
+      <SEO token={tokenInfo as any} />
 
       {/* Mobile header */}
       <div className="lg:hidden mb-6">
         <TokenInfo
-          tokenInfo={tokenInfo}
+          tokenInfo={tokenInfo as any}
           showHeader={true}
           refreshTrigger={refreshCounter}
           liquidityEvents={liquidityEvents}
@@ -396,19 +214,18 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
           <div className="lg:col-span-2 space-y-6">
             {/* Chart */}
             <div className="space-y-2">
-              <h2 className="text-sm font-semibold text-gray-300">
-                {tokenInfo.name || tokenInfo.symbol}
-              </h2>
-              <TradingViewChart
-                data={chartData}
-                liquidityEvents={liquidityEvents}
-                tokenInfo={tokenInfo}
-              />
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-gray-300 truncate">
+                  {(tokenInfo as any).name || (tokenInfo as any).symbol}
+                </h2>
+              </div>
+
+              {/* ✅ Chart tự handle timeframe + fetch price */}
+              <TradingViewChart liquidityEvents={liquidityEvents} tokenInfo={tokenInfo as any} />
             </div>
 
             {/* Quick Actions - Mobile */}
             <div className="lg:hidden card gradient-border p-4 relative">
-              {/* Header: Slippage label + Settings button (NO input) */}
               <div className="mb-3 flex items-center justify-between">
                 <label className="text-sm font-semibold text-gray-400">Slippage (%)</label>
                 <button
@@ -421,7 +238,6 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 </button>
               </div>
 
-              {/* Buy / Sell toggle (primary color like action button) */}
               <div className="mb-4 flex items-center gap-2">
                 <button
                   onClick={() => setIsSwapped(false)}
@@ -439,13 +255,10 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 </button>
               </div>
 
-              {/* From */}
               <div className="mb-4">
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-gray-400">From</span>
-                  <span className="text-gray-400">
-                    Balance: {isSwapped ? tokenBalance : ethBalance}
-                  </span>
+                  <span className="text-gray-400">Balance: {isSwapped ? tokenBalance : ethBalance}</span>
                 </div>
                 <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
                   <input
@@ -465,21 +278,14 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 </div>
               </div>
 
-              {/* Swap */}
-              <button
-                onClick={handleSwap}
-                className="w-full flex justify-center p-2 text-gray-400 hover:text-[var(--primary)]"
-              >
+              <button onClick={handleSwap} className="w-full flex justify-center p-2 text-gray-400 hover:text-[var(--primary)]">
                 <ArrowUpDownIcon size={20} />
               </button>
 
-              {/* To */}
               <div className="mb-4">
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-gray-400">To</span>
-                  <span className="text-gray-400">
-                    Balance: {isSwapped ? ethBalance : tokenBalance}
-                  </span>
+                  <span className="text-gray-400">Balance: {isSwapped ? ethBalance : tokenBalance}</span>
                 </div>
                 <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
                   <input
@@ -492,7 +298,6 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 </div>
               </div>
 
-              {/* Action */}
               <button
                 onClick={handleAction}
                 disabled={!fromToken.amount || isCalculating || isTransacting}
@@ -501,7 +306,6 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 {isTransacting ? 'Processing...' : actionButtonText}
               </button>
 
-              {/* Settings Popover (mobile) */}
               {isSettingsOpenMobile && (
                 <div className="absolute right-4 top-20 z-20 w-[320px] bg-[var(--card2)] border-thin rounded-xl shadow-xl p-4">
                   <SettingsPanel
@@ -548,27 +352,30 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                     Holders
                   </Tab>
                 </Tab.List>
+
                 <Tab.Panels>
                   <Tab.Panel>
                     <TransactionHistory
                       transactions={transactions}
                       transactionPage={transactionPage}
                       totalTransactionPages={totalTransactionPages}
-                      tokenSymbol={tokenInfo.symbol}
+                      tokenSymbol={(tokenInfo as any).symbol}
                       handlePageChange={handlePageChange}
                     />
                   </Tab.Panel>
+
                   <Tab.Panel>
-                    <Chats tokenAddress={address as string} tokenInfo={tokenInfo} />
+                    <Chats tokenAddress={tokenAddr as string} tokenInfo={tokenInfo as any} />
                   </Tab.Panel>
+
                   <Tab.Panel>
                     <TokenHolders
                       tokenHolders={currentHolders}
                       currentPage={currentPage}
-                      totalPages={Math.ceil(tokenHolders.length / holdersPerPage)}
-                      tokenSymbol={tokenInfo.symbol}
-                      creatorAddress={tokenInfo.creatorAddress}
-                      tokenAddress={address as string}
+                      totalPages={1}
+                      tokenSymbol={(tokenInfo as any).symbol}
+                      creatorAddress={(tokenInfo as any).creatorAddress}
+                      tokenAddress={tokenAddr as string}
                       onPageChange={paginate}
                       allHolders={tokenHolders}
                     />
@@ -580,9 +387,8 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
           {/* Right */}
           <div className="space-y-6">
-            {/* Quick Actions (desktop) — ABOVE Token Info */}
+            {/* Quick Actions (desktop) */}
             <div className="hidden lg:block card gradient-border p-4 relative">
-              {/* Header: Slippage label + Settings button (NO input) */}
               <div className="mb-3 flex items-center justify-between">
                 <label className="text-sm font-semibold text-gray-400">Slippage (%)</label>
                 <button
@@ -595,7 +401,6 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 </button>
               </div>
 
-              {/* Buy / Sell toggle — primary color */}
               <div className="mb-4 flex items-center gap-2">
                 <button
                   onClick={() => setIsSwapped(false)}
@@ -613,13 +418,10 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 </button>
               </div>
 
-              {/* From */}
               <div className="mb-4">
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-gray-400">From</span>
-                  <span className="text-gray-400">
-                    Balance: {isSwapped ? tokenBalance : ethBalance}
-                  </span>
+                  <span className="text-gray-400">Balance: {isSwapped ? tokenBalance : ethBalance}</span>
                 </div>
                 <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
                   <input
@@ -639,21 +441,14 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 </div>
               </div>
 
-              {/* Swap */}
-              <button
-                onClick={handleSwap}
-                className="w-full flex justify-center p-2 text-gray-400 hover:text-[var(--primary)]"
-              >
+              <button onClick={handleSwap} className="w-full flex justify-center p-2 text-gray-400 hover:text-[var(--primary)]">
                 <ArrowUpDownIcon size={20} />
               </button>
 
-              {/* To */}
               <div className="mb-4">
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-gray-400">To (Estimated)</span>
-                  <span className="text-gray-400">
-                    Balance: {isSwapped ? ethBalance : tokenBalance}
-                  </span>
+                  <span className="text-gray-400">Balance: {isSwapped ? ethBalance : tokenBalance}</span>
                 </div>
                 <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
                   <input
@@ -666,7 +461,6 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 </div>
               </div>
 
-              {/* Action */}
               <button
                 onClick={handleAction}
                 disabled={!fromToken.amount || isCalculating || isTransacting}
@@ -675,7 +469,6 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 {isTransacting ? 'Processing...' : actionButtonText}
               </button>
 
-              {/* Settings Popover (desktop) */}
               {isSettingsOpenDesktop && (
                 <div className="absolute right-4 top-20 z-20 w-[320px] bg-[var(--card2)] border-thin rounded-xl shadow-xl p-4">
                   <SettingsPanel
@@ -693,26 +486,19 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
               )}
             </div>
 
-            {/* Token Info Header (desktop) — BELOW Quick Actions */}
+            {/* Token Info Header (desktop) */}
             <div className="hidden lg:block card gradient-border p-4">
-              <TokenInfo
-                tokenInfo={tokenInfo}
-                showHeader={true}
-                refreshTrigger={refreshCounter}
-                liquidityEvents={liquidityEvents}
-              />
+              <TokenInfo tokenInfo={tokenInfo as any} showHeader={true} refreshTrigger={refreshCounter} liquidityEvents={liquidityEvents} />
             </div>
           </div>
         </div>
 
-        {/* Share */}
-        <ShareButton tokenInfo={tokenInfo} />
+        <ShareButton tokenInfo={tokenInfo as any} />
       </div>
     </Layout>
   );
 };
 
-/** Settings content reused for mobile/desktop */
 function SettingsPanel(props: {
   antiMEV: boolean;
   setAntiMEV: (v: boolean) => void;
@@ -724,43 +510,38 @@ function SettingsPanel(props: {
   setBribe: (v: string) => void;
   onClose: () => void;
 }) {
-  const {
-    antiMEV,
-    setAntiMEV,
-    txSpeed,
-    setTxSpeed,
-    priorityFee,
-    setPriorityFee,
-    bribe,
-    setBribe,
-    onClose,
-  } = props;
+  const { antiMEV, setAntiMEV, txSpeed, setTxSpeed, priorityFee, setPriorityFee, bribe, setBribe, onClose } = props;
 
   const activeBtn = 'px-3 py-1 rounded-md bg-[var(--primary)] text-white';
-  const idleBtn   = 'px-3 py-1 rounded-md bg-[var(--card)] text-gray-300 border-thin hover:text-white';
+  const idleBtn = 'px-3 py-1 rounded-md bg-[var(--card)] text-gray-300 border-thin hover:text-white';
 
   return (
     <>
       <div className="space-y-3 text-sm">
-        {/* Anti-MEV */}
         <div className="flex items-center justify-between">
           <span className="text-gray-300">Anti-MEV Protection</span>
           <div className="flex items-center gap-2">
-            <button onClick={() => setAntiMEV(true)}  className={antiMEV ? activeBtn : idleBtn}>ON</button>
-            <button onClick={() => setAntiMEV(false)} className={!antiMEV ? activeBtn : idleBtn}>OFF</button>
+            <button onClick={() => setAntiMEV(true)} className={antiMEV ? activeBtn : idleBtn}>
+              ON
+            </button>
+            <button onClick={() => setAntiMEV(false)} className={!antiMEV ? activeBtn : idleBtn}>
+              OFF
+            </button>
           </div>
         </div>
 
-        {/* Transaction Speed */}
         <div className="flex items-center justify-between">
           <span className="text-gray-300">Transaction Speed</span>
           <div className="flex items-center gap-2">
-            <button onClick={() => setTxSpeed('auto')}   className={txSpeed === 'auto' ? activeBtn : idleBtn}>AUTO</button>
-            <button onClick={() => setTxSpeed('manual')} className={txSpeed === 'manual' ? activeBtn : idleBtn}>MANUAL</button>
+            <button onClick={() => setTxSpeed('auto')} className={txSpeed === 'auto' ? activeBtn : idleBtn}>
+              AUTO
+            </button>
+            <button onClick={() => setTxSpeed('manual')} className={txSpeed === 'manual' ? activeBtn : idleBtn}>
+              MANUAL
+            </button>
           </div>
         </div>
 
-        {/* Priority Fee (SOL) */}
         <div>
           <label className="text-gray-300 block mb-1">Priority Fee (SOL)</label>
           <input
@@ -775,7 +556,6 @@ function SettingsPanel(props: {
           />
         </div>
 
-        {/* Bribe (SOL) */}
         <div>
           <label className="text-gray-300 block mb-1">Bribe (SOL)</label>
           <input
@@ -791,10 +571,7 @@ function SettingsPanel(props: {
       </div>
 
       <div className="mt-4 flex justify-end">
-        <button
-          onClick={onClose}
-          className="px-3 py-1 rounded-md bg-[var(--card)] border-thin text-sm text-gray-300 hover:text-white"
-        >
+        <button onClick={onClose} className="px-3 py-1 rounded-md bg-[var(--card)] border-thin text-sm text-gray-300 hover:text-white">
           Close
         </button>
       </div>
@@ -802,24 +579,16 @@ function SettingsPanel(props: {
   );
 }
 
-// SSR chỉ để SEO: không 404 khi API lỗi, trả props null để client tự fetch
+// ✅ SSR: dùng /token/info
 export const getServerSideProps: GetServerSideProps = async (context) => {
   const { address } = context.params as { address: string };
 
   try {
-    const tokenInfo = await getTokenInfoAndTransactions(address, 1, 1);
-    return {
-      props: {
-        initialTokenInfo: tokenInfo ?? null,
-      },
-    };
-  } catch (error) {
-    console.error('SSR getTokenInfoAndTransactions failed:', error);
-    return {
-      props: {
-        initialTokenInfo: null,
-      },
-    };
+    const info = await getTokenInfo(address);
+    return { props: { initialTokenInfo: (info as any) ?? null } };
+  } catch (e) {
+    console.error('SSR getTokenInfo failed:', e);
+    return { props: { initialTokenInfo: null } };
   }
 };
 

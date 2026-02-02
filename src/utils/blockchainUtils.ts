@@ -15,12 +15,24 @@
    Common helpers (SAFE)
 ========================= */
 
+// ✅ no BigInt literals (0n / 10n), no bigint exponentiation (**)
+const BI_0 = BigInt(0);
+const BI_10 = BigInt(10);
+
+function pow10BigInt(decimals: number): bigint {
+  // handle weird inputs safely
+  const d = Number.isFinite(decimals) ? Math.max(0, Math.floor(decimals)) : 0;
+  let out = BigInt(1);
+  for (let i = 0; i < d; i++) out = out * BI_10;
+  return out;
+}
+
 // Safe formatUnits for bigint (thay cho viem formatUnits)
 export function formatUnitsSafe(value: bigint, decimals = 18): string {
-  const neg = value < 0n;
+  const neg = value < BI_0;
   const v = neg ? -value : value;
 
-  const base = 10n ** BigInt(decimals);
+  const base = pow10BigInt(decimals);
   const i = v / base;
   const f = v % base;
 
@@ -29,34 +41,93 @@ export function formatUnitsSafe(value: bigint, decimals = 18): string {
   const frac = f.toString().padStart(decimals, '0').replace(/0+$/, '');
   return `${neg ? '-' : ''}${i.toString()}${frac ? '.' + frac : ''}`;
 }
+/**
+ * Parse amount safely for both:
+ * - EVM integer string (wei-like): "1000000000000000000"
+ * - Solana/BE decimal string: "9856.875140477"
+ * - number input
+ *
+ * Returns a finite number or null.
+ */
+export function parseAmountToNumber(amount: string | number, decimals = 18): number | null {
+  if (amount === null || amount === undefined) return null;
+
+  const str = String(amount).trim();
+  if (!str) return null;
+
+  // If it's already a normal decimal representation => parse directly
+  // (Solana / BE new)
+  if (str.includes('.') || str.includes('e') || str.includes('E')) {
+    const n = Number(str);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // Integer string case (EVM wei-like). BigInt can handle it.
+  try {
+    const n = Number(formatUnitsSafe(BigInt(str), decimals));
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    // Fallback: parseFloat as last resort (never crash)
+    const n = Number(str);
+    return Number.isFinite(n) ? n : null;
+  }
+}
+
+/**
+ * Generic compact formatter used by formatAmount* helpers.
+ * - k/M/B/T for large
+ * - variable decimals for small
+ */
+export function formatCompactNumber(value: number): string {
+  const format = (v: number, maxDecimals: number) => {
+    const rounded = v.toFixed(maxDecimals);
+    return rounded.replace(/\.?0+$/, '');
+  };
+
+  const abs = Math.abs(value);
+
+  if (abs >= 1e12) return `${format(value / 1e12, 2)}T`;
+  if (abs >= 1e9) return `${format(value / 1e9, 2)}B`;
+  if (abs >= 1e6) return `${format(value / 1e6, 2)}M`;
+  if (abs >= 1e3) return `${format(value / 1e3, 2)}k`;
+  if (abs >= 1) return format(value, 4);
+  if (abs >= 0.01) return format(value, 6);
+  return format(value, 8);
+}
 
 /* =========================
    Amount/time formatting (SAFE)
 ========================= */
 
-export const formatAmountV3 = (amount: string, decimals: number = 18) => {
-  const formattedAmount = parseFloat(formatUnitsSafe(BigInt(amount), decimals));
+/**
+ * ✅ FIXED for Solana:
+ * - Accepts decimal string OR integer string
+ * - Never BigInt(decimal)
+ * - Never throws
+ */
+export const formatAmountV3 = (amount: string | number, decimals: number = 18) => {
+  const n = parseAmountToNumber(amount, decimals);
+  if (n === null) return '0';
 
   const format = (value: number, maxDecimals: number) => {
     const rounded = value.toFixed(maxDecimals);
-    const withoutTrailingZeros = parseFloat(rounded).toString();
+    // Keep same behavior as your old code: parseFloat(toString()) removes trailing zeros
+    const withoutTrailingZeros = Number(rounded).toString();
     return withoutTrailingZeros;
   };
 
-  if (formattedAmount >= 1e12) {
-    return `${format(formattedAmount / 1e12, 2)}T`;
-  } else if (formattedAmount >= 1e9) {
-    return `${format(formattedAmount / 1e9, 2)}B`;
-  } else if (formattedAmount >= 1e6) {
-    return `${format(formattedAmount / 1e6, 2)}M`;
-  } else if (formattedAmount >= 1e3) {
-    return `${format(formattedAmount / 1e3, 2)}k`;
-  } else if (formattedAmount >= 1) {
-    return format(formattedAmount, 2);
-  } else {
-    const dec = Math.min(6, Math.max(2, 3 - Math.floor(Math.log10(formattedAmount || 1e-9))));
-    return format(formattedAmount, dec);
-  }
+  const abs = Math.abs(n);
+
+  if (abs >= 1e12) return `${format(n / 1e12, 2)}T`;
+  if (abs >= 1e9) return `${format(n / 1e9, 2)}B`;
+  if (abs >= 1e6) return `${format(n / 1e6, 2)}M`;
+  if (abs >= 1e3) return `${format(n / 1e3, 2)}k`;
+  if (abs >= 1) return format(n, 2);
+
+  // Small number: dynamic decimals similar to your logic, but safe for n=0
+  const safe = abs > 0 ? abs : 1e-9;
+  const dec = Math.min(6, Math.max(2, 3 - Math.floor(Math.log10(safe))));
+  return format(n, dec);
 };
 
 export function formatTimestamp(timestamp: string): string {
@@ -119,22 +190,36 @@ export function formatTimestampV1(timestamp: string): string {
   return `${diffInYears}yr`;
 }
 
-export const formatAmount = (amount: string, decimals: number = 18) => {
-  const formattedAmount = parseFloat(formatUnitsSafe(BigInt(amount), decimals));
-  if (formattedAmount >= 1e12) return `${(formattedAmount / 1e12).toFixed(4)}T`;
-  if (formattedAmount >= 1e9) return `${(formattedAmount / 1e9).toFixed(4)}B`;
-  if (formattedAmount >= 1e6) return `${(formattedAmount / 1e6).toFixed(4)}M`;
-  if (formattedAmount >= 1e3) return `${(formattedAmount / 1e3).toFixed(4)}k`;
-  return formattedAmount.toFixed(8);
+/**
+ * ✅ FIXED: do not BigInt(decimal)
+ * (giữ output style cũ)
+ */
+export const formatAmount = (amount: string | number, decimals: number = 18) => {
+  const n = parseAmountToNumber(amount, decimals);
+  if (n === null) return '0';
+
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return `${(n / 1e12).toFixed(4)}T`;
+  if (abs >= 1e9) return `${(n / 1e9).toFixed(4)}B`;
+  if (abs >= 1e6) return `${(n / 1e6).toFixed(4)}M`;
+  if (abs >= 1e3) return `${(n / 1e3).toFixed(4)}k`;
+  return n.toFixed(8);
 };
 
-export const formatAmountV2 = (amount: string, decimals: number = 18) => {
-  const formattedAmount = parseFloat(formatUnitsSafe(BigInt(amount), decimals));
-  if (formattedAmount >= 1e12) return `${(formattedAmount / 1e12).toFixed(1)}T`;
-  if (formattedAmount >= 1e9) return `${(formattedAmount / 1e9).toFixed(2)}B`;
-  if (formattedAmount >= 1e6) return `${(formattedAmount / 1e6).toFixed(2)}M`;
-  if (formattedAmount >= 1e3) return `${(formattedAmount / 1e3).toFixed(2)}k`;
-  return formattedAmount.toFixed(3);
+/**
+ * ✅ FIXED: do not BigInt(decimal)
+ * (giữ output style cũ)
+ */
+export const formatAmountV2 = (amount: string | number, decimals: number = 18) => {
+  const n = parseAmountToNumber(amount, decimals);
+  if (n === null) return '0';
+
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return `${(n / 1e12).toFixed(1)}T`;
+  if (abs >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  if (abs >= 1e3) return `${(n / 1e3).toFixed(2)}k`;
+  return n.toFixed(3);
 };
 
 export function formatAddressV2(address: string): string {
@@ -228,7 +313,10 @@ export const useTokenLiquidity = (_tokenAddress: any): DisabledQueryHook<Transfo
   };
 };
 
-export function useCalcBuyReturn(_tokenAddress: any, _ethAmount: any): DisabledHookBase & { data: bigint | undefined; isLoading: false } {
+export function useCalcBuyReturn(
+  _tokenAddress: any,
+  _ethAmount: any
+): DisabledHookBase & { data: bigint | undefined; isLoading: false } {
   return {
     disabled: true,
     data: undefined,
@@ -236,7 +324,10 @@ export function useCalcBuyReturn(_tokenAddress: any, _ethAmount: any): DisabledH
   };
 }
 
-export function useCalcSellReturn(_tokenAddress: any, _tokenAmount: any): DisabledHookBase & { data: bigint | undefined; isLoading: false } {
+export function useCalcSellReturn(
+  _tokenAddress: any,
+  _tokenAmount: any
+): DisabledHookBase & { data: bigint | undefined; isLoading: false } {
   return {
     disabled: true,
     data: undefined,
@@ -244,7 +335,10 @@ export function useCalcSellReturn(_tokenAddress: any, _tokenAmount: any): Disabl
   };
 }
 
-export function useUserBalance(_userAddress: any, _tokenAddress: any): DisabledHookBase & {
+export function useUserBalance(
+  _userAddress: any,
+  _tokenAddress: any
+): DisabledHookBase & {
   ethBalance: bigint | undefined;
   tokenBalance: bigint | undefined;
   refetch: () => void;
@@ -257,7 +351,10 @@ export function useUserBalance(_userAddress: any, _tokenAddress: any): DisabledH
   };
 }
 
-export function useERC20Balance(_tokenAddress: any, _walletAddress: any): DisabledReadHook<bigint> & { balance: bigint | undefined } {
+export function useERC20Balance(
+  _tokenAddress: any,
+  _walletAddress: any
+): DisabledReadHook<bigint> & { balance: bigint | undefined } {
   return {
     disabled: true,
     data: undefined,
