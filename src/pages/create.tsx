@@ -830,16 +830,6 @@ const CreateToken: React.FC = () => {
         {/* ✅ CONNECT WALLET MODAL (MATCH STYLE) */}
         {showConnectWalletModal && (
           <Modal isOpen={showConnectWalletModal} onClose={closeConnectWalletModal}>
-            <div
-              className="
-                w-[92vw] max-w-[520px]
-                rounded-3xl
-                bg-[#0f1420]
-                border border-white/10
-                shadow-2xl
-                overflow-hidden
-              "
-            >
               {/* Header */}
               <div className="flex items-center justify-between px-5 pt-4">
                 <button
@@ -939,7 +929,7 @@ const CreateToken: React.FC = () => {
                   </div>
                 </div>
               </div>
-            </div>
+
           </Modal>
         )}
 
