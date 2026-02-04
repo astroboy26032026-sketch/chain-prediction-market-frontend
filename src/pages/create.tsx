@@ -26,8 +26,7 @@ import {
 import PurchaseConfirmationPopup from '@/components/notifications/PurchaseConfirmationPopup';
 import Modal from '@/components/notifications/Modal';
 
-// ✅ Optional: Solana wallet adapter
-// If you don't have wallet-adapter set up yet, you can REMOVE these 2 lines and the small banner below.
+// optional wallet adapter (kept)
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 
@@ -35,8 +34,34 @@ type Step = 1 | 2 | 3;
 
 const MAX_FILE_SIZE = 1024 * 1024; // 1MB
 
-const makeSymbol = (name: string) =>
-  ((name || 'TOKEN').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 6) || 'TOKEN');
+// =====================
+// ✅ Symbol rules (SAFE: BE(2-16) ∩ On-chain(1-10) = 2-10)
+// =====================
+const SYMBOL_MIN = 2;
+const SYMBOL_MAX = 10;
+const SYMBOL_RE = /^[A-Z0-9]{2,10}$/;
+
+function normalizeSymbol(input: string) {
+  return (input || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, SYMBOL_MAX);
+}
+
+function validateSymbolOrThrow(symbol: string) {
+  const s = normalizeSymbol(symbol);
+  if (!SYMBOL_RE.test(s)) {
+    throw new Error(`Symbol must be uppercase alphanumeric, ${SYMBOL_MIN}-${SYMBOL_MAX} characters`);
+  }
+  return s;
+}
+
+const makeSymbol = (name: string) => {
+  const s = normalizeSymbol(name);
+  if (s.length >= SYMBOL_MIN) return s;
+  // đảm bảo tối thiểu 2 ký tự
+  return (s + 'TK').slice(0, SYMBOL_MIN);
+};
 
 function readFileAsDataURL(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -55,10 +80,13 @@ function isExpiredDraftStatus(status?: number) {
   return status === 410;
 }
 
+const isNonNegInt = (v: any) => Number.isFinite(Number(v)) && Number(v) >= 0;
+const isNumericString = (v: any) => /^\d+$/.test(String(v ?? '').trim());
+
 const CreateToken: React.FC = () => {
   const router = useRouter();
 
-  // ✅ wallet (optional)
+  // wallet optional
   const { connected } = useWallet();
   const showConnectHint = !connected;
 
@@ -95,7 +123,10 @@ const CreateToken: React.FC = () => {
 
   // ===== Step 2: Curve params =====
   const [decimals, setDecimals] = useState<number>(6);
-  const [curveType] = useState<'linear'>('linear');
+
+  // ✅ BE wants curveType as number
+  // Convention: 0 = linear
+  const [curveType] = useState<number>(0);
 
   // defaults (tune as needed)
   const [basePriceLamports, setBasePriceLamports] = useState<number>(1000);
@@ -109,7 +140,7 @@ const CreateToken: React.FC = () => {
   >('idle');
 
   const [buyAmount, setBuyAmount] = useState<number>(0);
-  const walletBalance = 0; // TODO: replace with wallet adapter balance later
+  const walletBalance = 0;
 
   const [preview, setPreview] = useState<PreviewInitialBuyResponse | null>(null);
 
@@ -123,15 +154,16 @@ const CreateToken: React.FC = () => {
 
   // ===== derived =====
   const symbolAuto = useMemo(() => makeSymbol(tokenName), [tokenName]);
-  const symbolFinal = useMemo(() => (tokenSymbol || symbolAuto).trim(), [tokenSymbol, symbolAuto]);
+  const symbolFinal = useMemo(() => normalizeSymbol(tokenSymbol || symbolAuto), [tokenSymbol, symbolAuto]);
 
   const canGoNextStep1 = useMemo(() => {
-    return Boolean(tokenName.trim()) && Boolean(symbolFinal) && Boolean(tokenImageUrl);
+    // ✅ phải hợp lệ chuẩn SAFE (2-10)
+    const symbolOk = SYMBOL_RE.test(symbolFinal);
+    return Boolean(tokenName.trim()) && symbolOk && Boolean(tokenImageUrl);
   }, [tokenName, symbolFinal, tokenImageUrl]);
 
   const isBusy = useMemo(() => creationStep !== 'idle', [creationStep]);
 
-  // ===== helpers: reset flow if draft expired =====
   const resetDraftAndGoStep1 = useCallback((msg?: string) => {
     setDraft(null);
     setPreview(null);
@@ -151,8 +183,8 @@ const CreateToken: React.FC = () => {
 
     try {
       const dataUrl = await readFileAsDataURL(file);
-
       const res = await uploadTokenImage({ image: dataUrl });
+
       if (res?.imageUrl) {
         setTokenImageUrl(res.imageUrl);
         toast.success('Image uploaded successfully!');
@@ -201,12 +233,20 @@ const CreateToken: React.FC = () => {
       return;
     }
 
+    let symbolSafe = '';
+    try {
+      symbolSafe = validateSymbolOrThrow(symbolFinal); // ✅ 2-10
+    } catch (err: any) {
+      toast.error(err?.message || 'Invalid symbol');
+      return;
+    }
+
     setCreationStep('drafting');
 
     try {
       const res = await createTokenDraft({
         name: tokenName.trim(),
-        symbol: symbolFinal,
+        symbol: symbolSafe, // ✅ always valid
         description: tokenDescription || '',
         imageUrl: tokenImageUrl,
         isNSFW: Boolean(isNSFW),
@@ -231,10 +271,10 @@ const CreateToken: React.FC = () => {
       setCreationStep('idle');
     }
   }, [
-    tokenName,
-    symbolFinal,
-    tokenDescription,
     tokenImageUrl,
+    symbolFinal,
+    tokenName,
+    tokenDescription,
     isNSFW,
     twitter,
     telegram,
@@ -272,25 +312,38 @@ const CreateToken: React.FC = () => {
     }
   }, [draft?.draftId, buyAmount, resetDraftAndGoStep1]);
 
+  // ===== UI validate before finalize =====
+  const validateFinalizeInputs = useCallback((): string | null => {
+    if (!draft?.draftId) return 'Missing draftId. Please go back and create draft again.';
+    if (!Number.isFinite(decimals) || decimals < 0 || decimals > 18) return 'Decimals must be 0..18';
+    if (!isNonNegInt(basePriceLamports)) return 'Base price must be >= 0';
+    if (!isNonNegInt(slopeLamports)) return 'Slope must be >= 0';
+    if (!isNumericString(bondingCurveSupply)) return 'Bonding curve supply must be numeric string';
+    if (!isNumericString(graduateTargetLamports)) return 'Graduate target must be numeric string';
+    if (!isNonNegInt(curveType)) return 'Invalid curve type';
+    return null;
+  }, [draft?.draftId, decimals, basePriceLamports, slopeLamports, bondingCurveSupply, graduateTargetLamports, curveType]);
+
   // ===== Finalize: /token/create/finalize =====
   const runFinalize = useCallback(
     async (initialBuySol: number) => {
-      if (!draft?.draftId) {
-        toast.error('Missing draftId. Please go back and create draft again.');
+      const err = validateFinalizeInputs();
+      if (err) {
+        toast.error(err);
         return;
       }
 
       setCreationStep('finalizing');
       try {
         const res = await finalizeTokenCreation({
-          draftId: draft.draftId,
-          initialBuySol: initialBuySol || 0,
-          decimals: Number.isFinite(Number(decimals)) ? Number(decimals) : 6,
-          curveType,
-          basePriceLamports: Math.max(0, Number(basePriceLamports) || 0),
-          slopeLamports: Math.max(0, Number(slopeLamports) || 0),
-          bondingCurveSupply: String(bondingCurveSupply || '0'),
-          graduateTargetLamports: String(graduateTargetLamports || '0'),
+          draftId: draft!.draftId,
+          initialBuySol: Number.isFinite(initialBuySol) ? Math.max(0, initialBuySol) : 0,
+          decimals: Math.trunc(decimals),
+          curveType, // ✅ number (0 = linear)
+          basePriceLamports: Math.trunc(Math.max(0, Number(basePriceLamports) || 0)),
+          slopeLamports: Math.trunc(Math.max(0, Number(slopeLamports) || 0)),
+          bondingCurveSupply: String(bondingCurveSupply).trim(),
+          graduateTargetLamports: String(graduateTargetLamports).trim(),
         });
 
         setCreationStep('completed');
@@ -309,7 +362,7 @@ const CreateToken: React.FC = () => {
       }
     },
     [
-      draft?.draftId,
+      draft,
       decimals,
       curveType,
       basePriceLamports,
@@ -318,6 +371,7 @@ const CreateToken: React.FC = () => {
       graduateTargetLamports,
       router,
       resetDraftAndGoStep1,
+      validateFinalizeInputs,
     ]
   );
 
@@ -358,7 +412,6 @@ const CreateToken: React.FC = () => {
     }
   }, [step, draft?.draftId]);
 
-  /* ========= Render ========= */
   return (
     <Layout>
       <SEO
@@ -374,20 +427,15 @@ const CreateToken: React.FC = () => {
           {step === 3 && 'Finalize'}
         </h1>
 
-        {/* ✅ Just a small hint line (no gate) */}
         {showConnectHint && (
           <div className="mb-4 flex items-center justify-center gap-3">
-            <div className="text-xs sm:text-sm text-yellow-200/90">
-              Please connect wallet to avoid authorization errors.
-            </div>
-            {/* optional button */}
+            <div className="text-xs sm:text-sm text-yellow-200/90">Please connect wallet to avoid authorization errors.</div>
             <div className="scale-[0.9]">
               <WalletMultiButton />
             </div>
           </div>
         )}
 
-        {/* Under title: Info (left) + Setting (right) – only Step 1 */}
         {step === 1 && (
           <div className="mb-4 flex items-center justify-between">
             <button
@@ -431,13 +479,19 @@ const CreateToken: React.FC = () => {
                 <label className="block text-[10px] sm:text-xs font-medium text-gray-400 mb-1">Token Symbol</label>
                 <input
                   value={tokenSymbol}
-                  onChange={(e) => setTokenSymbol(e.target.value)}
+                  onChange={(e) => setTokenSymbol(normalizeSymbol(e.target.value))}
                   className="w-full py-2 px-3 bg-[var(--card2)] border-thin rounded-md text-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
-                  placeholder="Enter token symbol"
+                  placeholder="A-Z0-9, 2-10 chars"
                 />
                 <div className="text-[10px] text-gray-500 mt-1">
-                  Auto: <span className="text-gray-300">{symbolAuto}</span>
+                  Auto: <span className="text-gray-300">{symbolAuto}</span> • Final:{' '}
+                  <span className="text-gray-300">{symbolFinal || '-'}</span>
                 </div>
+                {!SYMBOL_RE.test(symbolFinal) && symbolFinal.length > 0 && (
+                  <div className="text-[10px] text-red-400 mt-1">
+                    Symbol must be uppercase alphanumeric, {SYMBOL_MIN}-{SYMBOL_MAX} characters
+                  </div>
+                )}
               </div>
             </div>
 
@@ -452,14 +506,8 @@ const CreateToken: React.FC = () => {
               />
             </div>
 
-            {/* NSFW */}
             <div className="flex items-center gap-2">
-              <input
-                id="isNsfw"
-                type="checkbox"
-                checked={isNSFW}
-                onChange={(e) => setIsNSFW(e.target.checked)}
-              />
+              <input id="isNsfw" type="checkbox" checked={isNSFW} onChange={(e) => setIsNSFW(e.target.checked)} />
               <label htmlFor="isNsfw" className="text-xs text-gray-300">
                 Mark as NSFW
               </label>
@@ -526,11 +574,7 @@ const CreateToken: React.FC = () => {
                 className="w-full flex justify-between items-center p-3 bg-[var(--card2)] text-white hover:bg-[var(--card-hover)] transition-colors"
               >
                 <span className="font-medium text-[10px] sm:text-xs">Social Media Links (Optional)</span>
-                {isSocialExpanded ? (
-                  <ChevronUpIcon className="h-5 w-5" />
-                ) : (
-                  <ChevronDownIcon className="h-5 w-5" />
-                )}
+                {isSocialExpanded ? <ChevronUpIcon className="h-5 w-5" /> : <ChevronDownIcon className="h-5 w-5" />}
               </button>
 
               {isSocialExpanded && (
@@ -543,9 +587,7 @@ const CreateToken: React.FC = () => {
                     { id: 'youtube', label: 'YouTube', value: youtube, setter: setYoutube },
                   ].map((i) => (
                     <div key={i.id}>
-                      <label className="block text-[10px] sm:text-xs font-medium text-gray-400 mb-1">
-                        {i.label}
-                      </label>
+                      <label className="block text-[10px] sm:text-xs font-medium text-gray-400 mb-1">{i.label}</label>
                       <input
                         value={i.value}
                         onChange={(e) => i.setter(e.target.value)}
@@ -558,7 +600,6 @@ const CreateToken: React.FC = () => {
               )}
             </div>
 
-            {/* Next -> create draft then go step2 */}
             <div className="flex">
               <button
                 className="btn btn-primary w-full py-3 rounded-md disabled:opacity-50"
@@ -593,10 +634,11 @@ const CreateToken: React.FC = () => {
                 <div>
                   <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">Curve Type</label>
                   <input
-                    value={curveType}
+                    value="linear"
                     disabled
                     className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white opacity-70"
                   />
+                  <div className="text-[10px] text-gray-500 mt-1">Mapped to BE: curveType = {curveType}</div>
                 </div>
 
                 <div>
@@ -632,9 +674,7 @@ const CreateToken: React.FC = () => {
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">
-                    Graduate Target (lamports)
-                  </label>
+                  <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">Graduate Target (lamports)</label>
                   <input
                     value={graduateTargetLamports}
                     onChange={(e) => setGraduateTargetLamports(e.target.value)}
@@ -668,9 +708,7 @@ const CreateToken: React.FC = () => {
           <div className="space-y-6">
             <div className="text-left">
               <div className="text-sm font-semibold text-[var(--foreground)]/90">Tip:</div>
-              <div className="text-[14px] text-[var(--foreground)]/75">
-                Optional: Make an initial buy to gain the most from your token
-              </div>
+              <div className="text-[14px] text-[var(--foreground)]/75">Optional: Make an initial buy to gain the most from your token</div>
             </div>
 
             <div className="rounded-3xl bg-[var(--card)] border-thin p-6 shadow-lg">
@@ -757,16 +795,10 @@ const CreateToken: React.FC = () => {
           </div>
         )}
 
-        {/* Confirm buy popup */}
         {showPurchasePopup && (
-          <PurchaseConfirmationPopup
-            onConfirm={handleConfirmBuy}
-            onCancel={() => setShowPurchasePopup(false)}
-            tokenSymbol="SOL"
-          />
+          <PurchaseConfirmationPopup onConfirm={handleConfirmBuy} onCancel={() => setShowPurchasePopup(false)} tokenSymbol="SOL" />
         )}
 
-        {/* Liquidity Settings Modal */}
         {showLiquidity && (
           <Modal isOpen={showLiquidity} onClose={() => setShowLiquidity(false)}>
             <div className="p-4 sm:p-6">
@@ -782,12 +814,9 @@ const CreateToken: React.FC = () => {
                       <button
                         key={key}
                         onClick={() => setLiqMode(key)}
-                        className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition
-                                    ${
-                                      active
-                                        ? 'bg-[var(--primary)] text-black'
-                                        : 'text-[var(--foreground)]/85 hover:bg-[var(--card2)]'
-                                    }`}
+                        className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition ${
+                          active ? 'bg-[var(--primary)] text-black' : 'text-[var(--foreground)]/85 hover:bg-[var(--card2)]'
+                        }`}
                       >
                         {key}
                       </button>
@@ -813,14 +842,11 @@ const CreateToken: React.FC = () => {
           </Modal>
         )}
 
-        {/* Prevent navigation modal */}
         {showPreventNavigationModal && (
           <Modal isOpen={showPreventNavigationModal} onClose={() => {}}>
             <div className="p-6">
               <h3 className="text-lg font-medium text-gray-100 mb-4">Please Wait</h3>
-              <p className="text-sm text-gray-500">
-                Your token is being finalized. Please do not close or navigate away.
-              </p>
+              <p className="text-sm text-gray-500">Your token is being finalized. Please do not close or navigate away.</p>
             </div>
           </Modal>
         )}
