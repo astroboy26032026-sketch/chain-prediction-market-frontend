@@ -26,7 +26,7 @@ import {
 import PurchaseConfirmationPopup from '@/components/notifications/PurchaseConfirmationPopup';
 import Modal from '@/components/notifications/Modal';
 
-// optional wallet adapter (kept)
+// wallet adapter kept (no banner)
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 
@@ -59,7 +59,6 @@ function validateSymbolOrThrow(symbol: string) {
 const makeSymbol = (name: string) => {
   const s = normalizeSymbol(name);
   if (s.length >= SYMBOL_MIN) return s;
-  // đảm bảo tối thiểu 2 ký tự
   return (s + 'TK').slice(0, SYMBOL_MIN);
 };
 
@@ -88,7 +87,6 @@ const CreateToken: React.FC = () => {
 
   // wallet optional
   const { connected } = useWallet();
-  const showConnectHint = !connected;
 
   // ===== Step control =====
   const [step, setStep] = useState<Step>(1);
@@ -114,21 +112,11 @@ const CreateToken: React.FC = () => {
 
   // Upload input
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const openFilePicker = useCallback(() => {
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-      fileInputRef.current.click();
-    }
-  }, []);
 
   // ===== Step 2: Curve params =====
   const [decimals, setDecimals] = useState<number>(6);
-
-  // ✅ BE wants curveType as number
-  // Convention: 0 = linear
   const [curveType] = useState<number>(0);
 
-  // defaults (tune as needed)
   const [basePriceLamports, setBasePriceLamports] = useState<number>(1000);
   const [slopeLamports, setSlopeLamports] = useState<number>(1);
   const [bondingCurveSupply, setBondingCurveSupply] = useState<string>('1000000000000000');
@@ -152,12 +140,23 @@ const CreateToken: React.FC = () => {
   const [liqMode, setLiqMode] = useState<'PSOL' | 'SOL'>('PSOL');
   const creatorReward = { sol: 2, points: 69 };
 
+  // ===== ✅ Connect wallet modal =====
+  const [showConnectWalletModal, setShowConnectWalletModal] = useState(false);
+  const openConnectWalletModal = useCallback(() => setShowConnectWalletModal(true), []);
+  const closeConnectWalletModal = useCallback(() => setShowConnectWalletModal(false), []);
+
+  // action guard
+  const requireWalletOrShowModal = useCallback(() => {
+    if (connected) return true;
+    setShowConnectWalletModal(true);
+    return false;
+  }, [connected]);
+
   // ===== derived =====
   const symbolAuto = useMemo(() => makeSymbol(tokenName), [tokenName]);
   const symbolFinal = useMemo(() => normalizeSymbol(tokenSymbol || symbolAuto), [tokenSymbol, symbolAuto]);
 
   const canGoNextStep1 = useMemo(() => {
-    // ✅ phải hợp lệ chuẩn SAFE (2-10)
     const symbolOk = SYMBOL_RE.test(symbolFinal);
     return Boolean(tokenName.trim()) && symbolOk && Boolean(tokenImageUrl);
   }, [tokenName, symbolFinal, tokenImageUrl]);
@@ -171,35 +170,49 @@ const CreateToken: React.FC = () => {
     if (msg) toast.error(msg);
   }, []);
 
-  // ===== Upload to BE: /token/upload-image =====
-  const uploadImageToBE = useCallback(async (file: File) => {
-    if (file.size > MAX_FILE_SIZE) {
-      toast.error('File size exceeds 1MB limit. Please choose a smaller file.');
-      return null;
+  // ===== open file picker (guarded) =====
+  const openFilePicker = useCallback(() => {
+    if (!requireWalletOrShowModal()) return;
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
     }
+  }, [requireWalletOrShowModal]);
 
-    setIsUploading(true);
-    setCreationStep('uploading');
+  // ===== Upload to BE: /token/upload-image =====
+  const uploadImageToBE = useCallback(
+    async (file: File) => {
+      if (!requireWalletOrShowModal()) return null;
 
-    try {
-      const dataUrl = await readFileAsDataURL(file);
-      const res = await uploadTokenImage({ image: dataUrl });
-
-      if (res?.imageUrl) {
-        setTokenImageUrl(res.imageUrl);
-        toast.success('Image uploaded successfully!');
-        return res.imageUrl;
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error('File size exceeds 1MB limit. Please choose a smaller file.');
+        return null;
       }
 
-      throw new Error('No imageUrl returned');
-    } catch (e: any) {
-      toast.error(safeErrMsg(e, 'Failed to upload image.'));
-      return null;
-    } finally {
-      setIsUploading(false);
-      setCreationStep('idle');
-    }
-  }, []);
+      setIsUploading(true);
+      setCreationStep('uploading');
+
+      try {
+        const dataUrl = await readFileAsDataURL(file);
+        const res = await uploadTokenImage({ image: dataUrl });
+
+        if (res?.imageUrl) {
+          setTokenImageUrl(res.imageUrl);
+          toast.success('Image uploaded successfully!');
+          return res.imageUrl;
+        }
+
+        throw new Error('No imageUrl returned');
+      } catch (e: any) {
+        toast.error(safeErrMsg(e, 'Failed to upload image.'));
+        return null;
+      } finally {
+        setIsUploading(false);
+        setCreationStep('idle');
+      }
+    },
+    [requireWalletOrShowModal]
+  );
 
   const onImagePicked = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -219,15 +232,19 @@ const CreateToken: React.FC = () => {
     async (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       e.stopPropagation();
+      if (!requireWalletOrShowModal()) return;
+
       const f = e.dataTransfer.files?.[0];
       if (!f) return;
       await uploadImageToBE(f);
     },
-    [uploadImageToBE]
+    [uploadImageToBE, requireWalletOrShowModal]
   );
 
   // ===== Create Draft: /token/create/draft =====
   const handleCreateDraftAndNext = useCallback(async () => {
+    if (!requireWalletOrShowModal()) return;
+
     if (!tokenImageUrl) {
       toast.error('Please upload token image.');
       return;
@@ -235,7 +252,7 @@ const CreateToken: React.FC = () => {
 
     let symbolSafe = '';
     try {
-      symbolSafe = validateSymbolOrThrow(symbolFinal); // ✅ 2-10
+      symbolSafe = validateSymbolOrThrow(symbolFinal);
     } catch (err: any) {
       toast.error(err?.message || 'Invalid symbol');
       return;
@@ -246,7 +263,7 @@ const CreateToken: React.FC = () => {
     try {
       const res = await createTokenDraft({
         name: tokenName.trim(),
-        symbol: symbolSafe, // ✅ always valid
+        symbol: symbolSafe,
         description: tokenDescription || '',
         imageUrl: tokenImageUrl,
         isNSFW: Boolean(isNSFW),
@@ -265,12 +282,13 @@ const CreateToken: React.FC = () => {
       setStep(2);
     } catch (e: any) {
       const status = e?.response?.status;
-      if (status === 401) toast.error('Unauthorized. Please login again.');
+      if (status === 401) openConnectWalletModal();
       else toast.error(safeErrMsg(e, 'Create draft failed.'));
     } finally {
       setCreationStep('idle');
     }
   }, [
+    requireWalletOrShowModal,
     tokenImageUrl,
     symbolFinal,
     tokenName,
@@ -281,10 +299,13 @@ const CreateToken: React.FC = () => {
     website,
     discord,
     youtube,
+    openConnectWalletModal,
   ]);
 
   // ===== Preview buy: /token/create/preview-buy =====
   const handlePreviewBuy = useCallback(async () => {
+    if (!requireWalletOrShowModal()) return;
+
     if (!draft?.draftId) {
       toast.error('Missing draftId. Please go back and create draft again.');
       return;
@@ -304,13 +325,14 @@ const CreateToken: React.FC = () => {
       toast.success('Preview calculated');
     } catch (e: any) {
       const status = e?.response?.status;
-      if (status === 404) toast.error('Draft not found.');
+      if (status === 401) openConnectWalletModal();
+      else if (status === 404) toast.error('Draft not found.');
       else if (isExpiredDraftStatus(status)) resetDraftAndGoStep1('Draft expired. Please create again.');
       else toast.error(safeErrMsg(e, 'Preview buy failed.'));
     } finally {
       setCreationStep('idle');
     }
-  }, [draft?.draftId, buyAmount, resetDraftAndGoStep1]);
+  }, [requireWalletOrShowModal, draft?.draftId, buyAmount, resetDraftAndGoStep1, openConnectWalletModal]);
 
   // ===== UI validate before finalize =====
   const validateFinalizeInputs = useCallback((): string | null => {
@@ -327,6 +349,8 @@ const CreateToken: React.FC = () => {
   // ===== Finalize: /token/create/finalize =====
   const runFinalize = useCallback(
     async (initialBuySol: number) => {
+      if (!requireWalletOrShowModal()) return;
+
       const err = validateFinalizeInputs();
       if (err) {
         toast.error(err);
@@ -339,7 +363,7 @@ const CreateToken: React.FC = () => {
           draftId: draft!.draftId,
           initialBuySol: Number.isFinite(initialBuySol) ? Math.max(0, initialBuySol) : 0,
           decimals: Math.trunc(decimals),
-          curveType, // ✅ number (0 = linear)
+          curveType,
           basePriceLamports: Math.trunc(Math.max(0, Number(basePriceLamports) || 0)),
           slopeLamports: Math.trunc(Math.max(0, Number(slopeLamports) || 0)),
           bondingCurveSupply: String(bondingCurveSupply).trim(),
@@ -352,7 +376,7 @@ const CreateToken: React.FC = () => {
       } catch (e: any) {
         const status = e?.response?.status;
 
-        if (status === 401) toast.error('Unauthorized. Please login again.');
+        if (status === 401) openConnectWalletModal();
         else if (status === 403) toast.error('Forbidden: you can only finalize your own draft.');
         else if (status === 404) toast.error('Draft not found.');
         else if (isExpiredDraftStatus(status)) resetDraftAndGoStep1('Draft expired. Please create again.');
@@ -362,6 +386,8 @@ const CreateToken: React.FC = () => {
       }
     },
     [
+      requireWalletOrShowModal,
+      validateFinalizeInputs,
       draft,
       decimals,
       curveType,
@@ -371,12 +397,13 @@ const CreateToken: React.FC = () => {
       graduateTargetLamports,
       router,
       resetDraftAndGoStep1,
-      validateFinalizeInputs,
+      openConnectWalletModal,
     ]
   );
 
   const handleBuy = () => {
     if (buyAmount <= 0) return;
+    if (!requireWalletOrShowModal()) return;
     setShowPurchasePopup(true);
   };
 
@@ -426,15 +453,6 @@ const CreateToken: React.FC = () => {
           {step === 2 && 'Curve Settings'}
           {step === 3 && 'Finalize'}
         </h1>
-
-        {showConnectHint && (
-          <div className="mb-4 flex items-center justify-center gap-3">
-            <div className="text-xs sm:text-sm text-yellow-200/90">Please connect wallet to avoid authorization errors.</div>
-            <div className="scale-[0.9]">
-              <WalletMultiButton />
-            </div>
-          </div>
-        )}
 
         {step === 1 && (
           <div className="mb-4 flex items-center justify-between">
@@ -692,11 +710,19 @@ const CreateToken: React.FC = () => {
             </div>
 
             <div className="flex items-center justify-between gap-4">
-              <button className="btn-secondary px-8 py-3 min-w-[160px] rounded-md" disabled={isBusy} onClick={() => setStep(1)}>
+              <button
+                className="btn-secondary px-8 py-3 min-w-[160px] rounded-md"
+                disabled={isBusy}
+                onClick={() => setStep(1)}
+              >
                 Back
               </button>
 
-              <button className="btn btn-primary px-8 py-3 min-w-[180px] rounded-md" disabled={isBusy || !draft?.draftId} onClick={() => setStep(3)}>
+              <button
+                className="btn btn-primary px-8 py-3 min-w-[180px] rounded-md"
+                disabled={isBusy || !draft?.draftId}
+                onClick={() => setStep(3)}
+              >
                 Next
               </button>
             </div>
@@ -708,7 +734,9 @@ const CreateToken: React.FC = () => {
           <div className="space-y-6">
             <div className="text-left">
               <div className="text-sm font-semibold text-[var(--foreground)]/90">Tip:</div>
-              <div className="text-[14px] text-[var(--foreground)]/75">Optional: Make an initial buy to gain the most from your token</div>
+              <div className="text-[14px] text-[var(--foreground)]/75">
+                Optional: Make an initial buy to gain the most from your token
+              </div>
             </div>
 
             <div className="rounded-3xl bg-[var(--card)] border-thin p-6 shadow-lg">
@@ -799,6 +827,122 @@ const CreateToken: React.FC = () => {
           <PurchaseConfirmationPopup onConfirm={handleConfirmBuy} onCancel={() => setShowPurchasePopup(false)} tokenSymbol="SOL" />
         )}
 
+        {/* ✅ CONNECT WALLET MODAL (MATCH STYLE) */}
+        {showConnectWalletModal && (
+          <Modal isOpen={showConnectWalletModal} onClose={closeConnectWalletModal}>
+            <div
+              className="
+                w-[92vw] max-w-[520px]
+                rounded-3xl
+                bg-[#0f1420]
+                border border-white/10
+                shadow-2xl
+                overflow-hidden
+              "
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 pt-4">
+                <button
+                  type="button"
+                  onClick={closeConnectWalletModal}
+                  className="h-9 w-9 rounded-full bg-white/5 border border-white/10
+                             flex items-center justify-center hover:bg-white/10 transition"
+                  aria-label="Back"
+                  title="Back"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="opacity-90">
+                    <path
+                      d="M15 18l-6-6 6-6"
+                      stroke="rgba(255,255,255,0.9)"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={closeConnectWalletModal}
+                  className="h-9 w-9 rounded-full bg-white/5 border border-white/10
+                             flex items-center justify-center hover:bg-white/10 transition"
+                  aria-label="Close"
+                  title="Close"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="opacity-90">
+                    <path
+                      d="M18 6L6 18M6 6l12 12"
+                      stroke="rgba(255,255,255,0.9)"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="px-6 pb-7 pt-3">
+                <div className="flex justify-center mt-3">
+                  <div className="h-16 w-16 rounded-full border-4 border-red-500/80 flex items-center justify-center">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M12 9v4"
+                        stroke="#ef4444"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path
+                        d="M12 17h.01"
+                        stroke="#ef4444"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path
+                        d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"
+                        stroke="#ef4444"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        opacity="0.9"
+                      />
+                    </svg>
+                  </div>
+                </div>
+
+                <div className="mt-5 text-center">
+                  <div className="text-lg sm:text-xl font-semibold text-white">Connect your wallet</div>
+                  <div className="mt-2 text-sm text-white/60">
+                    Please connect your wallet to upload an image and continue creating your token.
+                  </div>
+                </div>
+
+                {/* ✅ Only Select Wallet button, styled like system primary */}
+                <div className="mt-4 w-full flex justify-center">
+                  <div
+                    className="
+                      [&_button]:w-full
+                      [&_button]:h-12
+                      [&_button]:rounded-2xl
+                      [&_button]:px-5
+                      [&_button]:font-semibold
+                      [&_button]:transition
+                      [&_button]:bg-[var(--primary)]
+                      [&_button]:text-black
+                      hover:[&_button]:bg-[var(--primary-hover)]
+                      [&_button]:border-0
+                    "
+                  >
+                    <WalletMultiButton />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Modal>
+        )}
+
         {showLiquidity && (
           <Modal isOpen={showLiquidity} onClose={() => setShowLiquidity(false)}>
             <div className="p-4 sm:p-6">
@@ -846,7 +990,9 @@ const CreateToken: React.FC = () => {
           <Modal isOpen={showPreventNavigationModal} onClose={() => {}}>
             <div className="p-6">
               <h3 className="text-lg font-medium text-gray-100 mb-4">Please Wait</h3>
-              <p className="text-sm text-gray-500">Your token is being finalized. Please do not close or navigate away.</p>
+              <p className="text-sm text-gray-500">
+                Your token is being finalized. Please do not close or navigate away.
+              </p>
             </div>
           </Modal>
         )}
