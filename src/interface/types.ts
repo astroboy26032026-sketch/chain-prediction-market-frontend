@@ -122,10 +122,34 @@ export interface USDHistoricalPrice {
   timestamp: string;
 }
 
+// =====================
+// ✅ Token Holders (Solana) - GET /token/holders
+// =====================
+
 export interface TokenHolder {
-  address: string;
-  balance: string;
+  /** ví nắm giữ token */
+  walletAddress: string;
+
+  /** fallback / legacy field nếu BE trả thêm */
+  address?: string;
+
+  /** số lượng token */
+  balance: number;
+
+  /** % ownership (0 -> 100) */
+  percentShare: number;
+
+  /** thời điểm giao dịch gần nhất (ISO string) */
+  lastTransaction: string | null;
 }
+
+export interface TokenHoldersResponse {
+  tokenAddress: string;
+  totalHolders: number;
+  nextCursor?: string | null;
+  holders: TokenHolder[];
+}
+
 
 /**
  * TransactionResponse: giữ logic cũ.

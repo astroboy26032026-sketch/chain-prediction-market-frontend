@@ -22,9 +22,10 @@ import Chats from '@/components/TokenDetails/Chats';
 import {
   getTokenInfo, // ✅ /token/info
   getTokenLiquidity, // ✅ /token/liquidity
+  getTokenHolders, // ✅ /token/holders (NEW)
 } from '@/utils/api.index';
 
-import type { Token } from '@/interface/types';
+import type { Token, TokenHolder } from '@/interface/types';
 
 interface TokenDetailProps {
   initialTokenInfo: Token | null;
@@ -45,8 +46,12 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
   // ===== Liquidity =====
   const [liquidityEvents, setLiquidityEvents] = useState<any[]>([]);
 
-  // ===== Holders (UI placeholder) =====
-  const [tokenHolders] = useState<any[]>([]);
+  // ===== Holders (NEW - Solana BE) =====
+  const [holdersAll, setHoldersAll] = useState<TokenHolder[]>([]);
+  const [holdersNextCursor, setHoldersNextCursor] = useState<string | null>(null);
+  const [holdersLoading, setHoldersLoading] = useState(false);
+  const [holdersError, setHoldersError] = useState<string | null>(null);
+
   const [currentPage, setCurrentPage] = useState(1);
 
   // ===== Swap UI state (keep UI/UX; Solana trade chưa tích hợp) =====
@@ -94,12 +99,55 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
     }
   }, [tokenAddr]);
 
+  // ===== Fetch /token/holders (NEW) =====
+  const fetchHolders = useCallback(
+    async (opts?: { reset?: boolean }) => {
+      if (!tokenAddr) return;
+
+      const reset = !!opts?.reset;
+      const cursor = reset ? null : holdersNextCursor;
+
+      // nếu không reset và đã hết cursor thì thôi
+      if (!reset && cursor === null) return;
+
+      setHoldersLoading(true);
+      setHoldersError(null);
+
+      try {
+        const res = await getTokenHolders(tokenAddr, { limit: 200, cursor });
+
+        const incoming = Array.isArray(res?.holders) ? res.holders : [];
+        setHoldersNextCursor(res?.nextCursor ?? null);
+
+        setHoldersAll((prev) => (reset ? incoming : [...prev, ...incoming]));
+      } catch (e: any) {
+        console.error('Error fetching /token/holders:', e);
+        setHoldersError(e?.message || 'Failed to load holders');
+        if (reset) {
+          setHoldersAll([]);
+          setHoldersNextCursor(null);
+        }
+      } finally {
+        setHoldersLoading(false);
+      }
+    },
+    [tokenAddr, holdersNextCursor]
+  );
+
   // ===== Initial fetch when token changes =====
   useEffect(() => {
     if (!tokenAddr) return;
+
+    // reset holders when token changes
+    setCurrentPage(1);
+    setHoldersAll([]);
+    setHoldersNextCursor(null);
+    setHoldersError(null);
+
     fetchTokenInfo();
     fetchLiquidity();
-  }, [tokenAddr, fetchTokenInfo, fetchLiquidity]);
+    fetchHolders({ reset: true });
+  }, [tokenAddr, fetchTokenInfo, fetchLiquidity, fetchHolders]);
 
   // ===== Sync token labels when tokenInfo ready =====
   useEffect(() => {
@@ -174,8 +222,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
     }
   };
 
-  // holders paging placeholders (UI only)
-  const currentHolders = tokenHolders; // currently empty (UI keeps)
+  // holders paging (component tự paginate dựa trên allHolders + currentPage)
   const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
 
   if (!tokenInfo) {
@@ -350,7 +397,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                   </Tab>
                   <Tab
                     className={({ selected }) =>
-                      `w-full rounded-md py-2.5 text-sm font-medium leading-5 transition-colors
+                      `w-full rounded-md py-2.5 text-sm font-medium leading-5 transition-colors 
                       ${
                         selected
                           ? 'bg-[var(--card-boarder)] text-white'
@@ -364,7 +411,6 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
                 <Tab.Panels>
                   <Tab.Panel>
-                    {/* ✅ NEW Trades component expects ONLY tokenAddress */}
                     <TransactionHistory tokenAddress={tokenAddr as string} />
                   </Tab.Panel>
 
@@ -373,16 +419,40 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                   </Tab.Panel>
 
                   <Tab.Panel>
+                    {/* Optional: auto load more holders in background */}
+                    {holdersError && (
+                      <div className="mb-3 text-sm text-red-400">
+                        Failed to load holders: {holdersError}
+                      </div>
+                    )}
+
                     <TokenHolders
-                      tokenHolders={currentHolders}
+                      tokenHolders={[]} // compat, component sẽ ưu tiên allHolders
                       currentPage={currentPage}
-                      totalPages={1}
+                      totalPages={1} // compat
                       tokenSymbol={(tokenInfo as any).symbol}
                       creatorAddress={(tokenInfo as any).creatorAddress}
                       tokenAddress={tokenAddr as string}
                       onPageChange={paginate}
-                      allHolders={tokenHolders}
+                      allHolders={holdersAll}
                     />
+
+                    <div className="mt-4 flex items-center justify-center gap-3">
+                      {holdersNextCursor && (
+                        <button
+                          type="button"
+                          onClick={() => fetchHolders({ reset: false })}
+                          disabled={holdersLoading}
+                          className="btn-secondary px-4 py-2 rounded disabled:opacity-50"
+                        >
+                          {holdersLoading ? 'Loading...' : 'Load more'}
+                        </button>
+                      )}
+
+                      {!holdersNextCursor && holdersAll.length > 0 && (
+                        <div className="text-sm text-gray-400">All holders loaded</div>
+                      )}
+                    </div>
                   </Tab.Panel>
                 </Tab.Panels>
               </Tab.Group>

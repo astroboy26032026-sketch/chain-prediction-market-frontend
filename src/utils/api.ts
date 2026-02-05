@@ -4,6 +4,7 @@ import {
   Token,
   PaginatedResponse,
   TokenHolder,
+  TokenHoldersResponse, // ✅ NEW
   TransactionResponse,
   CursorPaginatedResponse,
 
@@ -337,6 +338,44 @@ export async function getTokenTrades(
     tokenAddress: data?.tokenAddress ?? addr,
     nextCursor: data?.nextCursor ?? null,
     trades: data?.trades ?? [],
+  };
+}
+
+/**
+ * ✅ GET /token/holders (cursor pagination)
+ * Params: address (mint), limit (1..200), cursor?
+ *
+ * NOTE:
+ * - API docs trả `holders: [{ walletAddress, address, balance, percentShare, lastTransaction }]`
+ * - `TokenHolder` in types.ts đã được cập nhật theo schema mới.
+ */
+export async function getTokenHolders(
+  address: string,
+  opts?: { limit?: number; cursor?: string | null }
+): Promise<TokenHoldersResponse> {
+  const addr = (address || '').trim();
+  if (!addr) throw new Error('Missing token address');
+
+  const limitRaw = opts?.limit ?? 50;
+  const limit = Math.min(Math.max(Number(limitRaw) || 50, 1), 200);
+
+  const headers = getAuthHeaders();
+  const { data } = await getViaProxy<TokenHoldersResponse>(
+    '/token/holders',
+    {
+      address: addr,
+      limit,
+      cursor: opts?.cursor ?? undefined,
+    },
+    headers
+  );
+
+  // Normalize để UI không bị undefined
+  return {
+    tokenAddress: data?.tokenAddress ?? addr,
+    totalHolders: Number(data?.totalHolders ?? (data?.holders?.length ?? 0)),
+    nextCursor: data?.nextCursor ?? null,
+    holders: (data?.holders ?? []) as TokenHolder[],
   };
 }
 
@@ -726,4 +765,4 @@ type TokenomicsUpdate = {
 
 // NOTE:
 // Phần còn lại của file (updateToken/getTokenByAddress/getTransactionsByAddress/referrals/...) bạn giữ nguyên như code hiện tại.
-// Bản này chỉ “gen lại” phần cần cho Trades + Chat.
+// Bản này chỉ “gen lại” phần cần cho Trades + Chat + Holders.
