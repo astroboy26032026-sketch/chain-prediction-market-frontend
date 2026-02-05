@@ -68,6 +68,20 @@ export const getLeaderboardList = (...args: Parameters<typeof realApi.getLeaderb
   realApi.getLeaderboardList(...args);
 
 // =====================
+// ✅ Chatroom exports (NEW BE API)
+// =====================
+
+export const getChatMessages = (
+  ...args: Parameters<typeof realApi.getChatMessages>
+) => realApi.getChatMessages(...args);
+
+export const addChatMessage = (
+  ...args: Parameters<typeof realApi.addChatMessage>
+) => realApi.addChatMessage(...args);
+
+
+
+// =====================
 // ✅ Referrals exports
 // =====================
 

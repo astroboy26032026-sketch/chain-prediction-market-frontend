@@ -1,110 +1,174 @@
-import React, { useState, useEffect, useMemo } from 'react';
+// src/components/TokenDetails/Chats.tsx
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
-//import { getChatMessages, addChatMessage } from '@/utils/api';
 import { getChatMessages, addChatMessage } from '@/utils/api.index';
-import { useAccount } from 'wagmi';
 import { toast } from 'react-toastify';
 import { formatTimestamp, getRandomAvatarImage, shortenAddress } from '@/utils/chatUtils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TokenWithTransactions } from '@/interface/types';
-import SiweAuth from '@/components/auth/remove.SiweAuth';
+import type { TokenWithTransactions, ChatMessage as BeChatMessage } from '@/interface/types';
 import { Reply, X } from 'lucide-react';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { useAuth } from '@/components/providers/AuthProvider';
 
-interface ChatMessage {
-  id: number;
-  user: string;
-  token: string;
+type UiChatMessage = {
+  messageId: string;
+  walletAddress: string;
   message: string;
-  reply_to: number | null;
   timestamp: string;
-}
+};
 
 interface ChatsProps {
   tokenAddress: string;
   tokenInfo: TokenWithTransactions;
 }
 
+const PAGE_LIMIT = 30;
+
+const toUiMessage = (m: BeChatMessage): UiChatMessage => ({
+  messageId: m.messageId,
+  walletAddress: m.walletAddress,
+  message: m.message,
+  timestamp: m.timestamp,
+});
+
 /**
- * Token chat UI with threaded replies. Uses glass containers and thin borders.
- * Requires SIWE authentication before sending messages.
+ * Token chat UI (Solana-only)
+ * - GET /chat/messages => cursor pagination
+ * - POST /chat/write   => requires Bearer token (AuthProvider)
+ *
+ * NOTE: API mới không có reply_to => reply UI sẽ quote message vào text.
  */
 const Chats: React.FC<ChatsProps> = ({ tokenAddress, tokenInfo }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { publicKey, connected } = useWallet();
+  const { loading, authenticated } = useAuth();
+
+  const walletAddress = useMemo(() => publicKey?.toBase58() || '', [publicKey]);
+
+  const [messages, setMessages] = useState<UiChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
-  const { address } = useAccount();
+  const [replyingTo, setReplyingTo] = useState<UiChatMessage | null>(null);
+
+  // cursor pagination
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const userAvatars = useMemo(() => {
-    const avatars: { [key: string]: string } = {};
-    messages.forEach(msg => {
-      if (!avatars[msg.user]) {
-        avatars[msg.user] = getRandomAvatarImage();
-      }
+    const avatars: Record<string, string> = {};
+    messages.forEach((msg) => {
+      const k = msg.walletAddress;
+      if (!avatars[k]) avatars[k] = getRandomAvatarImage();
     });
     return avatars;
   }, [messages]);
 
+  const fetchMessages = useCallback(
+    async (isLoadMore = false) => {
+      if (!tokenAddress) return;
+
+      try {
+        if (isLoadMore) setLoadingMore(true);
+
+        const res = await getChatMessages(tokenAddress, {
+          limit: PAGE_LIMIT,
+          cursor: isLoadMore ? cursor ?? undefined : undefined,
+        });
+
+        const ui = (res?.messages ?? []).map(toUiMessage);
+
+        setMessages((prev) => (isLoadMore ? [...prev, ...ui] : ui));
+        setCursor(res?.nextCursor ?? null);
+        setHasMore(Boolean(res?.nextCursor));
+      } catch (error: any) {
+        console.error('Error fetching messages:', error);
+        toast.error(error?.message || 'Failed to load chat');
+        setHasMore(false);
+      } finally {
+        if (isLoadMore) setLoadingMore(false);
+      }
+    },
+    [tokenAddress, cursor]
+  );
+
+  // reset + initial load when token changes
   useEffect(() => {
-    checkAuth();
-    fetchMessages();
-    const interval = setInterval(fetchMessages, 30000);
+    setMessages([]);
+    setCursor(null);
+    setHasMore(true);
+    setReplyingTo(null);
+    setNewMessage('');
+
+    fetchMessages(false);
+
+    const interval = setInterval(() => fetchMessages(false), 30000);
     return () => clearInterval(interval);
-  }, [tokenAddress]);
-
-  const checkAuth = async () => {
-    try {
-      const response = await fetch('/api/auth/user');
-      setIsAuthenticated(response.ok);
-    } catch (error) {
-      setIsAuthenticated(false);
-    }
-  };
-
-  const fetchMessages = async () => {
-    try {
-      const fetchedMessages = await getChatMessages(tokenAddress);
-      setMessages(fetchedMessages);
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-    }
-  };
+  }, [tokenAddress, fetchMessages]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAuthenticated) {
-      toast.error('Please sign in to chat');
+
+    if (loading) return;
+
+    if (!connected || !walletAddress) {
+      toast.error('Connect Solana wallet to chat');
       return;
     }
-    if (!newMessage.trim()) return;
+
+    if (!authenticated) {
+      toast.error('Please authenticate to chat');
+      return;
+    }
+
+    const raw = newMessage.trim();
+    if (!raw) return;
+
+    // Reply: API mới không có reply_to => quote vào body
+    const finalMessage = replyingTo
+      ? `↪ Reply to ${shortenAddress(replyingTo.walletAddress)}: "${replyingTo.message.slice(0, 120)}"\n${raw}`
+      : raw;
+
     try {
-      await addChatMessage(address!, tokenAddress, newMessage, replyingTo?.id);
+      const posted = await addChatMessage({
+        tokenAddress,
+        walletAddress,
+        message: finalMessage,
+      });
+
+      // optimistic prepend
+      setMessages((prev) => [toUiMessage(posted as any), ...prev]);
+
       setNewMessage('');
       setReplyingTo(null);
-      fetchMessages();
-    } catch (error) {
+
+      // refresh first page to keep consistent ordering
+      fetchMessages(false);
+    } catch (error: any) {
       console.error('Error sending message:', error);
-      toast.error('Failed to send message');
+      toast.error(error?.message || 'Failed to send message');
     }
   };
 
-  const handleReply = (message: ChatMessage) => {
-    setReplyingTo(message);
-  };
+  const isDev = useCallback(
+    (wa: string) => {
+      const c = String((tokenInfo as any)?.creatorAddress || '').toLowerCase();
+      return c && String(wa || '').toLowerCase() === c;
+    },
+    [tokenInfo]
+  );
 
-  const cancelReply = () => {
-    setReplyingTo(null);
-  };
-
-  const findParentMessage = (replyId: number | null) => {
-    if (!replyId) return null;
-    return messages.find(m => m.id === replyId);
-  };
-
-  if (!isAuthenticated) {
+  // Auth gating UI (no SiweAuth)
+  if (!connected || !walletAddress) {
     return (
-      <div className="flex flex-col items-center justify-center p-4">
-        <SiweAuth onAuthSuccess={() => setIsAuthenticated(true)} />
+      <div className="flex flex-col items-center justify-center p-4 text-sm text-gray-400">
+        Connect your Solana wallet to view & send chat messages.
+      </div>
+    );
+  }
+
+  if (!authenticated) {
+    return (
+      <div className="flex flex-col items-center justify-center p-4 text-sm text-gray-400">
+        Please Connect Wallet
       </div>
     );
   }
@@ -113,71 +177,78 @@ const Chats: React.FC<ChatsProps> = ({ tokenAddress, tokenInfo }) => {
     <div className="flex flex-col h-[400px] sm:h-[500px]">
       <div className="flex-grow overflow-y-auto custom-scrollbar space-y-2 sm:space-y-4 p-2">
         <AnimatePresence>
-          {messages.map((message) => {
-            const parentMessage = findParentMessage(message.reply_to);
-            return (
-              <motion.div
-                key={message.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className={`bg-[var(--card2)] rounded-lg p-2 sm:p-3 border-thin ${message.reply_to ? 'ml-2 sm:ml-4 border-l-2 border-[var(--card-boarder)]' : ''}`}
-              >
-                {parentMessage && (
-                  <div className="mb-1 sm:mb-2 text-[10px] sm:text-xs text-gray-400 bg-[var(--card)] p-1.5 sm:p-2 rounded border-thin">
-                    <span className="font-medium">{shortenAddress(parentMessage.user)}</span>: 
-                    <span className="line-clamp-1">{parentMessage.message}</span>
+          {messages.map((message) => (
+            <motion.div
+              key={message.messageId}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="bg-[var(--card2)] rounded-lg p-2 sm:p-3 border-thin"
+            >
+              <div className="flex items-start gap-1.5 sm:gap-2">
+                <Image
+                  src={userAvatars[message.walletAddress] || getRandomAvatarImage()}
+                  alt="Avatar"
+                  width={20}
+                  height={20}
+                  className="rounded-full hidden sm:block"
+                />
+                <div className="flex-grow min-w-0">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs sm:text-sm font-medium text-gray-300">
+                      {shortenAddress(message.walletAddress)}
+                      {isDev(message.walletAddress) && (
+                        <span className="ml-1 text-[var(--primary)] text-[10px] sm:text-xs">(dev)</span>
+                      )}
+                    </span>
+                    <span className="text-[10px] sm:text-xs text-gray-500">{formatTimestamp(message.timestamp)}</span>
                   </div>
-                )}
-                <div className="flex items-start gap-1.5 sm:gap-2">
-                  <Image
-                    src={userAvatars[message.user] || getRandomAvatarImage()}
-                    alt="Avatar"
-                    width={20}
-                    height={20}
-                    className="rounded-full hidden sm:block"
-                  />
-                  <div className="flex-grow min-w-0">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs sm:text-sm font-medium text-gray-300">
-                        {shortenAddress(message.user)}
-                        {message.user.toLowerCase() === tokenInfo.creatorAddress.toLowerCase() && 
-                          <span className="ml-1 text-[var(--primary)] text-[10px] sm:text-xs">(dev)</span>
-                        }
-                      </span>
-                      <span className="text-[10px] sm:text-xs text-gray-500">{formatTimestamp(message.timestamp)}</span>
-                    </div>
-                    <p className="text-xs sm:text-sm text-gray-200 mt-0.5 sm:mt-1 break-words">{message.message}</p>
-                    <button
-                      onClick={() => handleReply(message)}
-                      className="mt-1 sm:mt-2 text-[10px] sm:text-xs text-gray-400 hover:text-[var(--primary)] flex items-center gap-0.5 sm:gap-1"
-                    >
-                      <Reply size={10} className="sm:w-3 sm:h-3" />
-                      Reply
-                    </button>
-                  </div>
+
+                  <p className="text-xs sm:text-sm text-gray-200 mt-0.5 sm:mt-1 whitespace-pre-wrap break-words">
+                    {message.message}
+                  </p>
+
+                  <button
+                    onClick={() => setReplyingTo(message)}
+                    className="mt-1 sm:mt-2 text-[10px] sm:text-xs text-gray-400 hover:text-[var(--primary)] flex items-center gap-0.5 sm:gap-1"
+                  >
+                    <Reply size={10} className="sm:w-3 sm:h-3" />
+                    Reply
+                  </button>
                 </div>
-              </motion.div>
-            );
-          })}
+              </div>
+            </motion.div>
+          ))}
         </AnimatePresence>
+
+        {messages.length === 0 && <div className="text-xs text-gray-400 p-2">No messages yet</div>}
       </div>
+
+      {hasMore && (
+        <div className="px-2">
+          <button
+            type="button"
+            onClick={() => fetchMessages(true)}
+            disabled={loadingMore}
+            className="w-full px-3 py-2 rounded-md bg-gray-800 hover:bg-gray-700 text-sm disabled:opacity-50"
+          >
+            {loadingMore ? 'Loading…' : 'Load more'}
+          </button>
+        </div>
+      )}
 
       <form onSubmit={handleSendMessage} className="mt-2 sm:mt-4 space-y-1 sm:space-y-2 p-2">
         {replyingTo && (
           <div className="flex items-center justify-between bg-[var(--card)] p-1.5 sm:p-2 rounded-lg text-xs sm:text-sm border-thin">
             <span className="text-gray-400">
-              Replying to <span className="text-[var(--primary)]">{shortenAddress(replyingTo.user)}</span>
+              Replying to <span className="text-[var(--primary)]">{shortenAddress(replyingTo.walletAddress)}</span>
             </span>
-            <button
-              type="button"
-              onClick={cancelReply}
-              className="text-gray-400 hover:text-white"
-            >
+            <button type="button" onClick={() => setReplyingTo(null)} className="text-gray-400 hover:text-white">
               <X size={14} className="sm:w-4 sm:h-4" />
             </button>
           </div>
         )}
+
         <div className="flex gap-1.5 sm:gap-2">
           <input
             type="text"
@@ -186,11 +257,7 @@ const Chats: React.FC<ChatsProps> = ({ tokenAddress, tokenInfo }) => {
             placeholder="Type a message..."
             className="flex-grow bg-[var(--card2)] text-white rounded-lg px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-[var(--primary)] border-thin"
           />
-          <button
-            type="submit"
-            disabled={!newMessage.trim()}
-            className="btn btn-primary text-xs sm:text-sm disabled:opacity-50"
-          >
+          <button type="submit" disabled={!newMessage.trim() || loading} className="btn btn-primary text-xs sm:text-sm disabled:opacity-50">
             Send
           </button>
         </div>

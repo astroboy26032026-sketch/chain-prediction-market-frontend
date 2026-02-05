@@ -326,3 +326,33 @@ export interface TokenLiquidityResponse {
   events: TokenLiquidityEvent[];
 }
 
+// =====================
+// ✅ Chatroom (Solana) - /chat/messages + /chat/write
+// =====================
+
+export type ChatMessage = {
+  messageId: string;
+  walletAddress: string;
+  message: string;
+  timestamp: string; // ISO datetime
+};
+
+export type ChatMessagesResponse = {
+  tokenAddress: string;
+  nextCursor?: string | null;
+  messages: ChatMessage[];
+};
+
+export type ChatWriteRequest = {
+  tokenAddress: string;
+  walletAddress: string;
+  message: string;
+};
+
+export type ChatWriteResponse = {
+  messageId: string;
+  tokenAddress: string;
+  walletAddress: string;
+  message: string;
+  timestamp: string;
+};

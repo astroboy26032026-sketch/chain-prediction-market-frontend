@@ -12,7 +12,12 @@ import {
   TokenPriceResponse,
   TokenLiquidityResponse,
   TokenPriceTimeframe,
-  TokenTradesResponse, // ✅ ADD: trades
+  TokenTradesResponse, // ✅ trades
+
+  // ✅ Chatroom types
+  ChatMessagesResponse,
+  ChatWriteRequest,
+  ChatWriteResponse,
 
   // ✅ Referrals types
   ReferralSummary,
@@ -161,7 +166,8 @@ const computeSiteUrl = () => {
 };
 const SITE_URL = computeSiteUrl();
 
-const absProxy = (path: string) => (isServer ? `${SITE_URL}${PROXY_BASE}${path}` : `${PROXY_BASE}${path}`);
+const absProxy = (path: string) =>
+  isServer ? `${SITE_URL}${PROXY_BASE}${path}` : `${PROXY_BASE}${path}`;
 
 const getViaProxy = async <T = any>(path: string, params?: any, headers?: Record<string, string>) => {
   const url = absProxy(path);
@@ -281,7 +287,10 @@ export async function getTokenInfo(address: string): Promise<TokenInfoResponse> 
   return data;
 }
 
-export async function getTokenPrice(address: string, timeframe: TokenPriceTimeframe = '5m'): Promise<TokenPriceResponse> {
+export async function getTokenPrice(
+  address: string,
+  timeframe: TokenPriceTimeframe = '5m'
+): Promise<TokenPriceResponse> {
   const addr = (address || '').trim();
   if (!addr) throw new Error('Missing token address');
 
@@ -329,6 +338,72 @@ export async function getTokenTrades(
     nextCursor: data?.nextCursor ?? null,
     trades: data?.trades ?? [],
   };
+}
+
+// =====================
+// ✅ Chatroom API (Solana): /chat/messages /chat/write
+// - VIA PROXY to avoid CORS
+// =====================
+
+/**
+ * ✅ GET /chat/messages (cursor pagination)
+ * Params: tokenAddress, limit (1..100), cursor?
+ */
+export async function getChatMessages(
+  tokenAddress: string,
+  opts?: { limit?: number; cursor?: string | null }
+): Promise<ChatMessagesResponse> {
+  const addr = (tokenAddress || '').trim();
+  if (!addr) throw new Error('Missing tokenAddress');
+
+  const limitRaw = opts?.limit ?? 30;
+  const limit = Math.min(Math.max(Number(limitRaw) || 30, 1), 100);
+
+  // spec không bắt buộc auth cho GET, nhưng nếu có token thì cứ gửi
+  const headers = getAuthHeaders();
+  const { data } = await getViaProxy<ChatMessagesResponse>(
+    '/chat/messages',
+    {
+      tokenAddress: addr,
+      limit,
+      cursor: opts?.cursor ?? undefined,
+    },
+    headers
+  );
+
+  return {
+    tokenAddress: data?.tokenAddress ?? addr,
+    nextCursor: data?.nextCursor ?? null,
+    messages: data?.messages ?? [],
+  };
+}
+
+/**
+ * ✅ POST /chat/write
+ * Body: { tokenAddress, walletAddress, message }
+ * ⚠️ Requires Bearer token
+ */
+export async function addChatMessage(payload: ChatWriteRequest): Promise<ChatWriteResponse> {
+  const tokenAddress = String(payload?.tokenAddress ?? '').trim();
+  const walletAddress = String(payload?.walletAddress ?? '').trim();
+  const message = String(payload?.message ?? '').trim();
+
+  if (!tokenAddress) throw new Error('tokenAddress is required');
+  if (!walletAddress) throw new Error('walletAddress is required');
+  if (!message) throw new Error('message is required');
+
+  const headers = getAuthHeaders();
+  if (!headers?.Authorization) {
+    throw new Error('Unauthorized (Bearer token required)');
+  }
+
+  const { data } = await postViaProxy<ChatWriteResponse>(
+    '/chat/write',
+    { tokenAddress, walletAddress, message },
+    headers
+  );
+
+  return data;
 }
 
 // =====================
@@ -562,7 +637,11 @@ export async function getTotalTokenCount(): Promise<{ totalTokens: number }> {
 
 export async function getRecentTokens(page = 1, pageSize = 20, hours = 24): Promise<PaginatedResponse<Token> | null> {
   try {
-    const { data } = await getViaProxy<PaginatedResponse<Token>>('/ports/getRecentTokens', { page, pageSize, hours });
+    const { data } = await getViaProxy<PaginatedResponse<Token>>('/ports/getRecentTokens', {
+      page,
+      pageSize,
+      hours,
+    });
     return data;
   } catch (error: any) {
     if (axios.isAxiosError(error) && error.response?.status === 404) return null;
@@ -646,7 +725,5 @@ type TokenomicsUpdate = {
 };
 
 // NOTE:
-// Phần còn lại của file (updateToken/getTokenByAddress/getTransactionsByAddress/chat/referrals/...) bạn giữ nguyên như code hiện tại.
-// Ở bản “gen lại” này mình chỉ thêm đúng phần Trades:
-// - import TokenTradesResponse
-// - function getTokenTrades()
+// Phần còn lại của file (updateToken/getTokenByAddress/getTransactionsByAddress/referrals/...) bạn giữ nguyên như code hiện tại.
+// Bản này chỉ “gen lại” phần cần cho Trades + Chat.
