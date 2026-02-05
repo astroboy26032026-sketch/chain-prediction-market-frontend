@@ -3,8 +3,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 export const config = {
   api: {
-    // Create-token flow của bạn toàn JSON => bodyParser OK
-    // Nếu sau này cần upload file stream qua proxy thì mới disable bodyParser.
+    // JSON APIs OK. Nếu sau này cần stream upload qua proxy -> bodyParser: false
     bodyParser: true,
   },
 };
@@ -33,6 +32,7 @@ function setCors(req: NextApiRequest, res: NextApiResponse) {
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
 }
 
@@ -70,19 +70,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     };
 
     // forward Authorization
-    if (req.headers.authorization) {
-      headers.authorization = String(req.headers.authorization);
-    }
+    if (req.headers.authorization) headers.authorization = String(req.headers.authorization);
+
+    // forward cookie (if any)
+    if (req.headers.cookie) headers.cookie = String(req.headers.cookie);
+
+    // forward user-agent (optional but useful)
+    if (req.headers['user-agent']) headers['user-agent'] = String(req.headers['user-agent']);
 
     // forward content-type if exists
-    if (req.headers['content-type']) {
-      headers['content-type'] = String(req.headers['content-type']);
+    const ctIn = req.headers['content-type'] ? String(req.headers['content-type']) : '';
+    if (ctIn) {
+      // IMPORTANT: keep boundary for multipart/form-data
+      headers['content-type'] = ctIn;
     } else if (method !== 'GET' && method !== 'HEAD') {
-      // for JSON APIs, default to JSON
       headers['content-type'] = 'application/json';
     }
 
-    // Create flow của bạn toàn JSON => luôn gửi JSON string cho non-GET
+    // Body handling:
+    // - GET/HEAD: no body
+    // - JSON: stringify
+    // - others: pass through
     const body =
       method === 'GET' || method === 'HEAD'
         ? undefined
@@ -98,19 +106,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // status + content-type passthrough
     res.status(upstream.status);
-    const ct = upstream.headers.get('content-type');
-    if (ct) res.setHeader('content-type', ct);
+    const ctOut = upstream.headers.get('content-type');
+    if (ctOut) res.setHeader('content-type', ctOut);
 
-    // empty body safe
     const text = await upstream.text();
     if (!text) return res.end();
 
-    // if json -> parse safely
-    if (ct?.includes('application/json')) {
+    if (ctOut?.includes('application/json')) {
       try {
         return res.send(JSON.parse(text));
       } catch {
-        // upstream says JSON but returns plain text
         return res.send(text);
       }
     }

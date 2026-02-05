@@ -140,6 +140,27 @@ export interface PriceCache {
   timestamp: number;
 }
 
+// =====================
+// ✅ NEW: Token Trades (Solana) - GET /token/trades
+// =====================
+
+export interface TokenTrade {
+  publicKey: string;
+  isBuy: boolean;
+  time: number; // BE trả number (epoch)
+  price: string; // BE trả string
+  amount: number;
+  totalUsd: string; // BE trả string
+  signature: string;
+  solAmount: number;
+}
+
+export interface TokenTradesResponse {
+  tokenAddress: string;
+  nextCursor?: string | null;
+  trades: TokenTrade[];
+}
+
 // ✅ Leader Board
 
 export type LeaderboardTopItem = {
@@ -304,3 +325,4 @@ export interface TokenLiquidityResponse {
 
   events: TokenLiquidityEvent[];
 }
+

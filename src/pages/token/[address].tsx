@@ -1,28 +1,30 @@
 // src/pages/token/[address].tsx
 import { GetServerSideProps } from 'next';
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useEffect, useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { ArrowUpDownIcon } from 'lucide-react';
+import { Tab } from '@headlessui/react';
+import { useDebounce } from 'use-debounce';
+import { toast } from 'react-toastify';
+
 import Layout from '@/components/layout/Layout';
+import SEO from '@/components/seo/SEO';
+import Spinner from '@/components/ui/Spinner';
+import ShareButton from '@/components/ui/ShareButton';
+
 import TradingViewChart from '@/components/charts/TradingViewChart';
+
+import TransactionHistory from '@/components/TokenDetails/TransactionHistory';
+import TokenHolders from '@/components/TokenDetails/TokenHolders';
+import TokenInfo from '@/components/TokenDetails/TokenInfo';
+import Chats from '@/components/TokenDetails/Chats';
 
 import {
   getTokenInfo, // ✅ /token/info
   getTokenLiquidity, // ✅ /token/liquidity
 } from '@/utils/api.index';
 
-import { useDebounce } from 'use-debounce';
-import { toast } from 'react-toastify';
-import ShareButton from '@/components/ui/ShareButton';
-import SEO from '@/components/seo/SEO';
-import { Token } from '@/interface/types';
-import Spinner from '@/components/ui/Spinner';
-import { Tab } from '@headlessui/react';
-
-import TransactionHistory from '@/components/TokenDetails/TransactionHistory';
-import TokenHolders from '@/components/TokenDetails/TokenHolders';
-import TokenInfo from '@/components/TokenDetails/TokenInfo';
-import Chats from '@/components/TokenDetails/Chats';
+import type { Token } from '@/interface/types';
 
 interface TokenDetailProps {
   initialTokenInfo: Token | null;
@@ -34,20 +36,16 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
   const tokenAddr = useMemo(() => {
     const a = Array.isArray(address) ? address[0] : address;
-    return a || undefined;
+    return (a || '').trim() || undefined;
   }, [address]);
 
   // ===== Core token info =====
   const [tokenInfo, setTokenInfo] = useState<Token | null>(initialTokenInfo);
 
   // ===== Liquidity =====
-  const [liquidityEvents, setLiquidityEvents] = useState<any>(null);
+  const [liquidityEvents, setLiquidityEvents] = useState<any[]>([]);
 
-  // ===== Tabs data (legacy removed, UI still keeps) =====
-  const [transactions] = useState<any[]>([]);
-  const [transactionPage, setTransactionPage] = useState(1);
-  const [totalTransactionPages] = useState(1);
-
+  // ===== Holders (UI placeholder) =====
   const [tokenHolders] = useState<any[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -167,10 +165,6 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
     }
   }, [tokenAddr, fromToken.amount]);
 
-  const handlePageChange = useCallback((newPage: number) => {
-    setTransactionPage(newPage);
-  }, []);
-
   const handleMaxClick = () => {
     if (isSwapped) {
       setFromToken((prev) => ({ ...prev, amount: tokenBalance }));
@@ -278,7 +272,10 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 </div>
               </div>
 
-              <button onClick={handleSwap} className="w-full flex justify-center p-2 text-gray-400 hover:text-[var(--primary)]">
+              <button
+                onClick={handleSwap}
+                className="w-full flex justify-center p-2 text-gray-400 hover:text-[var(--primary)]"
+              >
                 <ArrowUpDownIcon size={20} />
               </button>
 
@@ -330,7 +327,11 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                   <Tab
                     className={({ selected }) =>
                       `w-full rounded-md py-2.5 text-sm font-medium leading-5 transition-colors
-                      ${selected ? 'bg-[var(--card-boarder)] text-white' : 'text-gray-400 hover:bg-[var(--card-hover)] hover:text-white'}`
+                      ${
+                        selected
+                          ? 'bg-[var(--card-boarder)] text-white'
+                          : 'text-gray-400 hover:bg-[var(--card-hover)] hover:text-white'
+                      }`
                     }
                   >
                     Trades
@@ -338,7 +339,11 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                   <Tab
                     className={({ selected }) =>
                       `w-full rounded-md py-2.5 text-sm font-medium leading-5 transition-colors
-                      ${selected ? 'bg-[var(--card-boarder)] text-white' : 'text-gray-400 hover:bg-[var(--card-hover)] hover:text-white'}`
+                      ${
+                        selected
+                          ? 'bg-[var(--card-boarder)] text-white'
+                          : 'text-gray-400 hover:bg-[var(--card-hover)] hover:text-white'
+                      }`
                     }
                   >
                     Chat
@@ -346,7 +351,11 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                   <Tab
                     className={({ selected }) =>
                       `w-full rounded-md py-2.5 text-sm font-medium leading-5 transition-colors
-                      ${selected ? 'bg-[var(--card-boarder)] text-white' : 'text-gray-400 hover:bg-[var(--card-hover)] hover:text-white'}`
+                      ${
+                        selected
+                          ? 'bg-[var(--card-boarder)] text-white'
+                          : 'text-gray-400 hover:bg-[var(--card-hover)] hover:text-white'
+                      }`
                     }
                   >
                     Holders
@@ -355,13 +364,8 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
                 <Tab.Panels>
                   <Tab.Panel>
-                    <TransactionHistory
-                      transactions={transactions}
-                      transactionPage={transactionPage}
-                      totalTransactionPages={totalTransactionPages}
-                      tokenSymbol={(tokenInfo as any).symbol}
-                      handlePageChange={handlePageChange}
-                    />
+                    {/* ✅ NEW Trades component expects ONLY tokenAddress */}
+                    <TransactionHistory tokenAddress={tokenAddr as string} />
                   </Tab.Panel>
 
                   <Tab.Panel>
@@ -441,7 +445,10 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 </div>
               </div>
 
-              <button onClick={handleSwap} className="w-full flex justify-center p-2 text-gray-400 hover:text-[var(--primary)]">
+              <button
+                onClick={handleSwap}
+                className="w-full flex justify-center p-2 text-gray-400 hover:text-[var(--primary)]"
+              >
                 <ArrowUpDownIcon size={20} />
               </button>
 
@@ -488,7 +495,12 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
             {/* Token Info Header (desktop) */}
             <div className="hidden lg:block card gradient-border p-4">
-              <TokenInfo tokenInfo={tokenInfo as any} showHeader={true} refreshTrigger={refreshCounter} liquidityEvents={liquidityEvents} />
+              <TokenInfo
+                tokenInfo={tokenInfo as any}
+                showHeader={true}
+                refreshTrigger={refreshCounter}
+                liquidityEvents={liquidityEvents}
+              />
             </div>
           </div>
         </div>
@@ -571,7 +583,10 @@ function SettingsPanel(props: {
       </div>
 
       <div className="mt-4 flex justify-end">
-        <button onClick={onClose} className="px-3 py-1 rounded-md bg-[var(--card)] border-thin text-sm text-gray-300 hover:text-white">
+        <button
+          onClick={onClose}
+          className="px-3 py-1 rounded-md bg-[var(--card)] border-thin text-sm text-gray-300 hover:text-white"
+        >
           Close
         </button>
       </div>

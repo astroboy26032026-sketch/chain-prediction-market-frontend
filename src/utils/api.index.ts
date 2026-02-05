@@ -8,7 +8,7 @@ import * as realApi from './api';
  */
 
 // =====================
-// ✅ NEW BE API (Solana): Token Info / Price / Liquidity
+// ✅ NEW BE API (Solana): Token Info / Price / Liquidity / Trades
 // =====================
 
 export const getTokenInfo = (...args: Parameters<typeof realApi.getTokenInfo>) =>
@@ -19,6 +19,9 @@ export const getTokenPrice = (...args: Parameters<typeof realApi.getTokenPrice>)
 
 export const getTokenLiquidity = (...args: Parameters<typeof realApi.getTokenLiquidity>) =>
   realApi.getTokenLiquidity(...args);
+
+export const getTokenTrades = (...args: Parameters<typeof realApi.getTokenTrades>) =>
+  realApi.getTokenTrades(...args);
 
 // =====================
 // ✅ NEW BE API (Solana): Create Token Flow
@@ -52,11 +55,11 @@ export const getRecentTokens = (...args: Parameters<typeof realApi.getRecentToke
 export const searchTokens = (...args: Parameters<typeof realApi.searchTokens>) =>
   realApi.searchTokens(...args);
 
-export const getChatMessages = (...args: Parameters<typeof realApi.getChatMessages>) =>
-  realApi.getChatMessages(...args);
+// export const getChatMessages = (...args: Parameters<typeof realApi.getChatMessages>) =>
+//   realApi.getChatMessages(...args);
 
-export const addChatMessage = (...args: Parameters<typeof realApi.addChatMessage>) =>
-  realApi.addChatMessage(...args);
+// export const addChatMessage = (...args: Parameters<typeof realApi.addChatMessage>) =>
+//   realApi.addChatMessage(...args);
 
 export const getLeaderboardTop = (...args: Parameters<typeof realApi.getLeaderboardTop>) =>
   realApi.getLeaderboardTop(...args);
@@ -68,35 +71,35 @@ export const getLeaderboardList = (...args: Parameters<typeof realApi.getLeaderb
 // ✅ Referrals exports
 // =====================
 
-export const getReferralSummary = (...args: Parameters<typeof realApi.getReferralSummary>) =>
-  realApi.getReferralSummary(...args);
+// export const getReferralSummary = (...args: Parameters<typeof realApi.getReferralSummary>) =>
+//   realApi.getReferralSummary(...args);
 
-export const getReferralLink = (...args: Parameters<typeof realApi.getReferralLink>) =>
-  realApi.getReferralLink(...args);
+// export const getReferralLink = (...args: Parameters<typeof realApi.getReferralLink>) =>
+//   realApi.getReferralLink(...args);
 
-export const getReferralList = (...args: Parameters<typeof realApi.getReferralList>) =>
-  realApi.getReferralList(...args);
+// export const getReferralList = (...args: Parameters<typeof realApi.getReferralList>) =>
+//   realApi.getReferralList(...args);
 
-export const claimReferralRewards = (...args: Parameters<typeof realApi.claimReferralRewards>) =>
-  realApi.claimReferralRewards(...args);
+// export const claimReferralRewards = (...args: Parameters<typeof realApi.claimReferralRewards>) =>
+//   realApi.claimReferralRewards(...args);
 
-export const trackReferral = (...args: Parameters<typeof realApi.trackReferral>) =>
-  realApi.trackReferral(...args);
+// export const trackReferral = (...args: Parameters<typeof realApi.trackReferral>) =>
+//   realApi.trackReferral(...args);
 
 // =====================
 // ✅ Profile exports (NEW)
 // =====================
 
-export const getProfileInfo = (...args: Parameters<typeof realApi.getProfileInfo>) =>
-  realApi.getProfileInfo(...args);
+// export const getProfileInfo = (...args: Parameters<typeof realApi.getProfileInfo>) =>
+//   realApi.getProfileInfo(...args);
 
 // =====================
 // Still-used existing APIs (non-chart)
 // (Bạn có thể comment nếu muốn “khóa” hết /ports)
 // =====================
 
-export const getTransactionsByAddress = (...args: Parameters<typeof realApi.getTransactionsByAddress>) =>
-  realApi.getTransactionsByAddress(...args);
+// export const getTransactionsByAddress = (...args: Parameters<typeof realApi.getTransactionsByAddress>) =>
+//   realApi.getTransactionsByAddress(...args);
 
 export const getTokensByCreator = (...args: Parameters<typeof realApi.getTokensByCreator>) =>
   realApi.getTokensByCreator(...args);
@@ -105,8 +108,8 @@ export const getAllTokenAddresses = (...args: Parameters<typeof realApi.getAllTo
   realApi.getAllTokenAddresses(...args);
 
 // Nếu còn page nào update metadata kiểu cũ thì giữ, còn không thì comment.
-export const updateToken = (...args: Parameters<typeof realApi.updateToken>) =>
-  realApi.updateToken(...args);
+// export const updateToken = (...args: Parameters<typeof realApi.updateToken>) =>
+//   realApi.updateToken(...args);
 
 // =====================================================================
 // ⚠️ LEGACY CHART / PRICE / LIQUIDITY / TOKEN DETAIL APIs (DISABLED)

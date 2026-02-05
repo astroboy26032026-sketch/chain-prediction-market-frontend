@@ -1,205 +1,173 @@
-import React, { useState } from 'react';
-import { ChevronLeftIcon, ChevronRightIcon, ExternalLinkIcon, ChevronDownIcon } from 'lucide-react';
-import { formatTimestamp, formatAmountV3, shortenAddress } from '@/utils/blockchainUtils';
-import { Transaction } from '@/interface/types';
+// src/components/TokenDetails/TransactionHistory.tsx
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getTokenTrades } from '@/utils/api.index';
+import type { TokenTrade } from '@/interface/types';
+import LoadingBar from '@/components/ui/LoadingBar';
 
-interface TransactionHistoryProps {
-  transactions: Transaction[];
-  transactionPage: number;
-  totalTransactionPages: number;
-  tokenSymbol: string;
-  handlePageChange: (page: number) => void;
-}
+type Props = {
+  tokenAddress: string;
+};
 
-/**
- * Paginated transaction history for a token.
- * Uses glass-styled tables and compact mobile cards with thin borders.
- */
-const TransactionHistory: React.FC<TransactionHistoryProps> = ({
-  transactions,
-  transactionPage,
-  totalTransactionPages,
-  tokenSymbol,
-  handlePageChange,
-}) => {
+const PAGE_LIMIT = 10;
 
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+const fmtUsd = (v: any, digits = 6) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '-';
+  return `$${n.toFixed(digits)}`;
+};
 
-  const getPaginationRange = (current: number, total: number) => {
-    if (total <= 5) {
-      return Array.from({ length: total }, (_, i) => i + 1);
-    }
+const fmtNumber = (v: any, digits?: number) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '-';
+  return typeof digits === 'number' ? n.toFixed(digits) : n.toLocaleString();
+};
 
-    if (current <= 2) {
-      return [1, 2, 3, '...', total];
-    }
+const fmtTime = (t: number) => {
+  // BE schema: time: number (thường là epoch seconds; fallback ms)
+  const ms = t > 1e12 ? t : t * 1000;
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toLocaleString(); // show date + time cho rõ
+};
 
-    if (current >= total - 1) {
-      return [1, '...', total - 2, total - 1, total];
-    }
+const TransactionHistory: React.FC<Props> = ({ tokenAddress }) => {
+  const [trades, setTrades] = useState<TokenTrade[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
 
-    return [
-      1,
-      '...',
-      current,
-      '...',
-      total
-    ];
-  };
+  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Desktop view table
-  const DesktopTable = () => (
-    <table className="w-full text-left hidden md:table glass">
-      <thead>
-        <tr className="bg-[var(--card2)] border-thin">
-          <th className="px-4 py-2 text-sm text-gray-400">Maker</th>
-          <th className="px-4 py-2 text-sm text-gray-400">Type</th>
-          <th className="px-4 py-2 text-sm text-gray-400">BONE</th>
-          <th className="px-4 py-2 text-sm text-gray-400">{tokenSymbol}</th>
-          <th className="px-4 py-2 text-sm text-gray-400">Date</th>
-          <th className="px-4 py-2 text-sm text-gray-400">Tx</th>
-        </tr>
-      </thead>
-      <tbody>
-        {transactions.map((tx: Transaction) => (
-          <tr key={tx.id} className="border-b border-[var(--card-hover)] hover:bg-[var(--card-hover)] transition-colors">
-            <td className="px-4 py-2">
-              <a 
-                href={`https://shibariumscan.io/address/${tx.senderAddress}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-gray-400 hover:text-[var(--primary)] text-sm transition-colors"
-              >
-                {shortenAddress(tx.senderAddress)}
-              </a>
-            </td>
-            <td className="px-4 py-2 text-sm text-gray-400">{tx.type}</td>
-            <td className="px-4 py-2 text-sm text-gray-400">{formatAmountV3(tx.ethAmount)}</td>
-            <td className="px-4 py-2 text-sm text-gray-400">{formatAmountV3(tx.tokenAmount)}</td>
-            <td className="px-4 py-2 text-sm text-gray-400">{formatTimestamp(tx.timestamp)}</td>
-            <td className="px-4 py-2">
-              <a
-                href={`https://shibariumscan.io/tx/${tx.txHash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-gray-400 hover:text-[var(--primary)] text-sm transition-colors"
-              >
-                {tx.txHash.slice(0, 8)}
-              </a>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+  // tránh setState sau unmount / tránh race condition
+  const reqIdRef = useRef(0);
+
+  const canLoadMore = useMemo(() => hasMore && !loading, [hasMore, loading]);
+
+  const loadTrades = useCallback(
+    async (isLoadMore = false) => {
+      const addr = (tokenAddress || '').trim();
+      if (!addr) return;
+      if (loading) return;
+
+      const myReqId = ++reqIdRef.current;
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        const res = await getTokenTrades(addr, {
+          limit: PAGE_LIMIT,
+          cursor: isLoadMore ? cursor ?? undefined : undefined,
+        });
+
+        // drop stale response
+        if (reqIdRef.current !== myReqId) return;
+
+        const next = res?.nextCursor ?? null;
+        const list = res?.trades ?? [];
+
+        setTrades((prev) => (isLoadMore ? [...prev, ...list] : list));
+        setCursor(next);
+        setHasMore(Boolean(next));
+      } catch (e: any) {
+        if (reqIdRef.current !== myReqId) return;
+        setError(e?.message || 'Failed to load trades');
+      } finally {
+        if (reqIdRef.current !== myReqId) return;
+        setLoading(false);
+        setInitialLoading(false);
+      }
+    },
+    [tokenAddress, cursor, loading]
   );
 
-  // Mobile view table
-  const MobileTable = () => (
-    <div className="md:hidden">
-      {transactions.map((tx: Transaction) => (
-        <div key={tx.id} className="mb-2">
-          <div 
-            className="bg-[var(--card2)] p-3 rounded-lg cursor-pointer border-thin glass"
-            onClick={() => setExpandedRow(expandedRow === tx.id ? null : tx.id)}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm text-gray-400">{tx.type}</span>
-                  <ChevronDownIcon 
-                    size={16} 
-                    className={`text-gray-400 transition-transform ${
-                      expandedRow === tx.id ? 'transform rotate-180' : ''
-                    }`}
-                  />
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">{formatAmountV3(tx.ethAmount)} BONE</span>
-                  <span className="text-gray-400">{formatAmountV3(tx.tokenAmount)} {tokenSymbol}</span>
-                </div>
-              </div>
-            </div>
+  // initial load + reset when token changes
+  useEffect(() => {
+    const addr = (tokenAddress || '').trim();
+    if (!addr) return;
 
-            {expandedRow === tx.id && (
-              <div className="mt-3 pt-3 border-t border-[var(--card-hover)] space-y-2">
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-400">Maker:</span>
-                  <a 
-                    href={`https://shibariumscan.io/address/${tx.senderAddress}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-gray-400 hover:text-[var(--primary)]"
-                  >
-                    {shortenAddress(tx.senderAddress)}
-                  </a>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-400">Date:</span>
-                  <span className="text-gray-400">{formatTimestamp(tx.timestamp)}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-400">Transaction:</span>
-                  <a
-                    href={`https://shibariumscan.io/tx/${tx.txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-gray-400 hover:text-[var(--primary)] flex items-center gap-1"
-                  >
-                    View <ExternalLinkIcon size={12} />
-                  </a>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+    // reset state khi đổi token
+    setTrades([]);
+    setCursor(null);
+    setHasMore(true);
+    setError(null);
+    setInitialLoading(true);
+
+    loadTrades(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tokenAddress]);
+
+  if (initialLoading) return <LoadingBar />;
 
   return (
-    <div className="w-full">
-      <DesktopTable />
-      <MobileTable />
+    <div className="mt-6">
+      <div className="flex items-center justify-between mb-3">
+        {loading && <span className="text-xs text-gray-400">Loading…</span>}
+      </div>
 
-      {transactions.length === 0 && (
-        <div className="text-center py-8 text-gray-400">
-          No transactions yet
+      {error && <div className="text-red-500 text-sm mb-3">{error}</div>}
+
+      {trades.length === 0 && !loading && (
+        <div className="text-sm text-gray-400">No trades yet</div>
+      )}
+
+      {trades.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b border-gray-800 text-gray-400">
+              <tr>
+                <th className="py-2 text-left">Type</th>
+                <th className="py-2 text-left">Price (USD)</th>
+                <th className="py-2 text-left">Amount</th>
+                <th className="py-2 text-left">SOL</th>
+                <th className="py-2 text-left">Total (USD)</th>
+                <th className="py-2 text-left">Time</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {trades.map((t, idx) => {
+                // signature có thể trùng hiếm; fallback idx để tránh key warning
+                const key = t.signature ? `${t.signature}-${idx}` : `${t.publicKey}-${t.time}-${idx}`;
+
+                return (
+                  <tr key={key} className="border-b border-gray-900">
+                    <td className={`py-2 font-medium ${t.isBuy ? 'text-green-400' : 'text-red-400'}`}>
+                      {t.isBuy ? 'BUY' : 'SELL'}
+                    </td>
+
+                    <td className="py-2">{fmtUsd(t.price, 6)}</td>
+
+                    <td className="py-2">{fmtNumber(t.amount)}</td>
+
+                    <td className="py-2">{fmtNumber(t.solAmount, 4)}</td>
+
+                    <td className="py-2">
+                      {(() => {
+                        const n = Number(t.totalUsd);
+                        if (!Number.isFinite(n)) return '-';
+                        return `$${n.toLocaleString()}`;
+                      })()}
+                    </td>
+
+                    <td className="py-2 text-gray-400">{fmtTime(t.time)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {totalTransactionPages > 1 && (
-        <div className="flex justify-center mt-4 gap-2">
+      {hasMore && (
+        <div className="flex justify-center mt-4">
           <button
-            onClick={() => handlePageChange(transactionPage - 1)}
-            disabled={transactionPage === 1}
-            className="btn-secondary p-1 rounded disabled:opacity-50"
+            disabled={!canLoadMore}
+            onClick={() => loadTrades(true)}
+            className="px-4 py-2 rounded-md bg-gray-800 hover:bg-gray-700 text-sm disabled:opacity-50"
           >
-            <ChevronLeftIcon size={20} />
-          </button>
-          {getPaginationRange(transactionPage, totalTransactionPages).map((page, index) => (
-            <React.Fragment key={index}>
-              {page === '...' ? (
-                <span className="px-3 py-1 text-gray-400">...</span>
-              ) : (
-                <button
-                  onClick={() => handlePageChange(page as number)}
-                  className={`px-3 py-1 rounded text-sm ${
-                    transactionPage === page
-                      ? 'btn btn-primary'
-                      : 'btn-secondary'
-                  }`}
-                >
-                  {page}
-                </button>
-              )}
-            </React.Fragment>
-          ))}
-          <button
-            onClick={() => handlePageChange(transactionPage + 1)}
-            disabled={transactionPage === totalTransactionPages}
-            className="btn-secondary p-1 rounded disabled:opacity-50"
-          >
-            <ChevronRightIcon size={20} />
+            {loading ? 'Loading…' : 'Load more'}
           </button>
         </div>
       )}

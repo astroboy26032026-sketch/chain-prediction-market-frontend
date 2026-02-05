@@ -12,6 +12,7 @@ import {
   TokenPriceResponse,
   TokenLiquidityResponse,
   TokenPriceTimeframe,
+  TokenTradesResponse, // ✅ ADD: trades
 
   // ✅ Referrals types
   ReferralSummary,
@@ -267,7 +268,7 @@ async function tokenSearch(params: TokenSearchParams): Promise<CursorPaginatedRe
 }
 
 // =====================
-// ✅ NEW BE API (Solana): /token/info /token/price /token/liquidity
+// ✅ NEW BE API (Solana): /token/info /token/price /token/liquidity /token/trades
 // - VIA PROXY to avoid CORS
 // =====================
 
@@ -296,6 +297,38 @@ export async function getTokenLiquidity(address: string): Promise<TokenLiquidity
   const headers = getAuthHeaders();
   const { data } = await getViaProxy<TokenLiquidityResponse>('/token/liquidity', { address: addr }, headers);
   return data;
+}
+
+/**
+ * ✅ GET /token/trades (cursor pagination)
+ * Params: address (mint), limit (1..200), cursor?
+ */
+export async function getTokenTrades(
+  address: string,
+  opts?: { limit?: number; cursor?: string | null }
+): Promise<TokenTradesResponse> {
+  const addr = (address || '').trim();
+  if (!addr) throw new Error('Missing token address');
+
+  const limitRaw = opts?.limit ?? 50;
+  const limit = Math.min(Math.max(Number(limitRaw) || 50, 1), 200);
+
+  const headers = getAuthHeaders();
+  const { data } = await getViaProxy<TokenTradesResponse>(
+    '/token/trades',
+    {
+      address: addr,
+      limit,
+      cursor: opts?.cursor ?? undefined,
+    },
+    headers
+  );
+
+  return {
+    tokenAddress: data?.tokenAddress ?? addr,
+    nextCursor: data?.nextCursor ?? null,
+    trades: data?.trades ?? [],
+  };
 }
 
 // =====================
@@ -612,3 +645,8 @@ type TokenomicsUpdate = {
   trustBadge?: 'Bronze' | 'Silver' | 'Gold';
 };
 
+// NOTE:
+// Phần còn lại của file (updateToken/getTokenByAddress/getTransactionsByAddress/chat/referrals/...) bạn giữ nguyên như code hiện tại.
+// Ở bản “gen lại” này mình chỉ thêm đúng phần Trades:
+// - import TokenTradesResponse
+// - function getTokenTrades()
