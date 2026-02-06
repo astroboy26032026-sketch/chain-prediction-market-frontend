@@ -10,10 +10,9 @@ import 'react-toastify/dist/ReactToastify.css';
 
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
-import {
-  PhantomWalletAdapter,
-  SolflareWalletAdapter,
-} from '@solana/wallet-adapter-wallets';
+
+import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
+import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
 
 import '@solana/wallet-adapter-react-ui/styles.css';
 
@@ -23,11 +22,9 @@ import { AuthProvider } from '@/components/providers/AuthProvider';
 const queryClient = new QueryClient();
 
 export default function App({ Component, pageProps }: AppProps) {
-  // RPC endpoint (khuyến nghị để trong .env.local)
   const endpoint =
     process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com';
 
-  // Wallet adapters
   const wallets = useMemo(
     () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
     []
