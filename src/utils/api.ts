@@ -4,8 +4,8 @@ import {
   Token,
   PaginatedResponse,
   TokenHolder,
-  TokenHoldersResponse, // ✅ NEW
-  TransactionResponse,
+  TokenHoldersResponse,
+  Transaction,
   CursorPaginatedResponse,
 
   // ✅ NEW BE API (Solana)
@@ -13,7 +13,7 @@ import {
   TokenPriceResponse,
   TokenLiquidityResponse,
   TokenPriceTimeframe,
-  TokenTradesResponse, // ✅ trades
+  TokenTradesResponse,
 
   // ✅ Chatroom types
   ChatMessagesResponse,
@@ -48,15 +48,12 @@ export function setStoredToken(token: string | null) {
 
 /**
  * Axios instance for direct BE calls (NO proxy)
- * (Giữ lại cho các endpoint bạn thực sự muốn gọi thẳng,
- * nhưng browser gọi thẳng sẽ dính CORS nếu BE không allow)
  */
 export const authApi = axios.create({
   baseURL: AUTH_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
 });
 
-// (Optional) attach bearer automatically for direct calls
 authApi.interceptors.request.use((config) => {
   try {
     if (typeof window !== 'undefined') {
@@ -81,7 +78,6 @@ export function setAuthToken(token: string | null, persist = true) {
   else delete authApi.defaults.headers.common.Authorization;
 }
 
-// Init token on client
 if (typeof window !== 'undefined') {
   const token = getStoredToken();
   if (token) setAuthToken(token, false);
@@ -121,7 +117,7 @@ type TokenSearchParams = {
 };
 
 // =====================
-// Leaderboard (BE) types (local to avoid touching interface/types.ts)
+// Leaderboard (BE) types
 // =====================
 export type LeaderboardTopItem = {
   rank: number;
@@ -186,42 +182,30 @@ const patchViaProxy = async <T = any>(path: string, body?: any, headers?: Record
 
 const clampLimit = (n: number, min = 1, max = 50) => Math.min(Math.max(n, min), max);
 
-/**
- * Map cursor response -> legacy PaginatedResponse
- * (UI cũ vẫn dùng data/currentPage/totalPages)
- */
 const toLegacyPaginated = <T>(items: T[], nextCursor: string | null | undefined): PaginatedResponse<T> => ({
   data: items,
   tokens: [], // compat
-  totalCount: items.length, // BE không trả total => tạm dùng length
+  totalCount: items.length,
   currentPage: 1,
   totalPages: 1,
   nextCursor: nextCursor ?? null,
 });
 
-// auth header (for proxy calls)
 const getAuthHeaders = (): Record<string, string> | undefined => {
   const t = getStoredToken();
   return t ? { Authorization: `Bearer ${t}` } : undefined;
 };
 
 // =====================
-// Idempotency helpers (NEW)
+// Idempotency helpers
 // =====================
-export type IdempotencyOptions = {
-  idempotencyKey?: string;
-};
+export type IdempotencyOptions = { idempotencyKey?: string };
 
-/**
- * Prefer FE-generated key per user action.
- * Fallback: generate here if caller didn't provide.
- */
 export function newIdempotencyKey(prefix?: string) {
   const rand =
     typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function'
       ? (crypto as any).randomUUID()
       : `${Date.now()}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
-
   return prefix ? `${prefix}-${rand}` : rand;
 }
 
@@ -231,7 +215,7 @@ function withIdempotencyHeader(headers?: Record<string, string>, key?: string): 
 }
 
 // =====================
-// Validation helpers (NEW)
+// Validation helpers
 // =====================
 const assertNonEmpty = (v: any, msg: string) => {
   if (!String(v ?? '').trim()) throw new Error(msg);
@@ -255,9 +239,7 @@ const toNumericString = (v: any, field: string) => {
   return s;
 };
 
-// =====================
-// ✅ Symbol validation (SAFE: 2-10, uppercase alnum)
-// =====================
+// ✅ Symbol validation
 const SYMBOL_MIN = 2;
 const SYMBOL_MAX = 10;
 const SYMBOL_RE = new RegExp(`^[A-Z0-9]{${SYMBOL_MIN},${SYMBOL_MAX}}$`);
@@ -270,14 +252,12 @@ const normalizeSymbol = (v: any) =>
 
 const assertSymbol = (v: any) => {
   const s = normalizeSymbol(v);
-  if (!SYMBOL_RE.test(s)) {
-    throw new Error(`symbol must be uppercase alphanumeric, ${SYMBOL_MIN}-${SYMBOL_MAX} chars`);
-  }
+  if (!SYMBOL_RE.test(s)) throw new Error(`symbol must be uppercase alphanumeric, ${SYMBOL_MIN}-${SYMBOL_MAX} chars`);
   return s;
 };
 
 // =====================
-// Core helper: /token/search  (✅ VIA PROXY to avoid CORS)
+// Core helper: /token/search
 // =====================
 async function tokenSearch(params: TokenSearchParams): Promise<CursorPaginatedResponse<Token>> {
   const safe: TokenSearchParams = {
@@ -286,7 +266,6 @@ async function tokenSearch(params: TokenSearchParams): Promise<CursorPaginatedRe
     limit: clampLimit(params.limit ?? 20),
   };
 
-  // Không gửi q rỗng
   if (safe.q !== undefined && !String(safe.q).trim()) delete safe.q;
 
   const headers = getAuthHeaders();
@@ -299,26 +278,19 @@ async function tokenSearch(params: TokenSearchParams): Promise<CursorPaginatedRe
 }
 
 // =====================
-// ✅ NEW BE API (Solana): /token/info /token/price /token/liquidity /token/trades
-// - VIA PROXY to avoid CORS
+// ✅ NEW BE API (Solana): Token info / price / liquidity / trades / holders
 // =====================
-
 export async function getTokenInfo(address: string): Promise<TokenInfoResponse> {
   const addr = (address || '').trim();
   if (!addr) throw new Error('Missing token address');
-
   const headers = getAuthHeaders();
   const { data } = await getViaProxy<TokenInfoResponse>('/token/info', { address: addr }, headers);
   return data;
 }
 
-export async function getTokenPrice(
-  address: string,
-  timeframe: TokenPriceTimeframe = '5m'
-): Promise<TokenPriceResponse> {
+export async function getTokenPrice(address: string, timeframe: TokenPriceTimeframe = '5m'): Promise<TokenPriceResponse> {
   const addr = (address || '').trim();
   if (!addr) throw new Error('Missing token address');
-
   const headers = getAuthHeaders();
   const { data } = await getViaProxy<TokenPriceResponse>('/token/price', { address: addr, timeframe }, headers);
   return data;
@@ -327,16 +299,11 @@ export async function getTokenPrice(
 export async function getTokenLiquidity(address: string): Promise<TokenLiquidityResponse> {
   const addr = (address || '').trim();
   if (!addr) throw new Error('Missing token address');
-
   const headers = getAuthHeaders();
   const { data } = await getViaProxy<TokenLiquidityResponse>('/token/liquidity', { address: addr }, headers);
   return data;
 }
 
-/**
- * ✅ GET /token/trades (cursor pagination)
- * Params: address (mint), limit (1..200), cursor?
- */
 export async function getTokenTrades(
   address: string,
   opts?: { limit?: number; cursor?: string | null }
@@ -350,11 +317,7 @@ export async function getTokenTrades(
   const headers = getAuthHeaders();
   const { data } = await getViaProxy<TokenTradesResponse>(
     '/token/trades',
-    {
-      address: addr,
-      limit,
-      cursor: opts?.cursor ?? undefined,
-    },
+    { address: addr, limit, cursor: opts?.cursor ?? undefined },
     headers
   );
 
@@ -365,10 +328,6 @@ export async function getTokenTrades(
   };
 }
 
-/**
- * ✅ GET /token/holders (cursor pagination)
- * Params: address (mint), limit (1..200), cursor?
- */
 export async function getTokenHolders(
   address: string,
   opts?: { limit?: number; cursor?: string | null }
@@ -382,11 +341,7 @@ export async function getTokenHolders(
   const headers = getAuthHeaders();
   const { data } = await getViaProxy<TokenHoldersResponse>(
     '/token/holders',
-    {
-      address: addr,
-      limit,
-      cursor: opts?.cursor ?? undefined,
-    },
+    { address: addr, limit, cursor: opts?.cursor ?? undefined },
     headers
   );
 
@@ -399,14 +354,8 @@ export async function getTokenHolders(
 }
 
 // =====================
-// ✅ Chatroom API (Solana): /chat/messages /chat/write
-// - VIA PROXY to avoid CORS
+// ✅ Chatroom API
 // =====================
-
-/**
- * ✅ GET /chat/messages (cursor pagination)
- * Params: tokenAddress, limit (1..100), cursor?
- */
 export async function getChatMessages(
   tokenAddress: string,
   opts?: { limit?: number; cursor?: string | null }
@@ -420,11 +369,7 @@ export async function getChatMessages(
   const headers = getAuthHeaders();
   const { data } = await getViaProxy<ChatMessagesResponse>(
     '/chat/messages',
-    {
-      tokenAddress: addr,
-      limit,
-      cursor: opts?.cursor ?? undefined,
-    },
+    { tokenAddress: addr, limit, cursor: opts?.cursor ?? undefined },
     headers
   );
 
@@ -435,11 +380,6 @@ export async function getChatMessages(
   };
 }
 
-/**
- * ✅ POST /chat/write
- * Body: { tokenAddress, walletAddress, message }
- * ⚠️ Requires Bearer token
- */
 export async function addChatMessage(payload: ChatWriteRequest): Promise<ChatWriteResponse> {
   const tokenAddress = String(payload?.tokenAddress ?? '').trim();
   const walletAddress = String(payload?.walletAddress ?? '').trim();
@@ -450,20 +390,15 @@ export async function addChatMessage(payload: ChatWriteRequest): Promise<ChatWri
   if (!message) throw new Error('message is required');
 
   const headers = getAuthHeaders();
-  if (!headers?.Authorization) {
-    throw new Error('Unauthorized (Bearer token required)');
-  }
+  if (!headers?.Authorization) throw new Error('Unauthorized (Bearer token required)');
 
   const { data } = await postViaProxy<ChatWriteResponse>('/chat/write', { tokenAddress, walletAddress, message }, headers);
-
   return data;
 }
 
 // =====================
 // ✅ Create Token (NEW BE API) - VIA PROXY
-// Spec: prepare-mint / upload-image / draft / preview-buy / finalize / confirm
 // =====================
-
 export type PrepareMintRequest = {
   seed: string;
   decimals: number;
@@ -481,9 +416,7 @@ export type PrepareMintResponse = {
   note?: string;
 };
 
-export type UploadTokenImageRequest = {
-  image: string; // base64 data URI OR URL
-};
+export type UploadTokenImageRequest = { image: string };
 
 export type UploadTokenImageResponse = {
   imageUrl: string;
@@ -513,10 +446,7 @@ export type CreateTokenDraftResponse = {
   note?: string;
 };
 
-export type PreviewInitialBuyRequest = {
-  draftId: string;
-  amountSol: number;
-};
+export type PreviewInitialBuyRequest = { draftId: string; amountSol: number };
 
 export type PreviewInitialBuyResponse = {
   amountSol: number;
@@ -525,7 +455,6 @@ export type PreviewInitialBuyResponse = {
   note?: string;
 };
 
-// Convention: 0 = linear
 export type FinalizeTokenRequest = {
   draftId: string;
   initialBuySol: number;
@@ -545,11 +474,7 @@ export type FinalizeTokenResponse = {
   initialBuyNote?: string;
 };
 
-export type ConfirmMintRequest = {
-  mint: string;
-  symbol: string;
-  name: string;
-};
+export type ConfirmMintRequest = { mint: string; symbol: string; name: string };
 
 export type ConfirmMintResponse = {
   ok: true;
@@ -575,13 +500,11 @@ export async function confirmMint(payload: ConfirmMintRequest): Promise<ConfirmM
   return data;
 }
 
-/**
- * ✅ POST /token/upload-image
- * + Idempotency-Key
- */
-export async function uploadTokenImage(payload: UploadTokenImageRequest, opts?: IdempotencyOptions): Promise<UploadTokenImageResponse> {
+export async function uploadTokenImage(
+  payload: UploadTokenImageRequest,
+  opts?: IdempotencyOptions
+): Promise<UploadTokenImageResponse> {
   assertNonEmpty(payload?.image, 'image is required');
-
   const idk = opts?.idempotencyKey ?? newIdempotencyKey('upload-image');
   const headers = withIdempotencyHeader(getAuthHeaders(), idk);
 
@@ -593,11 +516,10 @@ export async function uploadTokenImage(payload: UploadTokenImageRequest, opts?: 
   return data;
 }
 
-/**
- * ✅ POST /token/create/draft
- * + Idempotency-Key
- */
-export async function createTokenDraft(payload: CreateTokenDraftRequest, opts?: IdempotencyOptions): Promise<CreateTokenDraftResponse> {
+export async function createTokenDraft(
+  payload: CreateTokenDraftRequest,
+  opts?: IdempotencyOptions
+): Promise<CreateTokenDraftResponse> {
   assertNonEmpty(payload?.name, 'name is required');
   assertNonEmpty(payload?.symbol, 'symbol is required');
   assertNonEmpty(payload?.imageUrl, 'imageUrl is required');
@@ -623,9 +545,7 @@ export async function createTokenDraft(payload: CreateTokenDraftRequest, opts?: 
 export async function previewInitialBuy(payload: PreviewInitialBuyRequest): Promise<PreviewInitialBuyResponse> {
   assertNonEmpty(payload?.draftId, 'draftId is required');
   const amountSol = Number(payload?.amountSol ?? 0);
-  if (!Number.isFinite(amountSol) || amountSol <= 0) {
-    throw new Error('amountSol must be a number > 0');
-  }
+  if (!Number.isFinite(amountSol) || amountSol <= 0) throw new Error('amountSol must be a number > 0');
 
   const headers = getAuthHeaders();
   const { data } = await postViaProxy<PreviewInitialBuyResponse>(
@@ -636,10 +556,6 @@ export async function previewInitialBuy(payload: PreviewInitialBuyRequest): Prom
   return data;
 }
 
-/**
- * ✅ POST /token/create/finalize
- * + Idempotency-Key
- */
 export async function finalizeTokenCreation(
   payload: FinalizeTokenRequest,
   opts?: IdempotencyOptions
@@ -651,9 +567,7 @@ export async function finalizeTokenCreation(
 
   const curveType = toNonNegInt(payload.curveType, 'curveType');
   const initialBuySol = Number(payload.initialBuySol ?? 0);
-  if (!Number.isFinite(initialBuySol) || initialBuySol < 0) {
-    throw new Error('initialBuySol must be a number >= 0');
-  }
+  if (!Number.isFinite(initialBuySol) || initialBuySol < 0) throw new Error('initialBuySol must be a number >= 0');
 
   const basePriceLamports = toNonNegInt(payload.basePriceLamports, 'basePriceLamports');
   const slopeLamports = toNonNegInt(payload.slopeLamports, 'slopeLamports');
@@ -680,9 +594,8 @@ export async function finalizeTokenCreation(
 }
 
 // =====================
-// API calls (legacy + existing)
+// Existing exports (still used) - legacy /ports & existing
 // =====================
-
 export async function getAllTokens(page = 1, pageSize = 13): Promise<PaginatedResponse<Token>> {
   const { data } = await getViaProxy<PaginatedResponse<Token>>('/ports/getAllTokens', { page, pageSize });
   return data;
@@ -726,7 +639,6 @@ export async function searchTokens(
   filters?: TokenSearchFilters
 ): Promise<PaginatedResponse<Token>> {
   const limit = clampLimit(pageSize);
-
   if (page > 1 && !cursor) return toLegacyPaginated<Token>([], null);
 
   const res = await tokenSearch({
@@ -758,11 +670,96 @@ export async function getLeaderboardList(params?: {
   const limit = Math.min(Math.max(params?.limit ?? 50, 1), 200);
   const sort = params?.sort ?? 'marketCap';
   const order = params?.order ?? 'desc';
-
   const { data } = await getViaProxy<LeaderboardListResponse>('/leaderboard/list', { limit, sort, order });
-
   return { items: data?.items ?? [] };
 }
 
+// =====================
+// ✅ ADD BACK: functions used by Dashboard (to avoid TS error)
+// =====================
+
+/**
+ * Dashboard (EVM legacy) expects:
+ * - getTokensByCreator(creatorAddress, page) => { tokens: Token[], totalPages: number }
+ *
+ * Nếu BE Solana chưa có endpoint này, return rỗng để UI không crash.
+ * 👉 Nếu bạn có endpoint thật, sửa URL & params cho đúng.
+ */
+export async function getTokensByCreator(
+  creatorAddress: string,
+  page = 1,
+  limit = 20
+): Promise<{ tokens: Token[]; totalPages: number }> {
+  const creator = String(creatorAddress ?? '').trim();
+  if (!creator) return { tokens: [], totalPages: 1 };
+
+  try {
+    const headers = getAuthHeaders();
+    // ✅ bạn thay endpoint này theo BE thật của bạn
+    const { data } = await getViaProxy<{ tokens?: Token[]; totalPages?: number }>(
+      '/token/by-creator',
+      { creator, page, limit },
+      headers
+    );
+
+    return {
+      tokens: data?.tokens ?? [],
+      totalPages: Number(data?.totalPages ?? 1),
+    };
+  } catch (e) {
+    // fallback an toàn
+    return { tokens: [], totalPages: 1 };
+  }
+}
+
+/**
+ * Dashboard (EVM legacy) expects: getAllTokenAddresses() => string[]
+ * Nếu chưa có endpoint, return [] để UI không crash.
+ * 👉 Nếu bạn có endpoint thật, sửa URL cho đúng.
+ */
+export async function getAllTokenAddresses(): Promise<string[]> {
+  try {
+    const headers = getAuthHeaders();
+    // ✅ bạn thay endpoint này theo BE thật của bạn
+    const { data } = await getViaProxy<any>('/token/addresses', {}, headers);
+    if (Array.isArray(data)) return data.filter(Boolean).map(String);
+    if (Array.isArray(data?.addresses)) return data.addresses.filter(Boolean).map(String);
+    return [];
+  } catch (e) {
+    return [];
+  }
+}
+
+/**
+ * Dashboard expects:
+ * getTransactionsByAddress(userAddress, page) => { transactions: Transaction[], totalPages: number }
+ * Nếu chưa có endpoint, return rỗng để UI không crash.
+ * 👉 Nếu bạn có endpoint thật, sửa URL cho đúng.
+ */
+export async function getTransactionsByAddress(
+  userAddress: string,
+  page = 1,
+  limit = 20
+): Promise<{ transactions: Transaction[]; totalPages: number }> {
+  const addr = String(userAddress ?? '').trim();
+  if (!addr) return { transactions: [], totalPages: 1 };
+
+  try {
+    const headers = getAuthHeaders();
+    // ✅ bạn thay endpoint này theo BE thật của bạn
+    const { data } = await getViaProxy<any>('/wallet/transactions', { address: addr, page, limit }, headers);
+
+    return {
+      transactions: (data?.transactions ?? data?.items ?? []) as Transaction[],
+      totalPages: Number(data?.totalPages ?? 1),
+    };
+  } catch (e) {
+    return { transactions: [], totalPages: 1 };
+  }
+}
+
+// =====================
 // NOTE:
-// Phần còn lại của file (updateToken/getTokenByAddress/getTransactionsByAddress/referrals/...) bạn giữ nguyên như code hiện tại.
+// Nếu bạn còn functions khác (referrals/updateToken/...) ở file cũ
+// -> cứ paste xuống dưới, không ảnh hưởng.
+// =====================
