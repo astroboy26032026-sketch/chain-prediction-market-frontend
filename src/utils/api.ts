@@ -207,14 +207,11 @@ const getAuthHeaders = (): Record<string, string> | undefined => {
 
 // =====================
 // Tracking endpoint normalizer
-// - Fix bug: BE may return "POST /api/..." => FE must strip "POST "
-// - Also supports absolute URLs
 // =====================
 function normalizeTrackingPath(input: string): string {
   let s = String(input ?? '').trim();
   if (!s) throw new Error('Missing tracking endpoint');
 
-  // Full URL -> convert to pathname + search
   try {
     if (/^https?:\/\//i.test(s)) {
       const u = new URL(s);
@@ -224,11 +221,9 @@ function normalizeTrackingPath(input: string): string {
     // ignore
   }
 
-  // Strip "METHOD /path" or "METHOD:/path"
   s = s.replace(/^(GET|POST|PUT|PATCH|DELETE)\s*:\s*/i, '');
   s = s.replace(/^(GET|POST|PUT|PATCH|DELETE)\s+/i, '');
 
-  // Some BE strings may accidentally duplicate, e.g. "POST:/POST /api/..."
   s = s.replace(/^(GET|POST|PUT|PATCH|DELETE)\s*:\s*/i, '');
   s = s.replace(/^(GET|POST|PUT|PATCH|DELETE)\s+/i, '');
 
@@ -300,12 +295,10 @@ const assertSymbol = (v: any) => {
 
 // =====================
 // ✅ STUB: Update Token (Backend chưa implement)
-// - để CI/build pass, UI sẽ catch error và show "coming soon"
 // =====================
 export type UpdateTokenRequest = {
   address: string;
 
-  // metadata fields (tuỳ bạn sẽ hỗ trợ sau)
   name?: string;
   symbol?: string;
   description?: string;
@@ -326,31 +319,56 @@ export async function updateToken(_payload: UpdateTokenRequest): Promise<Token> 
 
 // =====================
 // ✅ STUB: Profile (Backend chưa implement / chưa export)
-// - để CI/build pass cho /profile/[address].tsx
+// - FIX TS cho /profile/[address].tsx
 // =====================
+//
+// NOTE: để khỏi chase từng field trong UI, type này "mở".
+// Bạn có thể tighten lại khi BE đã có schema thật.
 export type ProfileInfoResponse = {
-  address: string;
+  // ✅ page uses (đã dính lỗi trước đó):
+  walletAddress: string;
+  avatar?: string | null;
 
-  // ✅ add fields used by UI
-  avatar?: string | null; // ✅ FIX: profileInfo?.avatar
+  // common profile fields
   username?: string | null;
+  bio?: string | null;
 
+  // common counters UI hay dùng
+  totalTokensCreated?: number;
+  totalTokensHeld?: number;
+  totalFollowers?: number;
+  totalFollowing?: number;
+
+  // lists
   tokens?: Token[];
   totalPages?: number;
 
+  // stats
   stats?: {
     totalTrades?: number;
     volumeUsd?: number;
     pnlUsd?: number;
   };
+
+  // ✅ allow any extra fields used by UI (vd: totalTokensCreated, totalLikes, badges...)
+  [key: string]: any;
 };
 
 export async function getProfileInfo(address: string): Promise<ProfileInfoResponse> {
   const addr = String(address ?? '').trim();
+
+  // STUB safe data (build-pass)
   return {
-    address: addr,
+    walletAddress: addr,
     avatar: null,
     username: null,
+    bio: null,
+
+    totalTokensCreated: 0,
+    totalTokensHeld: 0,
+    totalFollowers: 0,
+    totalFollowing: 0,
+
     tokens: [],
     totalPages: 1,
     stats: {
@@ -459,18 +477,8 @@ export async function getTokenHolders(
 }
 
 // =====================
-// ✅ Trading API (Solana) - /trading/buy + /trading/sell + submit-signature + status
+// ✅ Trading API (Solana)
 // =====================
-
-/**
- * POST /trading/buy
- * - Header: Idempotency-Key (UUID v4)
- * - Body: tokenAddress + amountInToken OR amountInSol + slippageBps? + referrer?
- *
- * IMPORTANT:
- * - Your FE earlier calls buyToken({ amountInToken }) (smallest units) => keep supported.
- * - If BE also supports amountInSol, we allow it as numeric string (lamports).
- */
 export async function buyToken(payload: TradingBuyRequest, opts?: IdempotencyOptions): Promise<TradingBuyResponse> {
   const tokenAddress = String(payload?.tokenAddress ?? '').trim();
   if (!tokenAddress) throw new Error('tokenAddress is required');
@@ -510,11 +518,6 @@ export async function buyToken(payload: TradingBuyRequest, opts?: IdempotencyOpt
   return data;
 }
 
-/**
- * POST /trading/sell
- * - Header: Idempotency-Key
- * - Body: tokenAddress + amountInToken (smallest units)
- */
 export async function sellToken(payload: TradingSellRequest, opts?: IdempotencyOptions): Promise<TradingSellResponse> {
   const tokenAddress = String(payload?.tokenAddress ?? '').trim();
   if (!tokenAddress) throw new Error('tokenAddress is required');
@@ -545,19 +548,6 @@ export async function sellToken(payload: TradingSellRequest, opts?: IdempotencyO
   return data;
 }
 
-/**
- * Submit signature:
- * BE in your system expects JSON:
- *   { "id": "...", "txSignature": "..." }
- *
- * Endpoint may be:
- * - "POST /api/v1/transactions/submit-signature"
- * - "POST:/api/v1/transactions/submit-signature"
- * - "/api/v1/transactions/submit-signature"
- * - full URL
- *
- * This function keeps the same shape your FE already uses.
- */
 export async function submitSignature(
   endpointOrPath: string,
   payload: { id: string; txSignature: string },
@@ -581,10 +571,6 @@ export async function submitSignature(
   return data;
 }
 
-/**
- * Get tx status (poll)
- * tracking.statusEndpoint OR tracking.statusBySignatureEndpoint
- */
 export async function getTradingStatus(endpointOrPath: string): Promise<TradingTxStatusResponse> {
   const epRaw = String(endpointOrPath ?? '').trim();
   if (!epRaw) throw new Error('status endpoint is required');
@@ -635,7 +621,11 @@ export async function addChatMessage(payload: ChatWriteRequest): Promise<ChatWri
   const headers = getAuthHeaders();
   if (!headers?.Authorization) throw new Error('Unauthorized (Bearer token required)');
 
-  const { data } = await postViaProxy<ChatWriteResponse>('/chat/write', { tokenAddress, walletAddress, message }, headers);
+  const { data } = await postViaProxy<ChatWriteResponse>(
+    '/chat/write',
+    { tokenAddress, walletAddress, message },
+    headers
+  );
   return data;
 }
 
@@ -941,7 +931,11 @@ export async function getReferralList(opts?: { limit?: number; cursor?: string |
   const limitRaw = opts?.limit ?? 50;
   const limit = Math.min(Math.max(Number(limitRaw) || 50, 1), 200);
 
-  const { data } = await getViaProxy<ReferralListResponse>('/referrals/list', { limit, cursor: opts?.cursor ?? undefined }, headers);
+  const { data } = await getViaProxy<ReferralListResponse>(
+    '/referrals/list',
+    { limit, cursor: opts?.cursor ?? undefined },
+    headers
+  );
 
   return { items: data?.items ?? [] };
 }
@@ -1017,9 +1011,3 @@ export async function getTransactionsByAddress(
     return { transactions: [], totalPages: 1 };
   }
 }
-
-// =====================
-// NOTE:
-// If you still have legacy functions (updateToken/...)
-// paste below if needed.
-// =====================
