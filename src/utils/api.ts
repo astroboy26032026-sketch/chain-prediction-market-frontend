@@ -325,6 +325,35 @@ export async function updateToken(_payload: UpdateTokenRequest): Promise<Token> 
 }
 
 // =====================
+// ✅ STUB: Profile (Backend chưa implement / chưa export)
+// - để CI/build pass cho /profile/[address].tsx
+// =====================
+export type ProfileInfoResponse = {
+  address: string;
+  tokens?: Token[];
+  totalPages?: number;
+  stats?: {
+    totalTrades?: number;
+    volumeUsd?: number;
+    pnlUsd?: number;
+  };
+};
+
+export async function getProfileInfo(address: string): Promise<ProfileInfoResponse> {
+  const addr = String(address ?? '').trim();
+  return {
+    address: addr,
+    tokens: [],
+    totalPages: 1,
+    stats: {
+      totalTrades: 0,
+      volumeUsd: 0,
+      pnlUsd: 0,
+    },
+  };
+}
+
+// =====================
 // Core helper: /token/search
 // =====================
 async function tokenSearch(params: TokenSearchParams): Promise<CursorPaginatedResponse<Token>> {
@@ -762,7 +791,10 @@ export async function previewInitialBuy(payload: PreviewInitialBuyRequest): Prom
   return data;
 }
 
-export async function finalizeTokenCreation(payload: FinalizeTokenRequest, opts?: IdempotencyOptions): Promise<FinalizeTokenResponse> {
+export async function finalizeTokenCreation(
+  payload: FinalizeTokenRequest,
+  opts?: IdempotencyOptions
+): Promise<FinalizeTokenResponse> {
   assertNonEmpty(payload?.draftId, 'draftId is required');
 
   const decimals = toNonNegInt(payload.decimals, 'decimals');

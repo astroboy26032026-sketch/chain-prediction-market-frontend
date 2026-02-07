@@ -207,9 +207,12 @@ export const formatAmountV2 = (amount: string | number, decimals: number = 18) =
   return n.toFixed(3);
 };
 
-export function formatAddressV2(address: string): string {
-  const lastSix = address.slice(-6);
-  return `${lastSix}`;
+// ✅ FIX: guard null/undefined/short string
+export function formatAddressV2(address?: string | null): string {
+  const a = String(address ?? '').trim();
+  if (!a) return '';
+  if (a.length <= 6) return a;
+  return a.slice(-6);
 }
 
 export function shortenAddress(address: string): string {
@@ -346,17 +349,26 @@ export function useCalcSellReturn(_tokenAddress: any, _tokenAmount: any) {
   return { disabled: true as const, data: undefined as bigint | undefined, isLoading: false as const };
 }
 export function useUserBalance(_userAddress: any, _tokenAddress: any) {
-  return { disabled: true as const, ethBalance: undefined as bigint | undefined, tokenBalance: undefined as bigint | undefined, refetch: () => {} };
+  return {
+    disabled: true as const,
+    ethBalance: undefined as bigint | undefined,
+    tokenBalance: undefined as bigint | undefined,
+    refetch: () => {},
+  };
 }
 export function useERC20Balance(_tokenAddress: any, _walletAddress: any) {
-  return { disabled: true as const, data: undefined as bigint | undefined, balance: undefined as bigint | undefined, refetch: async () => {} };
+  return {
+    disabled: true as const,
+    data: undefined as bigint | undefined,
+    balance: undefined as bigint | undefined,
+    refetch: async () => {},
+  };
 }
 export function useTokenAllowance(_tokenAddress: any, _owner: any, _spender: any) {
   return { disabled: true as const, data: undefined as bigint | undefined };
 }
 
 // ❌ REMOVE old hook name to prevent new code from using it by accident
-// (Nếu project còn import ở đâu đó, bạn phải đổi import sang useCreateTokenSolana hoặc API flow mới.)
 export function useCreateToken(): DisabledHookBase & {
   createToken: (..._args: any[]) => Promise<never>;
   isLoading: false;
@@ -381,7 +393,9 @@ export function useBuyTokens(_tokenAddress?: any): DisabledWriteHook & { buyToke
     },
   };
 }
-export function useSellTokens(_tokenAddress?: any): DisabledWriteHook & { sellTokens: (..._args: any[]) => Promise<never> } {
+export function useSellTokens(
+  _tokenAddress?: any
+): DisabledWriteHook & { sellTokens: (..._args: any[]) => Promise<never> } {
   return {
     disabled: true,
     isPending: false,

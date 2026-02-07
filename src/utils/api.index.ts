@@ -31,6 +31,12 @@ export type UpdateTokenRequest = realApi.UpdateTokenRequest;
 export const updateToken = (...args: Parameters<typeof realApi.updateToken>) => realApi.updateToken(...args);
 
 // =====================
+// ✅ Profile (STUB until BE is ready)
+// =====================
+export type ProfileInfoResponse = realApi.ProfileInfoResponse;
+export const getProfileInfo = (...args: Parameters<typeof realApi.getProfileInfo>) => realApi.getProfileInfo(...args);
+
+// =====================
 // ✅ NEW BE API (Solana): Token Info / Price / Liquidity / Trades / Holders
 // =====================
 export const getTokenInfo = (...args: Parameters<typeof realApi.getTokenInfo>) => realApi.getTokenInfo(...args);
@@ -94,7 +100,8 @@ export const confirmMint = (...args: Parameters<typeof realApi.confirmMint>) => 
 export const uploadTokenImage = (...args: Parameters<typeof realApi.uploadTokenImage>) =>
   realApi.uploadTokenImage(...args);
 
-export const createTokenDraft = (...args: Parameters<typeof realApi.createTokenDraft>) => realApi.createTokenDraft(...args);
+export const createTokenDraft = (...args: Parameters<typeof realApi.createTokenDraft>) =>
+  realApi.createTokenDraft(...args);
 
 export const previewInitialBuy = (...args: Parameters<typeof realApi.previewInitialBuy>) =>
   realApi.previewInitialBuy(...args);
