@@ -940,16 +940,32 @@ export async function getReferralList(opts?: { limit?: number; cursor?: string |
   return { items: data?.items ?? [] };
 }
 
-export async function claimReferralRewards(payload: ClaimReferralRequest): Promise<ClaimReferralResponse> {
+export async function claimReferralRewards(
+  payload: ClaimReferralRequest | number
+): Promise<ClaimReferralResponse> {
   const headers = getAuthHeaders();
-  if (!headers?.Authorization) throw new Error('Unauthorized (Bearer token required)');
+  if (!headers?.Authorization) {
+    throw new Error('Unauthorized (Bearer token required)');
+  }
 
-  const amountSol = Number(payload?.amountSol ?? 0);
-  if (!Number.isFinite(amountSol) || amountSol <= 0) throw new Error('amountSol must be a number > 0');
+  const amountSol =
+    typeof payload === 'number'
+      ? payload
+      : Number(payload?.amountSol ?? 0);
 
-  const { data } = await postViaProxy<ClaimReferralResponse>('/referrals/claim', { amountSol }, headers);
+  if (!Number.isFinite(amountSol) || amountSol <= 0) {
+    throw new Error('amountSol must be a number > 0');
+  }
+
+  const { data } = await postViaProxy<ClaimReferralResponse>(
+    '/referrals/claim',
+    { amountSol },
+    headers
+  );
+
   return data;
 }
+
 
 // =====================
 // ✅ ADD BACK: functions used by Dashboard (to avoid TS error)
