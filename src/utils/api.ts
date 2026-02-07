@@ -167,8 +167,7 @@ const computeSiteUrl = () => {
 };
 const SITE_URL = computeSiteUrl();
 
-const absProxy = (path: string) =>
-  isServer ? `${SITE_URL}${PROXY_BASE}${path}` : `${PROXY_BASE}${path}`;
+const absProxy = (path: string) => (isServer ? `${SITE_URL}${PROXY_BASE}${path}` : `${PROXY_BASE}${path}`);
 
 const getViaProxy = async <T = any>(path: string, params?: any, headers?: Record<string, string>) => {
   const url = absProxy(path);
@@ -205,6 +204,31 @@ const getAuthHeaders = (): Record<string, string> | undefined => {
   const t = getStoredToken();
   return t ? { Authorization: `Bearer ${t}` } : undefined;
 };
+
+// =====================
+// Idempotency helpers (NEW)
+// =====================
+export type IdempotencyOptions = {
+  idempotencyKey?: string;
+};
+
+/**
+ * Prefer FE-generated key per user action.
+ * Fallback: generate here if caller didn't provide.
+ */
+export function newIdempotencyKey(prefix?: string) {
+  const rand =
+    typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function'
+      ? (crypto as any).randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+
+  return prefix ? `${prefix}-${rand}` : rand;
+}
+
+function withIdempotencyHeader(headers?: Record<string, string>, key?: string): Record<string, string> | undefined {
+  if (!key) return headers;
+  return { ...(headers || {}), 'Idempotency-Key': key };
+}
 
 // =====================
 // Validation helpers (NEW)
@@ -344,10 +368,6 @@ export async function getTokenTrades(
 /**
  * ✅ GET /token/holders (cursor pagination)
  * Params: address (mint), limit (1..200), cursor?
- *
- * NOTE:
- * - API docs trả `holders: [{ walletAddress, address, balance, percentShare, lastTransaction }]`
- * - `TokenHolder` in types.ts đã được cập nhật theo schema mới.
  */
 export async function getTokenHolders(
   address: string,
@@ -370,7 +390,6 @@ export async function getTokenHolders(
     headers
   );
 
-  // Normalize để UI không bị undefined
   return {
     tokenAddress: data?.tokenAddress ?? addr,
     totalHolders: Number(data?.totalHolders ?? (data?.holders?.length ?? 0)),
@@ -398,7 +417,6 @@ export async function getChatMessages(
   const limitRaw = opts?.limit ?? 30;
   const limit = Math.min(Math.max(Number(limitRaw) || 30, 1), 100);
 
-  // spec không bắt buộc auth cho GET, nhưng nếu có token thì cứ gửi
   const headers = getAuthHeaders();
   const { data } = await getViaProxy<ChatMessagesResponse>(
     '/chat/messages',
@@ -436,11 +454,7 @@ export async function addChatMessage(payload: ChatWriteRequest): Promise<ChatWri
     throw new Error('Unauthorized (Bearer token required)');
   }
 
-  const { data } = await postViaProxy<ChatWriteResponse>(
-    '/chat/write',
-    { tokenAddress, walletAddress, message },
-    headers
-  );
+  const { data } = await postViaProxy<ChatWriteResponse>('/chat/write', { tokenAddress, walletAddress, message }, headers);
 
   return data;
 }
@@ -511,13 +525,12 @@ export type PreviewInitialBuyResponse = {
   note?: string;
 };
 
-// ✅ IMPORTANT: curveType is NUMBER on BE
 // Convention: 0 = linear
 export type FinalizeTokenRequest = {
   draftId: string;
   initialBuySol: number;
   decimals: number;
-  curveType: number; // ✅ FIX
+  curveType: number;
   basePriceLamports: number;
   slopeLamports: number;
   bondingCurveSupply: string;
@@ -562,9 +575,16 @@ export async function confirmMint(payload: ConfirmMintRequest): Promise<ConfirmM
   return data;
 }
 
-export async function uploadTokenImage(payload: UploadTokenImageRequest): Promise<UploadTokenImageResponse> {
+/**
+ * ✅ POST /token/upload-image
+ * + Idempotency-Key
+ */
+export async function uploadTokenImage(payload: UploadTokenImageRequest, opts?: IdempotencyOptions): Promise<UploadTokenImageResponse> {
   assertNonEmpty(payload?.image, 'image is required');
-  const headers = getAuthHeaders();
+
+  const idk = opts?.idempotencyKey ?? newIdempotencyKey('upload-image');
+  const headers = withIdempotencyHeader(getAuthHeaders(), idk);
+
   const { data } = await postViaProxy<UploadTokenImageResponse>(
     '/token/upload-image',
     { image: String(payload.image).trim() },
@@ -573,18 +593,24 @@ export async function uploadTokenImage(payload: UploadTokenImageRequest): Promis
   return data;
 }
 
-export async function createTokenDraft(payload: CreateTokenDraftRequest): Promise<CreateTokenDraftResponse> {
+/**
+ * ✅ POST /token/create/draft
+ * + Idempotency-Key
+ */
+export async function createTokenDraft(payload: CreateTokenDraftRequest, opts?: IdempotencyOptions): Promise<CreateTokenDraftResponse> {
   assertNonEmpty(payload?.name, 'name is required');
   assertNonEmpty(payload?.symbol, 'symbol is required');
   assertNonEmpty(payload?.imageUrl, 'imageUrl is required');
 
-  const headers = getAuthHeaders();
+  const idk = opts?.idempotencyKey ?? newIdempotencyKey('create-draft');
+  const headers = withIdempotencyHeader(getAuthHeaders(), idk);
+
   const { data } = await postViaProxy<CreateTokenDraftResponse>(
     '/token/create/draft',
     {
       ...payload,
       name: String(payload.name).trim(),
-      symbol: assertSymbol(payload.symbol), // ✅ enforce 2-10 + normalize
+      symbol: assertSymbol(payload.symbol),
       description: String(payload.description ?? ''),
       imageUrl: String(payload.imageUrl).trim(),
       isNSFW: Boolean(payload.isNSFW),
@@ -610,14 +636,20 @@ export async function previewInitialBuy(payload: PreviewInitialBuyRequest): Prom
   return data;
 }
 
-export async function finalizeTokenCreation(payload: FinalizeTokenRequest): Promise<FinalizeTokenResponse> {
-  // ✅ validate + normalize to match BE
+/**
+ * ✅ POST /token/create/finalize
+ * + Idempotency-Key
+ */
+export async function finalizeTokenCreation(
+  payload: FinalizeTokenRequest,
+  opts?: IdempotencyOptions
+): Promise<FinalizeTokenResponse> {
   assertNonEmpty(payload?.draftId, 'draftId is required');
 
   const decimals = toNonNegInt(payload.decimals, 'decimals');
   if (decimals > 18) throw new Error('decimals must be <= 18');
 
-  const curveType = toNonNegInt(payload.curveType, 'curveType'); // 0 = linear
+  const curveType = toNonNegInt(payload.curveType, 'curveType');
   const initialBuySol = Number(payload.initialBuySol ?? 0);
   if (!Number.isFinite(initialBuySol) || initialBuySol < 0) {
     throw new Error('initialBuySol must be a number >= 0');
@@ -640,7 +672,9 @@ export async function finalizeTokenCreation(payload: FinalizeTokenRequest): Prom
     graduateTargetLamports,
   };
 
-  const headers = getAuthHeaders();
+  const idk = opts?.idempotencyKey ?? newIdempotencyKey(`finalize-${body.draftId}`);
+  const headers = withIdempotencyHeader(getAuthHeaders(), idk);
+
   const { data } = await postViaProxy<FinalizeTokenResponse>('/token/create/finalize', body, headers);
   return data;
 }
@@ -676,11 +710,7 @@ export async function getTotalTokenCount(): Promise<{ totalTokens: number }> {
 
 export async function getRecentTokens(page = 1, pageSize = 20, hours = 24): Promise<PaginatedResponse<Token> | null> {
   try {
-    const { data } = await getViaProxy<PaginatedResponse<Token>>('/ports/getRecentTokens', {
-      page,
-      pageSize,
-      hours,
-    });
+    const { data } = await getViaProxy<PaginatedResponse<Token>>('/ports/getRecentTokens', { page, pageSize, hours });
     return data;
   } catch (error: any) {
     if (axios.isAxiosError(error) && error.response?.status === 404) return null;
@@ -734,35 +764,5 @@ export async function getLeaderboardList(params?: {
   return { items: data?.items ?? [] };
 }
 
-// =====================
-// Still-used existing APIs (not chart-related)
-// =====================
-
-export async function getAllTokenAddresses(): Promise<string[]> {
-  const { data } = await getViaProxy<string[]>('/ports/getAllTokenAddresses');
-  return data;
-}
-
-export async function getTokensByCreator(creator: string, page = 1, pageSize = 20): Promise<PaginatedResponse<Token>> {
-  const { data } = await getViaProxy<PaginatedResponse<Token>>('/ports/getTokensByCreator', { creator, page, pageSize });
-  return data;
-}
-
-type TokenomicsUpdate = {
-  initialSupply?: number | string;
-  distribution?: {
-    creator?: number;
-    community?: number;
-    liquidity?: number;
-  };
-  mintAuthority?: string | null;
-  renounceMint?: boolean;
-  freezeEnabled?: boolean | null;
-  lpLockMonths?: number;
-  lockedUntil?: string | null;
-  trustBadge?: 'Bronze' | 'Silver' | 'Gold';
-};
-
 // NOTE:
 // Phần còn lại của file (updateToken/getTokenByAddress/getTransactionsByAddress/referrals/...) bạn giữ nguyên như code hiện tại.
-// Bản này chỉ “gen lại” phần cần cho Trades + Chat + Holders.

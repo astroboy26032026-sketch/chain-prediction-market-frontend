@@ -11,6 +11,7 @@ import {
   createTokenDraft,
   previewInitialBuy,
   finalizeTokenCreation,
+  newIdempotencyKey,
   type CreateTokenDraftResponse,
   type PreviewInitialBuyResponse,
 } from '@/utils/api';
@@ -145,6 +146,21 @@ const CreateToken: React.FC = () => {
   const openConnectWalletModal = useCallback(() => setShowConnectWalletModal(true), []);
   const closeConnectWalletModal = useCallback(() => setShowConnectWalletModal(false), []);
 
+  // ===== ✅ Idempotency keys (per user action)
+  // NOTE:
+  // - upload: new key every time user chooses/drops a NEW file.
+  // - draft: new key when user changes draft fields OR restarts flow.
+  // - finalize: new key when draft changes OR restarts flow.
+  const uploadKeyRef = useRef<string | null>(null);
+  const draftKeyRef = useRef<string | null>(null);
+  const finalizeKeyRef = useRef<string | null>(null);
+
+  const resetCreateFlowIdempotency = useCallback(() => {
+    uploadKeyRef.current = null;
+    draftKeyRef.current = null;
+    finalizeKeyRef.current = null;
+  }, []);
+
   // action guard
   const requireWalletOrShowModal = useCallback(() => {
     if (connected) return true;
@@ -163,12 +179,16 @@ const CreateToken: React.FC = () => {
 
   const isBusy = useMemo(() => creationStep !== 'idle', [creationStep]);
 
-  const resetDraftAndGoStep1 = useCallback((msg?: string) => {
-    setDraft(null);
-    setPreview(null);
-    setStep(1);
-    if (msg) toast.error(msg);
-  }, []);
+  const resetDraftAndGoStep1 = useCallback(
+    (msg?: string) => {
+      setDraft(null);
+      setPreview(null);
+      setStep(1);
+      resetCreateFlowIdempotency();
+      if (msg) toast.error(msg);
+    },
+    [resetCreateFlowIdempotency]
+  );
 
   // ===== open file picker (guarded) =====
   const openFilePicker = useCallback(() => {
@@ -194,7 +214,11 @@ const CreateToken: React.FC = () => {
 
       try {
         const dataUrl = await readFileAsDataURL(file);
-        const res = await uploadTokenImage({ image: dataUrl });
+
+        // If caller didn't pre-set a key, make one now.
+        if (!uploadKeyRef.current) uploadKeyRef.current = newIdempotencyKey('upload-image');
+
+        const res = await uploadTokenImage({ image: dataUrl },{ idempotencyKey: uploadKeyRef.current ?? undefined });
 
         if (res?.imageUrl) {
           setTokenImageUrl(res.imageUrl);
@@ -218,6 +242,14 @@ const CreateToken: React.FC = () => {
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const f = e.target.files?.[0];
       if (!f) return;
+
+      // New file => new idempotency key
+      uploadKeyRef.current = newIdempotencyKey('upload-image');
+
+      // Changing image should force new draft/finalize keys too
+      draftKeyRef.current = null;
+      finalizeKeyRef.current = null;
+
       await uploadImageToBE(f);
     },
     [uploadImageToBE]
@@ -236,6 +268,14 @@ const CreateToken: React.FC = () => {
 
       const f = e.dataTransfer.files?.[0];
       if (!f) return;
+
+      // New file => new idempotency key
+      uploadKeyRef.current = newIdempotencyKey('upload-image');
+
+      // Changing image should force new draft/finalize keys too
+      draftKeyRef.current = null;
+      finalizeKeyRef.current = null;
+
       await uploadImageToBE(f);
     },
     [uploadImageToBE, requireWalletOrShowModal]
@@ -261,20 +301,25 @@ const CreateToken: React.FC = () => {
     setCreationStep('drafting');
 
     try {
-      const res = await createTokenDraft({
-        name: tokenName.trim(),
-        symbol: symbolSafe,
-        description: tokenDescription || '',
-        imageUrl: tokenImageUrl,
-        isNSFW: Boolean(isNSFW),
-        socials: {
-          ...(twitter ? { twitter } : {}),
-          ...(telegram ? { telegram } : {}),
-          ...(website ? { website } : {}),
-          ...(discord ? { discord } : {}),
-          ...(youtube ? { youtube } : {}),
+      if (!draftKeyRef.current) draftKeyRef.current = newIdempotencyKey('create-draft');
+
+      const res = await createTokenDraft(
+        {
+          name: tokenName.trim(),
+          symbol: symbolSafe,
+          description: tokenDescription || '',
+          imageUrl: tokenImageUrl,
+          isNSFW: Boolean(isNSFW),
+          socials: {
+            ...(twitter ? { twitter } : {}),
+            ...(telegram ? { telegram } : {}),
+            ...(website ? { website } : {}),
+            ...(discord ? { discord } : {}),
+            ...(youtube ? { youtube } : {}),
+          },
         },
-      });
+        { idempotencyKey: draftKeyRef.current ?? undefined, }
+      );
 
       setDraft(res);
       setPreview(null);
@@ -359,19 +404,28 @@ const CreateToken: React.FC = () => {
 
       setCreationStep('finalizing');
       try {
-        const res = await finalizeTokenCreation({
-          draftId: draft!.draftId,
-          initialBuySol: Number.isFinite(initialBuySol) ? Math.max(0, initialBuySol) : 0,
-          decimals: Math.trunc(decimals),
-          curveType,
-          basePriceLamports: Math.trunc(Math.max(0, Number(basePriceLamports) || 0)),
-          slopeLamports: Math.trunc(Math.max(0, Number(slopeLamports) || 0)),
-          bondingCurveSupply: String(bondingCurveSupply).trim(),
-          graduateTargetLamports: String(graduateTargetLamports).trim(),
-        });
+        if (!finalizeKeyRef.current) {
+          const base = draft?.draftId ? `finalize-${draft.draftId}` : 'finalize';
+          finalizeKeyRef.current = newIdempotencyKey(base);
+        }
+
+        const res = await finalizeTokenCreation(
+          {
+            draftId: draft!.draftId,
+            initialBuySol: Number.isFinite(initialBuySol) ? Math.max(0, initialBuySol) : 0,
+            decimals: Math.trunc(decimals),
+            curveType,
+            basePriceLamports: Math.trunc(Math.max(0, Number(basePriceLamports) || 0)),
+            slopeLamports: Math.trunc(Math.max(0, Number(slopeLamports) || 0)),
+            bondingCurveSupply: String(bondingCurveSupply).trim(),
+            graduateTargetLamports: String(graduateTargetLamports).trim(),
+          },
+          { idempotencyKey: finalizeKeyRef.current ?? undefined, }
+        );
 
         setCreationStep('completed');
         toast.success('Token created successfully!');
+        resetCreateFlowIdempotency();
         router.push(`/token/${res.tokenAddress}`);
       } catch (e: any) {
         const status = e?.response?.status;
@@ -398,6 +452,7 @@ const CreateToken: React.FC = () => {
       router,
       resetDraftAndGoStep1,
       openConnectWalletModal,
+      resetCreateFlowIdempotency,
     ]
   );
 
@@ -438,6 +493,20 @@ const CreateToken: React.FC = () => {
       setStep(1);
     }
   }, [step, draft?.draftId]);
+
+  // ✅ If user connected, close modal
+  useEffect(() => {
+    if (connected && showConnectWalletModal) setShowConnectWalletModal(false);
+  }, [connected, showConnectWalletModal]);
+
+  // ✅ optional: if user goes back to step 1 manually, allow re-upload/draft cleanly
+  useEffect(() => {
+    if (step === 1) {
+      // Do NOT wipe image automatically; only reset keys for draft/finalize so user can edit then re-create.
+      draftKeyRef.current = null;
+      finalizeKeyRef.current = null;
+    }
+  }, [step]);
 
   return (
     <Layout>
@@ -487,7 +556,11 @@ const CreateToken: React.FC = () => {
                 <label className="block text-[10px] sm:text-xs font-medium text-gray-400 mb-1">Token Name</label>
                 <input
                   value={tokenName}
-                  onChange={(e) => setTokenName(e.target.value)}
+                  onChange={(e) => {
+                    setTokenName(e.target.value);
+                    draftKeyRef.current = null;
+                    finalizeKeyRef.current = null;
+                  }}
                   className="w-full py-2 px-3 bg-[var(--card2)] border-thin rounded-md text-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
                   placeholder="Enter token name"
                 />
@@ -497,7 +570,11 @@ const CreateToken: React.FC = () => {
                 <label className="block text-[10px] sm:text-xs font-medium text-gray-400 mb-1">Token Symbol</label>
                 <input
                   value={tokenSymbol}
-                  onChange={(e) => setTokenSymbol(normalizeSymbol(e.target.value))}
+                  onChange={(e) => {
+                    setTokenSymbol(normalizeSymbol(e.target.value));
+                    draftKeyRef.current = null;
+                    finalizeKeyRef.current = null;
+                  }}
                   className="w-full py-2 px-3 bg-[var(--card2)] border-thin rounded-md text-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
                   placeholder="A-Z0-9, 2-10 chars"
                 />
@@ -517,7 +594,11 @@ const CreateToken: React.FC = () => {
               <label className="block text-[10px] sm:text-xs font-medium text-gray-400 mb-1">Token Description</label>
               <textarea
                 value={tokenDescription}
-                onChange={(e) => setTokenDescription(e.target.value)}
+                onChange={(e) => {
+                  setTokenDescription(e.target.value);
+                  draftKeyRef.current = null;
+                  finalizeKeyRef.current = null;
+                }}
                 rows={4}
                 className="w-full py-2 px-3 bg-[var(--card2)] border-thin rounded-md text-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
                 placeholder="Describe your token"
@@ -525,7 +606,16 @@ const CreateToken: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
-              <input id="isNsfw" type="checkbox" checked={isNSFW} onChange={(e) => setIsNSFW(e.target.checked)} />
+              <input
+                id="isNsfw"
+                type="checkbox"
+                checked={isNSFW}
+                onChange={(e) => {
+                  setIsNSFW(e.target.checked);
+                  draftKeyRef.current = null;
+                  finalizeKeyRef.current = null;
+                }}
+              />
               <label htmlFor="isNsfw" className="text-xs text-gray-300">
                 Mark as NSFW
               </label>
@@ -608,7 +698,11 @@ const CreateToken: React.FC = () => {
                       <label className="block text-[10px] sm:text-xs font-medium text-gray-400 mb-1">{i.label}</label>
                       <input
                         value={i.value}
-                        onChange={(e) => i.setter(e.target.value)}
+                        onChange={(e) => {
+                          i.setter(e.target.value);
+                          draftKeyRef.current = null;
+                          finalizeKeyRef.current = null;
+                        }}
                         className="w-full py-2 px-3 bg-[var(--card2)] border-thin rounded-md text-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
                         placeholder="optional"
                       />
@@ -644,7 +738,10 @@ const CreateToken: React.FC = () => {
                     min={0}
                     max={18}
                     value={decimals}
-                    onChange={(e) => setDecimals(Number(e.target.value))}
+                    onChange={(e) => {
+                      setDecimals(Number(e.target.value));
+                      finalizeKeyRef.current = null;
+                    }}
                     className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white"
                   />
                 </div>
@@ -665,7 +762,10 @@ const CreateToken: React.FC = () => {
                     type="number"
                     min={0}
                     value={basePriceLamports}
-                    onChange={(e) => setBasePriceLamports(Number(e.target.value))}
+                    onChange={(e) => {
+                      setBasePriceLamports(Number(e.target.value));
+                      finalizeKeyRef.current = null;
+                    }}
                     className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white"
                   />
                 </div>
@@ -676,7 +776,10 @@ const CreateToken: React.FC = () => {
                     type="number"
                     min={0}
                     value={slopeLamports}
-                    onChange={(e) => setSlopeLamports(Number(e.target.value))}
+                    onChange={(e) => {
+                      setSlopeLamports(Number(e.target.value));
+                      finalizeKeyRef.current = null;
+                    }}
                     className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white"
                   />
                 </div>
@@ -685,7 +788,10 @@ const CreateToken: React.FC = () => {
                   <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">Bonding Curve Supply</label>
                   <input
                     value={bondingCurveSupply}
-                    onChange={(e) => setBondingCurveSupply(e.target.value)}
+                    onChange={(e) => {
+                      setBondingCurveSupply(e.target.value);
+                      finalizeKeyRef.current = null;
+                    }}
                     className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white"
                     placeholder="e.g. 1000000000000000"
                   />
@@ -695,7 +801,10 @@ const CreateToken: React.FC = () => {
                   <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">Graduate Target (lamports)</label>
                   <input
                     value={graduateTargetLamports}
-                    onChange={(e) => setGraduateTargetLamports(e.target.value)}
+                    onChange={(e) => {
+                      setGraduateTargetLamports(e.target.value);
+                      finalizeKeyRef.current = null;
+                    }}
                     className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white"
                     placeholder="e.g. 69000000000"
                   />
@@ -710,11 +819,7 @@ const CreateToken: React.FC = () => {
             </div>
 
             <div className="flex items-center justify-between gap-4">
-              <button
-                className="btn-secondary px-8 py-3 min-w-[160px] rounded-md"
-                disabled={isBusy}
-                onClick={() => setStep(1)}
-              >
+              <button className="btn-secondary px-8 py-3 min-w-[160px] rounded-md" disabled={isBusy} onClick={() => setStep(1)}>
                 Back
               </button>
 
@@ -734,9 +839,7 @@ const CreateToken: React.FC = () => {
           <div className="space-y-6">
             <div className="text-left">
               <div className="text-sm font-semibold text-[var(--foreground)]/90">Tip:</div>
-              <div className="text-[14px] text-[var(--foreground)]/75">
-                Optional: Make an initial buy to gain the most from your token
-              </div>
+              <div className="text-[14px] text-[var(--foreground)]/75">Optional: Make an initial buy to gain the most from your token</div>
             </div>
 
             <div className="rounded-3xl bg-[var(--card)] border-thin p-6 shadow-lg">
@@ -827,9 +930,19 @@ const CreateToken: React.FC = () => {
           <PurchaseConfirmationPopup onConfirm={handleConfirmBuy} onCancel={() => setShowPurchasePopup(false)} tokenSymbol="SOL" />
         )}
 
-        {/* ✅ CONNECT WALLET MODAL (MATCH STYLE) */}
+        {/* ✅ CONNECT WALLET MODAL (MATCH STYLE + CENTERED SELECT WALLET) */}
         {showConnectWalletModal && (
           <Modal isOpen={showConnectWalletModal} onClose={closeConnectWalletModal}>
+            <div
+              className="
+                w-[92vw] max-w-[520px]
+                rounded-3xl
+                bg-[#0f1420]
+                border border-white/10
+                shadow-2xl
+                overflow-hidden
+              "
+            >
               {/* Header */}
               <div className="flex items-center justify-between px-5 pt-4">
                 <button
@@ -876,20 +989,8 @@ const CreateToken: React.FC = () => {
                 <div className="flex justify-center mt-3">
                   <div className="h-16 w-16 rounded-full border-4 border-red-500/80 flex items-center justify-center">
                     <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M12 9v4"
-                        stroke="#ef4444"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <path
-                        d="M12 17h.01"
-                        stroke="#ef4444"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
+                      <path d="M12 9v4" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M12 17h.01" stroke="#ef4444" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                       <path
                         d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"
                         stroke="#ef4444"
@@ -909,27 +1010,33 @@ const CreateToken: React.FC = () => {
                   </div>
                 </div>
 
-                {/* ✅ Only Select Wallet button, styled like system primary */}
-                <div className="mt-4 w-full flex justify-center">
+                {/* Force wallet button to be centered + full width + label centered */}
+                <div className="mt-5 flex justify-center">
                   <div
                     className="
-                      [&_button]:w-full
-                      [&_button]:h-12
-                      [&_button]:rounded-2xl
-                      [&_button]:px-5
-                      [&_button]:font-semibold
-                      [&_button]:transition
-                      [&_button]:bg-[var(--primary)]
-                      [&_button]:text-black
-                      hover:[&_button]:bg-[var(--primary-hover)]
-                      [&_button]:border-0
+                      w-full max-w-[360px]
+                      flex justify-center
+                      [&_.wallet-adapter-button]:w-full
+                      [&_.wallet-adapter-button]:h-12
+                      [&_.wallet-adapter-button]:rounded-2xl
+                      [&_.wallet-adapter-button]:px-5
+                      [&_.wallet-adapter-button]:font-semibold
+                      [&_.wallet-adapter-button]:transition
+                      [&_.wallet-adapter-button]:bg-[var(--primary)]
+                      [&_.wallet-adapter-button]:text-black
+                      hover:[&_.wallet-adapter-button]:bg-[var(--primary-hover)]
+                      [&_.wallet-adapter-button]:border-0
+                      [&_.wallet-adapter-button]:justify-center
+                      [&_.wallet-adapter-button]:text-center
+                      [&_.wallet-adapter-button]:gap-2
+                      [&_.wallet-adapter-button]:whitespace-nowrap
                     "
                   >
                     <WalletMultiButton />
                   </div>
                 </div>
               </div>
-
+            </div>
           </Modal>
         )}
 
@@ -949,7 +1056,9 @@ const CreateToken: React.FC = () => {
                         key={key}
                         onClick={() => setLiqMode(key)}
                         className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition ${
-                          active ? 'bg-[var(--primary)] text-black' : 'text-[var(--foreground)]/85 hover:bg-[var(--card2)]'
+                          active
+                            ? 'bg-[var(--primary)] text-black'
+                            : 'text-[var(--foreground)]/85 hover:bg-[var(--card2)]'
                         }`}
                       >
                         {key}
@@ -980,9 +1089,7 @@ const CreateToken: React.FC = () => {
           <Modal isOpen={showPreventNavigationModal} onClose={() => {}}>
             <div className="p-6">
               <h3 className="text-lg font-medium text-gray-100 mb-4">Please Wait</h3>
-              <p className="text-sm text-gray-500">
-                Your token is being finalized. Please do not close or navigate away.
-              </p>
+              <p className="text-sm text-gray-500">Your token is being finalized. Please do not close or navigate away.</p>
             </div>
           </Modal>
         )}
