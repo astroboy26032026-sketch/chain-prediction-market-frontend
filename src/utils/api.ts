@@ -299,6 +299,32 @@ const assertSymbol = (v: any) => {
 };
 
 // =====================
+// ✅ STUB: Update Token (Backend chưa implement)
+// - để CI/build pass, UI sẽ catch error và show "coming soon"
+// =====================
+export type UpdateTokenRequest = {
+  address: string;
+
+  // metadata fields (tuỳ bạn sẽ hỗ trợ sau)
+  name?: string;
+  symbol?: string;
+  description?: string;
+  imageUrl?: string;
+
+  socials?: {
+    website?: string;
+    twitter?: string;
+    telegram?: string;
+    discord?: string;
+    youtube?: string;
+  };
+};
+
+export async function updateToken(_payload: UpdateTokenRequest): Promise<Token> {
+  throw new Error('updateToken API is not implemented on backend yet.');
+}
+
+// =====================
 // Core helper: /token/search
 // =====================
 async function tokenSearch(params: TokenSearchParams): Promise<CursorPaginatedResponse<Token>> {
@@ -680,7 +706,10 @@ export async function confirmMint(payload: ConfirmMintRequest): Promise<ConfirmM
   return data;
 }
 
-export async function uploadTokenImage(payload: UploadTokenImageRequest, opts?: IdempotencyOptions): Promise<UploadTokenImageResponse> {
+export async function uploadTokenImage(
+  payload: UploadTokenImageRequest,
+  opts?: IdempotencyOptions
+): Promise<UploadTokenImageResponse> {
   assertNonEmpty(payload?.image, 'image is required');
   const idk = opts?.idempotencyKey ?? newIdempotencyKey('upload-image');
   const headers = withIdempotencyHeader(getAuthHeaders(), idk);
@@ -693,7 +722,10 @@ export async function uploadTokenImage(payload: UploadTokenImageRequest, opts?: 
   return data;
 }
 
-export async function createTokenDraft(payload: CreateTokenDraftRequest, opts?: IdempotencyOptions): Promise<CreateTokenDraftResponse> {
+export async function createTokenDraft(
+  payload: CreateTokenDraftRequest,
+  opts?: IdempotencyOptions
+): Promise<CreateTokenDraftResponse> {
   assertNonEmpty(payload?.name, 'name is required');
   assertNonEmpty(payload?.symbol, 'symbol is required');
   assertNonEmpty(payload?.imageUrl, 'imageUrl is required');
