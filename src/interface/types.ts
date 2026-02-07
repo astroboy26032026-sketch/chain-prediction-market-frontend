@@ -1,7 +1,12 @@
 // src/interface/types.ts
 
+/* =========================================================
+   Legacy / Shared types (some still named "eth" from old EVM)
+   ========================================================= */
+
 export interface LiquidityEvent {
   id: string;
+  /** legacy naming (EVM) */
   ethAmount: string;
   tokenAmount: string;
   timestamp: string;
@@ -89,6 +94,7 @@ export interface Transaction {
   type: string;
   senderAddress: string;
   recipientAddress: string;
+  /** legacy naming (EVM) */
   ethAmount: string;
   tokenAmount: string;
   tokenPrice: string;
@@ -122,9 +128,9 @@ export interface USDHistoricalPrice {
   timestamp: string;
 }
 
-// =====================
-// ✅ Token Holders (Solana) - GET /token/holders
-// =====================
+/* =========================================================
+   ✅ Token Holders (Solana) - GET /token/holders
+   ========================================================= */
 
 export interface TokenHolder {
   /** ví nắm giữ token */
@@ -150,7 +156,6 @@ export interface TokenHoldersResponse {
   holders: TokenHolder[];
 }
 
-
 /**
  * TransactionResponse: giữ logic cũ.
  */
@@ -164,14 +169,14 @@ export interface PriceCache {
   timestamp: number;
 }
 
-// =====================
-// ✅ NEW: Token Trades (Solana) - GET /token/trades
-// =====================
+/* =========================================================
+   ✅ NEW: Token Trades (Solana) - GET /token/trades
+   ========================================================= */
 
 export interface TokenTrade {
   publicKey: string;
   isBuy: boolean;
-  time: number; // BE trả number (epoch)
+  time: number; // BE trả number (epoch / ms)
   price: string; // BE trả string
   amount: number;
   totalUsd: string; // BE trả string
@@ -185,7 +190,9 @@ export interface TokenTradesResponse {
   trades: TokenTrade[];
 }
 
-// ✅ Leader Board
+/* =========================================================
+   ✅ Leader Board
+   ========================================================= */
 
 export type LeaderboardTopItem = {
   rank: number;
@@ -218,9 +225,9 @@ export type LeaderboardListResponse = {
   items: LeaderboardListItem[];
 };
 
-// =====================
-// ✅ Referrals
-// =====================
+/* =========================================================
+   ✅ Referrals
+   ========================================================= */
 
 export type ReferralSummary = {
   totalReferrals: number;
@@ -255,9 +262,9 @@ export type ClaimReferralResponse = {
   message: string;
 };
 
-// =====================
-// ✅ NEW BE API (Solana): Token Info / Price / Liquidity
-// =====================
+/* =========================================================
+   ✅ NEW BE API (Solana): Token Info / Price / Liquidity
+   ========================================================= */
 
 /**
  * Trạng thái bonding curve theo BE mới
@@ -350,9 +357,9 @@ export interface TokenLiquidityResponse {
   events: TokenLiquidityEvent[];
 }
 
-// =====================
-// ✅ Chatroom (Solana) - /chat/messages + /chat/write
-// =====================
+/* =========================================================
+   ✅ Chatroom (Solana) - /chat/messages + /chat/write
+   ========================================================= */
 
 export type ChatMessage = {
   messageId: string;
@@ -379,4 +386,111 @@ export type ChatWriteResponse = {
   walletAddress: string;
   message: string;
   timestamp: string;
+};
+
+/* =========================================================
+   ✅ Trading (Solana) - POST /trading/buy + /trading/sell + submit-signature + status
+   ========================================================= */
+
+export type UUIDv4 = string;
+
+/**
+ * Buy request:
+ * - FE gửi tokenAddress (mint)
+ * - gửi 1 trong 2:
+ *   - amountInToken: số token muốn mua (smallest units)
+ *   - amountInSol: số SOL muốn dùng (lamports)
+ */
+export type TradingBuyRequest = {
+  tokenAddress: string;
+  amountInSol?: string; // lamports as string
+  amountInToken?: string; // smallest units as string
+  slippageBps?: number;
+  referrer?: string;
+};
+
+export type TradingSellRequest = {
+  tokenAddress: string;
+  amountInToken: string; // smallest units as string
+  slippageBps?: number;
+  referrer?: string;
+};
+
+export type TradingTracking = {
+  submitSignatureEndpoint: string;
+  statusEndpoint: string;
+  statusBySignatureEndpoint: string;
+};
+
+export type TradingBuyResponse = {
+  tokenAddress: string;
+  txBase64: string;
+  transactionId: string;
+
+  amountInSol: number;
+  amountOutToken: number;
+  executionPrice: number;
+
+  slippageBps: number;
+  feePlatform: number;
+  feeReferral: number;
+
+  tracking: TradingTracking;
+};
+
+export type TradingSellResponse = {
+  tokenAddress: string;
+  txBase64: string;
+  transactionId: string;
+
+  amountInToken: number;
+  amountOutSol: number;
+  executionPrice: number;
+
+  slippageBps: number;
+  feePlatform: number;
+  feeReferral: number;
+
+  tracking: TradingTracking;
+};
+
+/**
+ * Submit signature (generic)
+ * - Một số BE yêu cầu signature + transactionId
+ * - Một số BE nhận signature và tự map theo transactionId trong path
+ * => FE nên support cả 2 dạng payload.
+ *
+ * NOTE:
+ * - Trong code FE bạn đang gọi: submitSignature(endpoint, { id, txSignature })
+ *   => BE của bạn có vẻ đang dùng keys khác.
+ * - Để không break, type này support cả 2 naming.
+ */
+export type SubmitSignatureRequest = {
+  /** base58 signature string */
+  signature?: string;
+  /** alias */
+  txSignature?: string;
+
+  /** optional if BE wants it in body */
+  transactionId?: string;
+  /** alias */
+  id?: string;
+};
+
+export type SubmitSignatureResponse = {
+  transactionId: string;
+  signature: string;
+  status: 'SUBMITTED' | 'CONFIRMED' | 'FAILED' | string;
+  message?: string;
+};
+
+/**
+ * Status polling (generic)
+ */
+export type TradingTxStatusResponse = {
+  transactionId: string;
+  status: 'PENDING' | 'SUBMITTED' | 'CONFIRMED' | 'FAILED' | string;
+  signature?: string;
+  error?: string | null;
+  updatedAt?: string; // ISO
 };

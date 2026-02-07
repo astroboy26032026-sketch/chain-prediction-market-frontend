@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+// src/components/TokenDetails/TokenInfo.tsx
+import React, { useEffect, useMemo } from 'react';
 import {
   ExternalLinkIcon,
   Copy,
@@ -31,7 +32,11 @@ interface TokenInfoProps {
     description?: string;
     symbol?: string;
     name?: string;
+
+    // address compat
     address?: string;
+    tokenAddress?: string;
+    mint?: string;
 
     // optional: nếu BE có trả current price (base coin)
     price?: number | string;
@@ -42,13 +47,14 @@ interface TokenInfoProps {
   liquidityEvents?: any; // [] | {events: []} | {liquidityEvents: []} | null
 }
 
-const fmtUSD = (n: number) =>
-  new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Number.isFinite(n) ? n : 0);
+const fmtNum = (n: number, digits = 4) => {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return '0';
+  return v.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  });
+};
 
 function normalizeLiquidityList(liquidityEvents: any): any[] {
   if (!liquidityEvents) return [];
@@ -62,6 +68,22 @@ function normalizeLiquidityList(liquidityEvents: any): any[] {
 
   return [];
 }
+
+const ensureHttp = (url?: string) => {
+  const s = String(url ?? '').trim();
+  if (!s) return '';
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith('//')) return `https:${s}`;
+  return `https://${s}`;
+};
+
+const getTokenAddressAny = (t: any) =>
+  String(t?.address ?? t?.tokenAddress ?? t?.mint ?? t?.token ?? '').trim();
+
+const BASE_SYMBOL = (process.env.NEXT_PUBLIC_BASE_SYMBOL || 'SOL').toUpperCase();
+
+// Bạn có thể đổi sang explorer khác nếu muốn
+const explorerAddressUrl = (addr: string) => `https://solscan.io/account/${addr}`;
 
 const TokenInfo: React.FC<TokenInfoProps> = ({
   tokenInfo,
@@ -78,19 +100,19 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
 
   const isCompleted = liqList.length > 0;
 
-  // target base coin (SOL/BONE/FLR tuỳ dự án) từ env
+  // target base coin (SOL) từ env
   const targetBase = useMemo(() => {
     const t = Number(process.env.NEXT_PUBLIC_DEX_TARGET);
     return Number.isFinite(t) && t > 0 ? t : 0;
   }, []);
 
   // current base coin: đọc từ liquidity events
-  // Hỗ trợ nhiều field name khác nhau: ethAmount / solAmount / baseAmount / amount
+  // Hỗ trợ nhiều field name khác nhau: solAmount / baseAmount / amount / quoteAmount
   const currentBase = useMemo(() => {
     if (!liqList.length) return 0;
 
     const e0 = liqList[0] || {};
-    const candidates = [e0?.ethAmount, e0?.solAmount, e0?.baseAmount, e0?.amount, e0?.quoteAmount];
+    const candidates = [e0?.solAmount, e0?.baseAmount, e0?.amount, e0?.quoteAmount];
 
     for (const v of candidates) {
       const n = Number(v ?? 0);
@@ -100,7 +122,6 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
     // fallback: sum all events
     const sum = liqList.reduce((acc, e) => {
       const n =
-        Number(e?.ethAmount ?? 0) ||
         Number(e?.solAmount ?? 0) ||
         Number(e?.baseAmount ?? 0) ||
         Number(e?.amount ?? 0) ||
@@ -118,12 +139,7 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
     return Math.min(Math.max(pct, 0), 100);
   }, [currentBase, targetBase, isCompleted]);
 
-  // ✅ CÁCH A: không fetch USD nữa
-  const usd = 0;
-  const currentUsd = currentBase * usd;
-  const targetUsd = targetBase * usd;
-
-  const truncateDescription = (description: string, maxLength: number = 100) => {
+  const truncateDescription = (description: string, maxLength: number = 120) => {
     if (!description) return '';
     if (description.length <= maxLength) return description;
     return `${description.slice(0, maxLength)}...`;
@@ -132,18 +148,34 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
   // current price label (nếu BE có trả)
   const currentPriceValue = tokenInfo?.price ?? tokenInfo?.currentPrice ?? null;
 
+  const addr = useMemo(() => getTokenAddressAny(tokenInfo), [tokenInfo]);
+  const logo = tokenInfo?.logo || '/chats/noimg.svg';
+  const name = tokenInfo?.name || tokenInfo?.symbol || 'Token';
+
+  const socials = useMemo(
+    () => ({
+      website: ensureHttp(tokenInfo?.website),
+      twitter: ensureHttp(tokenInfo?.twitter),
+      telegram: ensureHttp(tokenInfo?.telegram),
+      discord: ensureHttp(tokenInfo?.discord),
+      youtube: ensureHttp(tokenInfo?.youtube),
+    }),
+    [tokenInfo?.website, tokenInfo?.twitter, tokenInfo?.telegram, tokenInfo?.discord, tokenInfo?.youtube]
+  );
+
   const TokenDetails = () => (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <InfoItem
           label="Contract"
-          value={tokenInfo?.address ? formatAddressV2(tokenInfo.address) : 'Loading...'}
-          link={tokenInfo?.address ? `https://shibariumscan.io/address/${tokenInfo.address}` : undefined}
+          value={addr ? formatAddressV2(addr) : '—'}
+          link={addr ? explorerAddressUrl(addr) : undefined}
           isExternal={true}
+          copyValue={addr || undefined}
         />
         <InfoItem
           label="Deployer"
-          value={tokenInfo?.creatorAddress ? shortenAddress(tokenInfo.creatorAddress) : 'Loading...'}
+          value={tokenInfo?.creatorAddress ? shortenAddress(tokenInfo.creatorAddress) : '—'}
           link={tokenInfo?.creatorAddress ? `/profile/${tokenInfo.creatorAddress}` : undefined}
           isExternal={false}
           copyValue={tokenInfo?.creatorAddress}
@@ -153,11 +185,15 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
       <div className="grid grid-cols-2 gap-4">
         <InfoItem
           label="Created"
-          value={tokenInfo?.createdAt ? formatTimestamp(tokenInfo.createdAt as any) : 'Loading...'}
+          value={tokenInfo?.createdAt ? formatTimestamp(tokenInfo.createdAt as any) : '—'}
         />
         <InfoItem
           label="Current Price"
-          value={currentPriceValue != null ? `${formatAmount(String(currentPriceValue))} BONE` : '—'}
+          value={
+            currentPriceValue != null && String(currentPriceValue).trim() !== ''
+              ? `${formatAmount(String(currentPriceValue))} ${BASE_SYMBOL}`
+              : '—'
+          }
         />
       </div>
 
@@ -166,9 +202,6 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
   );
 
   if (showHeader) {
-    const logo = tokenInfo?.logo || '/chats/noimg.svg';
-    const name = tokenInfo?.name || tokenInfo?.symbol || 'Token';
-
     return (
       <div className="space-y-6">
         {/* Mobile Header */}
@@ -188,53 +221,28 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
             </p>
 
             <div className="flex justify-center gap-4 mb-6">
-              {tokenInfo?.website && (
-                <a
-                  href={tokenInfo.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-gray-400 hover:text-[var(--primary)] transition-colors"
-                >
+              {socials.website && (
+                <a href={socials.website} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)] transition-colors">
                   <Globe size={24} />
                 </a>
               )}
-              {tokenInfo?.twitter && (
-                <a
-                  href={tokenInfo.twitter}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-gray-400 hover:text-[var(--primary)] transition-colors"
-                >
+              {socials.twitter && (
+                <a href={socials.twitter} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)] transition-colors">
                   <Twitter size={24} />
                 </a>
               )}
-              {tokenInfo?.telegram && (
-                <a
-                  href={tokenInfo.telegram}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-gray-400 hover:text-[var(--primary)] transition-colors"
-                >
+              {socials.telegram && (
+                <a href={socials.telegram} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)] transition-colors">
                   <Telegram size={24} />
                 </a>
               )}
-              {tokenInfo?.discord && (
-                <a
-                  href={tokenInfo.discord}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-gray-400 hover:text-[var(--primary)] transition-colors"
-                >
+              {socials.discord && (
+                <a href={socials.discord} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)] transition-colors">
                   <Discord size={24} />
                 </a>
               )}
-              {tokenInfo?.youtube && (
-                <a
-                  href={tokenInfo.youtube}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-gray-400 hover:text-[var(--primary)] transition-colors"
-                >
+              {socials.youtube && (
+                <a href={socials.youtube} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)] transition-colors">
                   <Youtube size={24} />
                 </a>
               )}
@@ -260,28 +268,28 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
               <p className="text-sm text-gray-400 mt-2">{truncateDescription(tokenInfo?.description || '')}</p>
 
               <div className="flex gap-3 mt-4">
-                {tokenInfo?.website && (
-                  <a href={tokenInfo.website} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]">
+                {socials.website && (
+                  <a href={socials.website} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]">
                     <Globe size={20} />
                   </a>
                 )}
-                {tokenInfo?.twitter && (
-                  <a href={tokenInfo.twitter} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]">
+                {socials.twitter && (
+                  <a href={socials.twitter} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]">
                     <Twitter size={20} />
                   </a>
                 )}
-                {tokenInfo?.telegram && (
-                  <a href={tokenInfo.telegram} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]">
+                {socials.telegram && (
+                  <a href={socials.telegram} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]">
                     <Telegram size={20} />
                   </a>
                 )}
-                {tokenInfo?.discord && (
-                  <a href={tokenInfo.discord} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]">
+                {socials.discord && (
+                  <a href={socials.discord} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]">
                     <Discord size={20} />
                   </a>
                 )}
-                {tokenInfo?.youtube && (
-                  <a href={tokenInfo.youtube} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]">
+                {socials.youtube && (
+                  <a href={socials.youtube} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]">
                     <Youtube size={20} />
                   </a>
                 )}
@@ -290,12 +298,15 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
           </div>
         </div>
 
-        {/* Progress to DEX (Market Cap) — giữ UI tiền + progress bar (USD=0) */}
+        {/* Progress to DEX — hiển thị theo BASE (SOL), không dùng USD=0 nữa */}
         <div className="bg-[var(--card2)] p-4 rounded-lg border-thin">
           <div className="flex justify-between text-sm mb-2">
-            <span className="text-gray-300 font-medium">Progress to DEX (Market Cap)</span>
+            <span className="text-gray-300 font-medium">Progress to DEX</span>
             <span className="text-white">
-              {fmtUSD(currentUsd)} <span className="text-gray-400">/ {fmtUSD(targetUsd)}</span>
+              {fmtNum(currentBase, 4)} {BASE_SYMBOL}{' '}
+              <span className="text-gray-400">
+                / {fmtNum(targetBase, 4)} {BASE_SYMBOL}
+              </span>
             </span>
           </div>
           <div className="w-full bg-[var(--card-boarder)] rounded-full h-2.5 overflow-hidden">
@@ -338,6 +349,7 @@ const InfoItem: React.FC<{
             {value}
             {isExternal && <ExternalLinkIcon size={12} />}
           </a>
+
           {copyValue && (
             <button
               onClick={() => copyToClipboard(copyValue)}
@@ -350,23 +362,39 @@ const InfoItem: React.FC<{
           )}
         </div>
       ) : (
-        value
+        <span>{value}</span>
       )}
     </div>
   </div>
 );
 
-const copyToClipboard = (text: string) => {
-  navigator.clipboard.writeText(text).then(() => {
-    toast.success('Address copied to clipboard!', {
+const copyToClipboard = async (text: string) => {
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      // fallback
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+
+    toast.success('Copied!', {
       position: 'top-right',
-      autoClose: 2000,
-      hideProgressBar: false,
+      autoClose: 1200,
+      hideProgressBar: true,
       closeOnClick: true,
-      pauseOnHover: true,
+      pauseOnHover: false,
       draggable: true,
     });
-  });
+  } catch {
+    toast.error('Copy failed');
+  }
 };
 
 export default TokenInfo;

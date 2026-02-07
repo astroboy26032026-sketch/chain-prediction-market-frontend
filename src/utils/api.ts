@@ -25,6 +25,15 @@ import {
   ReferralLinkInfo,
   ReferralListResponse,
   ClaimReferralResponse,
+  ClaimReferralRequest,
+
+  // ✅ Trading types
+  TradingBuyRequest,
+  TradingBuyResponse,
+  TradingSellRequest,
+  TradingSellResponse,
+  SubmitSignatureResponse,
+  TradingTxStatusResponse,
 } from '@/interface/types';
 
 // =====================
@@ -197,6 +206,39 @@ const getAuthHeaders = (): Record<string, string> | undefined => {
 };
 
 // =====================
+// Tracking endpoint normalizer
+// - Fix bug: BE may return "POST /api/..." => FE must strip "POST "
+// - Also supports absolute URLs
+// =====================
+function normalizeTrackingPath(input: string): string {
+  let s = String(input ?? '').trim();
+  if (!s) throw new Error('Missing tracking endpoint');
+
+  // Full URL -> convert to pathname + search
+  try {
+    if (/^https?:\/\//i.test(s)) {
+      const u = new URL(s);
+      s = `${u.pathname}${u.search || ''}`;
+    }
+  } catch {
+    // ignore
+  }
+
+  // Strip "METHOD /path" or "METHOD:/path"
+  s = s.replace(/^(GET|POST|PUT|PATCH|DELETE)\s*:\s*/i, '');
+  s = s.replace(/^(GET|POST|PUT|PATCH|DELETE)\s+/i, '');
+
+  // Some BE strings may accidentally duplicate, e.g. "POST:/POST /api/..."
+  s = s.replace(/^(GET|POST|PUT|PATCH|DELETE)\s*:\s*/i, '');
+  s = s.replace(/^(GET|POST|PUT|PATCH|DELETE)\s+/i, '');
+
+  if (!s.startsWith('/')) s = `/${s}`;
+  s = s.replace(/\/{2,}/g, '/');
+
+  return s;
+}
+
+// =====================
 // Idempotency helpers
 // =====================
 export type IdempotencyOptions = { idempotencyKey?: string };
@@ -354,6 +396,144 @@ export async function getTokenHolders(
 }
 
 // =====================
+// ✅ Trading API (Solana) - /trading/buy + /trading/sell + submit-signature + status
+// =====================
+
+/**
+ * POST /trading/buy
+ * - Header: Idempotency-Key (UUID v4)
+ * - Body: tokenAddress + amountInToken OR amountInSol + slippageBps? + referrer?
+ *
+ * IMPORTANT:
+ * - Your FE earlier calls buyToken({ amountInToken }) (smallest units) => keep supported.
+ * - If BE also supports amountInSol, we allow it as numeric string (lamports).
+ */
+export async function buyToken(payload: TradingBuyRequest, opts?: IdempotencyOptions): Promise<TradingBuyResponse> {
+  const tokenAddress = String(payload?.tokenAddress ?? '').trim();
+  if (!tokenAddress) throw new Error('tokenAddress is required');
+
+  const amountInSol = payload?.amountInSol != null ? String(payload.amountInSol).trim() : '';
+  const amountInToken = payload?.amountInToken != null ? String(payload.amountInToken).trim() : '';
+
+  const hasSol = !!amountInSol;
+  const hasToken = !!amountInToken;
+
+  if (!hasSol && !hasToken) throw new Error('Provide amountInToken (smallest units) or amountInSol (lamports)');
+  if (hasSol && hasToken) throw new Error('Provide only one: amountInToken OR amountInSol');
+
+  if (hasToken) toNumericString(amountInToken, 'amountInToken');
+  if (hasSol) toNumericString(amountInSol, 'amountInSol');
+
+  const slippageBps = payload?.slippageBps == null ? undefined : toNonNegInt(payload.slippageBps, 'slippageBps');
+  if (slippageBps != null && slippageBps > 10_000) throw new Error('slippageBps must be <= 10000');
+
+  const referrer = payload?.referrer != null ? String(payload.referrer).trim() : undefined;
+
+  const idk = opts?.idempotencyKey ?? newIdempotencyKey('buy');
+  const headers = withIdempotencyHeader(getAuthHeaders(), idk);
+
+  const { data } = await postViaProxy<TradingBuyResponse>(
+    '/trading/buy',
+    {
+      tokenAddress,
+      amountInToken: hasToken ? amountInToken : undefined,
+      amountInSol: hasSol ? amountInSol : undefined,
+      slippageBps,
+      referrer: referrer || undefined,
+    },
+    headers
+  );
+
+  return data;
+}
+
+/**
+ * POST /trading/sell
+ * - Header: Idempotency-Key
+ * - Body: tokenAddress + amountInToken (smallest units)
+ */
+export async function sellToken(payload: TradingSellRequest, opts?: IdempotencyOptions): Promise<TradingSellResponse> {
+  const tokenAddress = String(payload?.tokenAddress ?? '').trim();
+  if (!tokenAddress) throw new Error('tokenAddress is required');
+
+  const amountInToken = String(payload?.amountInToken ?? '').trim();
+  if (!amountInToken) throw new Error('amountInToken is required');
+  toNumericString(amountInToken, 'amountInToken');
+
+  const slippageBps = payload?.slippageBps == null ? undefined : toNonNegInt(payload.slippageBps, 'slippageBps');
+  if (slippageBps != null && slippageBps > 10_000) throw new Error('slippageBps must be <= 10000');
+
+  const referrer = payload?.referrer != null ? String(payload.referrer).trim() : undefined;
+
+  const idk = opts?.idempotencyKey ?? newIdempotencyKey('sell');
+  const headers = withIdempotencyHeader(getAuthHeaders(), idk);
+
+  const { data } = await postViaProxy<TradingSellResponse>(
+    '/trading/sell',
+    {
+      tokenAddress,
+      amountInToken,
+      slippageBps,
+      referrer: referrer || undefined,
+    },
+    headers
+  );
+
+  return data;
+}
+
+/**
+ * Submit signature:
+ * BE in your system expects JSON:
+ *   { "id": "...", "txSignature": "..." }
+ *
+ * Endpoint may be:
+ * - "POST /api/v1/transactions/submit-signature"
+ * - "POST:/api/v1/transactions/submit-signature"
+ * - "/api/v1/transactions/submit-signature"
+ * - full URL
+ *
+ * This function keeps the same shape your FE already uses.
+ */
+export async function submitSignature(
+  endpointOrPath: string,
+  payload: { id: string; txSignature: string },
+  opts?: IdempotencyOptions
+): Promise<SubmitSignatureResponse> {
+  const epRaw = String(endpointOrPath ?? '').trim();
+  if (!epRaw) throw new Error('submitSignature endpoint is required');
+
+  const id = String(payload?.id ?? '').trim();
+  const txSignature = String(payload?.txSignature ?? '').trim();
+
+  if (!id) throw new Error('id is required');
+  if (!txSignature) throw new Error('txSignature is required');
+
+  const idk = opts?.idempotencyKey ?? newIdempotencyKey('submit-sig');
+  const headers = withIdempotencyHeader(getAuthHeaders(), idk);
+
+  const path = normalizeTrackingPath(epRaw);
+
+  const { data } = await postViaProxy<SubmitSignatureResponse>(path, { id, txSignature }, headers);
+  return data;
+}
+
+/**
+ * Get tx status (poll)
+ * tracking.statusEndpoint OR tracking.statusBySignatureEndpoint
+ */
+export async function getTradingStatus(endpointOrPath: string): Promise<TradingTxStatusResponse> {
+  const epRaw = String(endpointOrPath ?? '').trim();
+  if (!epRaw) throw new Error('status endpoint is required');
+
+  const headers = getAuthHeaders();
+  const path = normalizeTrackingPath(epRaw);
+
+  const { data } = await getViaProxy<TradingTxStatusResponse>(path, {}, headers);
+  return data;
+}
+
+// =====================
 // ✅ Chatroom API
 // =====================
 export async function getChatMessages(
@@ -500,10 +680,7 @@ export async function confirmMint(payload: ConfirmMintRequest): Promise<ConfirmM
   return data;
 }
 
-export async function uploadTokenImage(
-  payload: UploadTokenImageRequest,
-  opts?: IdempotencyOptions
-): Promise<UploadTokenImageResponse> {
+export async function uploadTokenImage(payload: UploadTokenImageRequest, opts?: IdempotencyOptions): Promise<UploadTokenImageResponse> {
   assertNonEmpty(payload?.image, 'image is required');
   const idk = opts?.idempotencyKey ?? newIdempotencyKey('upload-image');
   const headers = withIdempotencyHeader(getAuthHeaders(), idk);
@@ -516,10 +693,7 @@ export async function uploadTokenImage(
   return data;
 }
 
-export async function createTokenDraft(
-  payload: CreateTokenDraftRequest,
-  opts?: IdempotencyOptions
-): Promise<CreateTokenDraftResponse> {
+export async function createTokenDraft(payload: CreateTokenDraftRequest, opts?: IdempotencyOptions): Promise<CreateTokenDraftResponse> {
   assertNonEmpty(payload?.name, 'name is required');
   assertNonEmpty(payload?.symbol, 'symbol is required');
   assertNonEmpty(payload?.imageUrl, 'imageUrl is required');
@@ -556,10 +730,7 @@ export async function previewInitialBuy(payload: PreviewInitialBuyRequest): Prom
   return data;
 }
 
-export async function finalizeTokenCreation(
-  payload: FinalizeTokenRequest,
-  opts?: IdempotencyOptions
-): Promise<FinalizeTokenResponse> {
+export async function finalizeTokenCreation(payload: FinalizeTokenRequest, opts?: IdempotencyOptions): Promise<FinalizeTokenResponse> {
   assertNonEmpty(payload?.draftId, 'draftId is required');
 
   const decimals = toNonNegInt(payload.decimals, 'decimals');
@@ -675,16 +846,52 @@ export async function getLeaderboardList(params?: {
 }
 
 // =====================
+// ✅ Referrals API (Solana)
+// =====================
+export async function getReferralSummary(): Promise<ReferralSummary> {
+  const headers = getAuthHeaders();
+  if (!headers?.Authorization) throw new Error('Unauthorized (Bearer token required)');
+  const { data } = await getViaProxy<ReferralSummary>('/referrals/summary', {}, headers);
+  return data;
+}
+
+export async function getReferralLinkInfo(): Promise<ReferralLinkInfo> {
+  const headers = getAuthHeaders();
+  if (!headers?.Authorization) throw new Error('Unauthorized (Bearer token required)');
+  const { data } = await getViaProxy<ReferralLinkInfo>('/referrals/link', {}, headers);
+  return data;
+}
+
+export async function getReferralList(opts?: { limit?: number; cursor?: string | null }): Promise<ReferralListResponse> {
+  const headers = getAuthHeaders();
+  if (!headers?.Authorization) throw new Error('Unauthorized (Bearer token required)');
+
+  const limitRaw = opts?.limit ?? 50;
+  const limit = Math.min(Math.max(Number(limitRaw) || 50, 1), 200);
+
+  const { data } = await getViaProxy<ReferralListResponse>(
+    '/referrals/list',
+    { limit, cursor: opts?.cursor ?? undefined },
+    headers
+  );
+
+  return { items: data?.items ?? [] };
+}
+
+export async function claimReferralRewards(payload: ClaimReferralRequest): Promise<ClaimReferralResponse> {
+  const headers = getAuthHeaders();
+  if (!headers?.Authorization) throw new Error('Unauthorized (Bearer token required)');
+
+  const amountSol = Number(payload?.amountSol ?? 0);
+  if (!Number.isFinite(amountSol) || amountSol <= 0) throw new Error('amountSol must be a number > 0');
+
+  const { data } = await postViaProxy<ClaimReferralResponse>('/referrals/claim', { amountSol }, headers);
+  return data;
+}
+
+// =====================
 // ✅ ADD BACK: functions used by Dashboard (to avoid TS error)
 // =====================
-
-/**
- * Dashboard (EVM legacy) expects:
- * - getTokensByCreator(creatorAddress, page) => { tokens: Token[], totalPages: number }
- *
- * Nếu BE Solana chưa có endpoint này, return rỗng để UI không crash.
- * 👉 Nếu bạn có endpoint thật, sửa URL & params cho đúng.
- */
 export async function getTokensByCreator(
   creatorAddress: string,
   page = 1,
@@ -695,7 +902,6 @@ export async function getTokensByCreator(
 
   try {
     const headers = getAuthHeaders();
-    // ✅ bạn thay endpoint này theo BE thật của bạn
     const { data } = await getViaProxy<{ tokens?: Token[]; totalPages?: number }>(
       '/token/by-creator',
       { creator, page, limit },
@@ -706,36 +912,23 @@ export async function getTokensByCreator(
       tokens: data?.tokens ?? [],
       totalPages: Number(data?.totalPages ?? 1),
     };
-  } catch (e) {
-    // fallback an toàn
+  } catch {
     return { tokens: [], totalPages: 1 };
   }
 }
 
-/**
- * Dashboard (EVM legacy) expects: getAllTokenAddresses() => string[]
- * Nếu chưa có endpoint, return [] để UI không crash.
- * 👉 Nếu bạn có endpoint thật, sửa URL cho đúng.
- */
 export async function getAllTokenAddresses(): Promise<string[]> {
   try {
     const headers = getAuthHeaders();
-    // ✅ bạn thay endpoint này theo BE thật của bạn
     const { data } = await getViaProxy<any>('/token/addresses', {}, headers);
     if (Array.isArray(data)) return data.filter(Boolean).map(String);
     if (Array.isArray(data?.addresses)) return data.addresses.filter(Boolean).map(String);
     return [];
-  } catch (e) {
+  } catch {
     return [];
   }
 }
 
-/**
- * Dashboard expects:
- * getTransactionsByAddress(userAddress, page) => { transactions: Transaction[], totalPages: number }
- * Nếu chưa có endpoint, return rỗng để UI không crash.
- * 👉 Nếu bạn có endpoint thật, sửa URL cho đúng.
- */
 export async function getTransactionsByAddress(
   userAddress: string,
   page = 1,
@@ -746,20 +939,19 @@ export async function getTransactionsByAddress(
 
   try {
     const headers = getAuthHeaders();
-    // ✅ bạn thay endpoint này theo BE thật của bạn
     const { data } = await getViaProxy<any>('/wallet/transactions', { address: addr, page, limit }, headers);
 
     return {
       transactions: (data?.transactions ?? data?.items ?? []) as Transaction[],
       totalPages: Number(data?.totalPages ?? 1),
     };
-  } catch (e) {
+  } catch {
     return { transactions: [], totalPages: 1 };
   }
 }
 
 // =====================
 // NOTE:
-// Nếu bạn còn functions khác (referrals/updateToken/...) ở file cũ
-// -> cứ paste xuống dưới, không ảnh hưởng.
+// If you still have legacy functions (updateToken/...)
+// paste below if needed.
 // =====================

@@ -22,13 +22,160 @@ import Chats from '@/components/TokenDetails/Chats';
 import {
   getTokenInfo, // ✅ /token/info
   getTokenLiquidity, // ✅ /token/liquidity
-  getTokenHolders, // ✅ /token/holders (NEW)
+  getTokenHolders, // ✅ /token/holders
+  getTokenPrice, // ✅ /token/price (PRICE_UNIT = SOL)
+  buyToken, // ✅ /trading/buy
+  sellToken, // ✅ /trading/sell  <-- MUST exist in api.index
+  submitSignature, // ✅ tracking.submitSignatureEndpoint
+  getTradingStatus, // ✅ tracking.statusEndpoint
+  newIdempotencyKey,
 } from '@/utils/api.index';
 
-import type { Token, TokenHolder } from '@/interface/types';
+import type { Token, TokenHolder, TradingBuyResponse, TradingTxStatusResponse } from '@/interface/types';
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { VersionedTransaction } from '@solana/web3.js';
+import { Buffer } from 'buffer';
 
 interface TokenDetailProps {
   initialTokenInfo: Token | null;
+}
+
+const PRICE_UNIT: 'SOL' = 'SOL';
+
+const POLL_INTERVAL_MS = 1000;
+const POLL_MAX_TRIES = 12; // ~12s (nhanh hơn)
+
+const clamp = (n: number, a: number, b: number) => Math.min(Math.max(n, a), b);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * BE sometimes returns:
+ * - "POST /api/v1/transactions/submit-signature"
+ * - "POST:/api/v1/transactions/submit-signature"
+ * - "/api/v1/transactions/submit-signature"
+ * - Full URL
+ */
+const normalizeTrackingEndpoint = (v: any) => {
+  let s = String(v ?? '').trim();
+  if (!s) return '';
+
+  try {
+    if (/^https?:\/\//i.test(s)) {
+      const u = new URL(s);
+      s = `${u.pathname}${u.search || ''}`;
+    }
+  } catch {
+    // ignore
+  }
+
+  s = s.replace(/^(GET|POST|PUT|PATCH|DELETE)\s*:\s*/i, '');
+  s = s.replace(/^(GET|POST|PUT|PATCH|DELETE)\s+/i, '');
+
+  s = s.replace(/^(GET|POST|PUT|PATCH|DELETE)\s*:\s*/i, '');
+  s = s.replace(/^(GET|POST|PUT|PATCH|DELETE)\s+/i, '');
+
+  if (!s.startsWith('/')) s = `/${s}`;
+  s = s.replace(/\/{2,}/g, '/');
+
+  return s;
+};
+
+/**
+ * Convert human token amount -> smallest units string without float issues.
+ * Accepts string input to avoid scientific notation.
+ */
+const toBaseUnitsString = (amountHumanInput: string, decimalsInput: number) => {
+  const raw = String(amountHumanInput ?? '').trim();
+  if (!raw) return '0';
+
+  if (/e/i.test(raw)) {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return '0';
+    return toBaseUnitsString(n.toFixed(18), decimalsInput);
+  }
+
+  if (!/^\d+(\.\d+)?$/.test(raw)) return '0';
+
+  const d = clamp(Math.trunc(Number(decimalsInput) || 0), 0, 18);
+  const [intsRaw, fracsRaw = ''] = raw.split('.');
+  const ints = (intsRaw || '0').replace(/^0+(?=\d)/, '') || '0';
+  const fracs = fracsRaw.replace(/[^\d]/g, '').slice(0, d).padEnd(d, '0');
+
+  const joined = `${ints}${fracs}`.replace(/^0+(?=\d)/, '') || '0';
+  return joined;
+};
+
+const parseNumberInput = (v: string) => {
+  const s = String(v ?? '').trim();
+  if (!s) return 0;
+  if (!/^\d+(\.\d+)?$/.test(s)) return NaN;
+  const n = Number(s);
+  return Number.isFinite(n) && n >= 0 ? n : NaN;
+};
+
+function pickSpotPriceSolPerToken(p: any): number {
+  // schema:
+  // { price, priceSource, curvePrice, dexPrice, ... }
+  const src = String(p?.priceSource ?? '').toUpperCase();
+  const v =
+    src === 'DEX'
+      ? Number(p?.dexPrice ?? p?.price)
+      : src === 'CURVE'
+      ? Number(p?.curvePrice ?? p?.price)
+      : Number(p?.price);
+
+  return Number.isFinite(v) && v > 0 ? v : NaN; // SOL per 1 token
+}
+
+async function estimateTokensFromSol({
+  tokenAddr,
+  solIn,
+  decimals,
+}: {
+  tokenAddr: string;
+  solIn: number;
+  decimals: number;
+}): Promise<{ tokenOutHuman: number; amountInTokenBaseUnits: string; spotSolPerToken: number }> {
+  const snap = await getTokenPrice(tokenAddr, '5m');
+  const spot = pickSpotPriceSolPerToken(snap);
+
+  if (!Number.isFinite(spot) || spot <= 0) throw new Error('Invalid price snapshot');
+
+  // spot = SOL per token => tokenOut = solIn / spot
+  const tokenOutHuman = solIn / spot;
+  if (!Number.isFinite(tokenOutHuman) || tokenOutHuman <= 0) throw new Error('Amount too small');
+
+  const humanStr = tokenOutHuman.toFixed(clamp(decimals, 0, 18));
+  const amountInTokenBaseUnits = toBaseUnitsString(humanStr, decimals);
+  if (!amountInTokenBaseUnits || amountInTokenBaseUnits === '0') throw new Error('Amount too small');
+
+  return { tokenOutHuman, amountInTokenBaseUnits, spotSolPerToken: spot };
+}
+
+async function estimateSolFromTokens({
+  tokenAddr,
+  tokenInHuman,
+  decimals,
+}: {
+  tokenAddr: string;
+  tokenInHuman: number;
+  decimals: number;
+}): Promise<{ solOut: number; amountInTokenBaseUnits: string; spotSolPerToken: number }> {
+  const snap = await getTokenPrice(tokenAddr, '5m');
+  const spot = pickSpotPriceSolPerToken(snap);
+
+  if (!Number.isFinite(spot) || spot <= 0) throw new Error('Invalid price snapshot');
+
+  // spot = SOL per token => solOut = tokenIn * spot
+  const solOut = tokenInHuman * spot;
+  if (!Number.isFinite(solOut) || solOut <= 0) throw new Error('Amount too small');
+
+  // Convert the input token amount (human) -> base units for /trading/sell
+  const humanStr = tokenInHuman.toFixed(clamp(decimals, 0, 18));
+  const amountInTokenBaseUnits = toBaseUnitsString(humanStr, decimals);
+  if (!amountInTokenBaseUnits || amountInTokenBaseUnits === '0') throw new Error('Amount too small');
+
+  return { solOut, amountInTokenBaseUnits, spotSolPerToken: spot };
 }
 
 const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
@@ -40,13 +187,16 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
     return (a || '').trim() || undefined;
   }, [address]);
 
+  const wallet = useWallet();
+  const { connection } = useConnection();
+
   // ===== Core token info =====
   const [tokenInfo, setTokenInfo] = useState<Token | null>(initialTokenInfo);
 
   // ===== Liquidity =====
   const [liquidityEvents, setLiquidityEvents] = useState<any[]>([]);
 
-  // ===== Holders (NEW - Solana BE) =====
+  // ===== Holders =====
   const [holdersAll, setHoldersAll] = useState<TokenHolder[]>([]);
   const [holdersNextCursor, setHoldersNextCursor] = useState<string | null>(null);
   const [holdersLoading, setHoldersLoading] = useState(false);
@@ -54,14 +204,19 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
   const [currentPage, setCurrentPage] = useState(1);
 
-  // ===== Swap UI state (keep UI/UX; Solana trade chưa tích hợp) =====
+  // ===== Swap UI state =====
   const isApproved = true;
+
+  // Input/output
   const [fromToken, setFromToken] = useState({ symbol: 'SOL', amount: '' });
   const [toToken, setToToken] = useState({ symbol: '', amount: '' });
+
+  // false=BUY, true=SELL
   const [isSwapped, setIsSwapped] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
-  const [ethBalance] = useState('0.000');
-  const [tokenBalance] = useState('0.000');
+
+  const [ethBalance] = useState('0.000'); // placeholder SOL balance
+  const [tokenBalance] = useState('0.000'); // placeholder token balance
   const [actionButtonText, setActionButtonText] = useState('Buy');
   const [isTransacting, setIsTransacting] = useState(false);
 
@@ -74,7 +229,12 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
   const [bribe, setBribe] = useState<string>('0.01');
 
   const [refreshCounter, setRefreshCounter] = useState(0);
-  const [debouncedFromAmount] = useDebounce(fromToken.amount, 300);
+  const [debouncedFromAmount] = useDebounce(fromToken.amount, 350);
+
+  const decimals = useMemo(() => {
+    const d = Number((tokenInfo as any)?.decimals ?? 9);
+    return clamp(Math.trunc(Number.isFinite(d) ? d : 9), 0, 18);
+  }, [tokenInfo]);
 
   // ===== Fetch /token/info =====
   const fetchTokenInfo = useCallback(async () => {
@@ -99,7 +259,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
     }
   }, [tokenAddr]);
 
-  // ===== Fetch /token/holders (NEW) =====
+  // ===== Fetch /token/holders =====
   const fetchHolders = useCallback(
     async (opts?: { reset?: boolean }) => {
       if (!tokenAddr) return;
@@ -107,7 +267,6 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
       const reset = !!opts?.reset;
       const cursor = reset ? null : holdersNextCursor;
 
-      // nếu không reset và đã hết cursor thì thôi
       if (!reset && cursor === null) return;
 
       setHoldersLoading(true);
@@ -115,10 +274,9 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
       try {
         const res = await getTokenHolders(tokenAddr, { limit: 200, cursor });
-
         const incoming = Array.isArray(res?.holders) ? res.holders : [];
-        setHoldersNextCursor(res?.nextCursor ?? null);
 
+        setHoldersNextCursor(res?.nextCursor ?? null);
         setHoldersAll((prev) => (reset ? incoming : [...prev, ...incoming]));
       } catch (e: any) {
         console.error('Error fetching /token/holders:', e);
@@ -138,44 +296,84 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
   useEffect(() => {
     if (!tokenAddr) return;
 
-    // reset holders when token changes
     setCurrentPage(1);
     setHoldersAll([]);
     setHoldersNextCursor(null);
     setHoldersError(null);
+
+    // reset swap
+    setFromToken({ symbol: 'SOL', amount: '' });
+    setToToken({ symbol: '', amount: '' });
+    setIsSwapped(false);
 
     fetchTokenInfo();
     fetchLiquidity();
     fetchHolders({ reset: true });
   }, [tokenAddr, fetchTokenInfo, fetchLiquidity, fetchHolders]);
 
-  // ===== Sync token labels when tokenInfo ready =====
+  // ===== Sync symbols when tokenInfo ready =====
   useEffect(() => {
     if (!tokenInfo) return;
-    setFromToken((prev) => ({
-      symbol: isSwapped ? (tokenInfo as any).symbol : 'SOL',
-      amount: prev.amount,
-    }));
-    setToToken((prev) => ({
-      symbol: isSwapped ? 'SOL' : (tokenInfo as any).symbol,
-      amount: prev.amount,
-    }));
+    const sym = String((tokenInfo as any)?.symbol ?? '').trim() || 'TOKEN';
+
+    if (!isSwapped) {
+      // BUY: SOL -> TOKEN
+      setFromToken((prev) => ({ ...prev, symbol: 'SOL' }));
+      setToToken((prev) => ({ ...prev, symbol: sym }));
+    } else {
+      // SELL: TOKEN -> SOL
+      setFromToken((prev) => ({ ...prev, symbol: sym }));
+      setToToken((prev) => ({ ...prev, symbol: 'SOL' }));
+    }
   }, [tokenInfo, isSwapped]);
 
-  // ===== Estimate "To" (page không có priceInfo nữa) =====
+  // ===== Estimate output =====
   useEffect(() => {
-    const amt = Number(debouncedFromAmount || 0);
-    if (!amt) {
-      setToToken((prev) => ({ ...prev, amount: '' }));
-      setIsCalculating(false);
-      return;
-    }
+    let cancelled = false;
 
-    // chưa có price ở page => để trống (tránh hiển thị sai)
-    setIsCalculating(true);
-    setToToken((prev) => ({ ...prev, amount: '' }));
-    setIsCalculating(false);
-  }, [debouncedFromAmount, isSwapped]);
+    const run = async () => {
+      if (!tokenAddr || !tokenInfo) return;
+
+      const raw = String(debouncedFromAmount ?? '').trim();
+      if (!raw) {
+        setToToken((prev) => ({ ...prev, amount: '' }));
+        setIsCalculating(false);
+        return;
+      }
+
+      const n = parseNumberInput(raw);
+      if (!Number.isFinite(n) || n <= 0) {
+        setToToken((prev) => ({ ...prev, amount: '' }));
+        setIsCalculating(false);
+        return;
+      }
+
+      setIsCalculating(true);
+
+      try {
+        if (!isSwapped) {
+          // BUY: input SOL -> output TOKEN
+          const est = await estimateTokensFromSol({ tokenAddr, solIn: n, decimals });
+          if (cancelled) return;
+          setToToken((prev) => ({ ...prev, amount: est.tokenOutHuman.toFixed(3) }));
+        } else {
+          // SELL: input TOKEN -> output SOL
+          const est = await estimateSolFromTokens({ tokenAddr, tokenInHuman: n, decimals });
+          if (cancelled) return;
+          setToToken((prev) => ({ ...prev, amount: est.solOut.toFixed(6) }));
+        }
+      } catch {
+        if (!cancelled) setToToken((prev) => ({ ...prev, amount: '' }));
+      } finally {
+        if (!cancelled) setIsCalculating(false);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedFromAmount, isSwapped, tokenAddr, tokenInfo, decimals]);
 
   useEffect(() => {
     setActionButtonText(isSwapped ? (isApproved ? 'Sell' : 'Approve') : 'Buy');
@@ -183,46 +381,165 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
   const handleSwap = useCallback(() => {
     setIsSwapped((prev) => !prev);
-    setFromToken((prev) => ({
-      symbol: prev.symbol === 'SOL' ? ((tokenInfo as any)?.symbol ?? '') : 'SOL',
-      amount: '',
-    }));
-    setToToken((prev) => ({
-      symbol: prev.symbol === 'SOL' ? ((tokenInfo as any)?.symbol ?? '') : 'SOL',
-      amount: '',
-    }));
-  }, [tokenInfo]);
+    setFromToken((prev) => ({ ...prev, amount: '' }));
+    setToToken((prev) => ({ ...prev, amount: '' }));
+  }, []);
 
   const handleFromAmountChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setFromToken((prev) => ({ ...prev, amount: e.target.value }));
     setIsCalculating(true);
   }, []);
 
+  const pollStatus = useCallback(async (statusEndpointRaw: string) => {
+    const statusEndpoint = normalizeTrackingEndpoint(statusEndpointRaw);
+    if (!statusEndpoint) return null;
+
+    for (let i = 0; i < POLL_MAX_TRIES; i++) {
+      try {
+        const st = (await getTradingStatus(statusEndpoint)) as TradingTxStatusResponse;
+        const s = String((st as any)?.status ?? '').toUpperCase();
+        if (s === 'CONFIRMED') return st;
+        if (s === 'FAILED') return st;
+      } catch {
+        // ignore transient
+      }
+      await sleep(POLL_INTERVAL_MS);
+    }
+    return null;
+  }, []);
+
   const handleAction = useCallback(async () => {
-    if (!tokenAddr || !fromToken.amount) {
+    if (!tokenAddr || !tokenInfo || !fromToken.amount) {
       toast.error('Missing required information');
+      return;
+    }
+
+    if (!wallet?.connected || !wallet.publicKey) {
+      toast.error('Connect wallet to trade');
+      return;
+    }
+    if (!wallet.sendTransaction) {
+      toast.error('Wallet does not support sendTransaction');
+      return;
+    }
+
+    const rawIn = String(fromToken.amount).trim();
+    const inNum = parseNumberInput(rawIn);
+    if (!Number.isFinite(inNum) || inNum <= 0) {
+      toast.error(isSwapped ? 'Invalid TOKEN amount' : 'Invalid SOL amount');
       return;
     }
 
     setIsTransacting(true);
     try {
-      toast.info('Trading is not available yet (Solana integration pending).');
-      setRefreshCounter((prev) => prev + 1);
+      const slippagePct = 1; // TODO wire UI
+      const slippageBps = clamp(Math.trunc(slippagePct * 100), 0, 10_000);
+
+      // ===== Build quote depending BUY/SELL =====
+      const idk = newIdempotencyKey(isSwapped ? 'sell' : 'buy');
+
+      let quote: any;
+      let txId: string;
+
+      if (!isSwapped) {
+        // BUY: input SOL -> convert to amountInToken base units (BE requires amountInToken)
+        const { amountInTokenBaseUnits } = await estimateTokensFromSol({
+          tokenAddr,
+          solIn: inNum,
+          decimals,
+        });
+
+        quote = (await buyToken(
+          { tokenAddress: tokenAddr, amountInToken: amountInTokenBaseUnits, slippageBps },
+          { idempotencyKey: idk }
+        )) as TradingBuyResponse;
+      } else {
+        // SELL: input TOKEN human -> convert to amountInToken base units (BE requires amountInToken)
+        const { amountInTokenBaseUnits } = await estimateSolFromTokens({
+          tokenAddr,
+          tokenInHuman: inNum,
+          decimals,
+        });
+
+        quote = await sellToken(
+          { tokenAddress: tokenAddr, amountInToken: amountInTokenBaseUnits, slippageBps },
+          { idempotencyKey: idk }
+        );
+      }
+
+      const tracking = quote?.tracking || {};
+      const submitEpRaw =
+        tracking.submitSignatureEndpoint ||
+        tracking.submitSignatureBySignatureEndpoint ||
+        tracking.submitEndpoint ||
+        '';
+      const statusEpRaw =
+        tracking.statusEndpoint ||
+        tracking.statusBySignatureEndpoint ||
+        tracking.status ||
+        '';
+
+      const submitEp = normalizeTrackingEndpoint(submitEpRaw);
+      const statusEp = normalizeTrackingEndpoint(statusEpRaw);
+
+      if (!quote?.txBase64 || !submitEp) {
+        throw new Error('Invalid trade response (missing txBase64/tracking.submitSignatureEndpoint)');
+      }
+
+      txId = String(quote?.transactionId ?? quote?.id ?? '').trim();
+      if (!txId) throw new Error('Missing transactionId/id from trade quote');
+
+      // ===== Send tx on-chain =====
+      const rawTx = Buffer.from(String(quote.txBase64), 'base64');
+      const tx = VersionedTransaction.deserialize(rawTx);
+
+      toast.info(isSwapped ? 'Sending SELL transaction...' : 'Sending BUY transaction...');
+
+      const txSignature = await wallet.sendTransaction(tx, connection, {
+        preflightCommitment: 'processed',
+      });
+
+      // ✅ submit signature immediately (don’t wait confirmed)
+      toast.info('Submitting signature to backend...');
+      await submitSignature(submitEp, { id: txId, txSignature } as any);
+
+      // optional confirm “background”
+      connection.confirmTransaction(txSignature, 'processed').catch(() => {});
+
+      if (!statusEp) {
+        toast.success('Submitted (no status endpoint).');
+        setRefreshCounter((prev) => prev + 1);
+        fetchLiquidity();
+        return;
+      }
+
+      toast.info('Checking backend status...');
+      const st = await pollStatus(statusEp);
+      const finalStatus = String((st as any)?.status ?? '').toUpperCase();
+
+      if (finalStatus === 'CONFIRMED') {
+        toast.success(isSwapped ? 'Sell confirmed' : 'Buy confirmed');
+        setRefreshCounter((prev) => prev + 1);
+        fetchLiquidity();
+      } else if (finalStatus === 'FAILED') {
+        toast.error(`Trade failed${(st as any)?.error ? `: ${(st as any).error}` : ''}`);
+      } else {
+        toast.success('Submitted. Status pending.');
+      }
+    } catch (e: any) {
+      console.error('Trade flow error:', e);
+      toast.error(e?.message || 'Trade failed');
     } finally {
       setIsTransacting(false);
     }
-  }, [tokenAddr, fromToken.amount]);
+  }, [tokenAddr, tokenInfo, fromToken.amount, isSwapped, wallet, connection, fetchLiquidity, pollStatus, decimals]);
 
   const handleMaxClick = () => {
-    if (isSwapped) {
-      setFromToken((prev) => ({ ...prev, amount: tokenBalance }));
-    } else {
-      const maxSol = (Number(ethBalance || 0) * 0.95).toString();
-      setFromToken((prev) => ({ ...prev, amount: maxSol }));
-    }
+    // placeholder only
+    if (isSwapped) setFromToken((prev) => ({ ...prev, amount: tokenBalance }));
+    else setFromToken((prev) => ({ ...prev, amount: ethBalance }));
   };
 
-  // holders paging (component tự paginate dựa trên allHolders + currentPage)
   const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
 
   if (!tokenInfo) {
@@ -235,11 +552,12 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
     );
   }
 
+  const tokenSymbol = String((tokenInfo as any)?.symbol ?? '').trim();
+
   return (
     <Layout>
       <SEO token={tokenInfo as any} />
 
-      {/* Mobile header */}
       <div className="lg:hidden mb-6">
         <TokenInfo
           tokenInfo={tokenInfo as any}
@@ -251,9 +569,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Chart */}
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold text-gray-300 truncate">
@@ -261,7 +577,6 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 </h2>
               </div>
 
-              {/* ✅ Chart tự handle timeframe + fetch price */}
               <TradingViewChart liquidityEvents={liquidityEvents} tokenInfo={tokenInfo as any} />
             </div>
 
@@ -282,15 +597,19 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
               <div className="mb-4 flex items-center gap-2">
                 <button
                   onClick={() => setIsSwapped(false)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border-thin
-                    ${!isSwapped ? 'bg-[var(--primary)] text-white' : 'bg-[var(--card)] text-gray-300 hover:text-white'}`}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border-thin ${
+                    !isSwapped ? 'bg-[var(--primary)] text-white' : 'bg-[var(--card)] text-gray-300 hover:text-white'
+                  }`}
+                  type="button"
                 >
                   BUY
                 </button>
                 <button
                   onClick={() => setIsSwapped(true)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border-thin
-                    ${isSwapped ? 'bg-[var(--primary)] text-white' : 'bg-[var(--card)] text-gray-300 hover:text-white'}`}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border-thin ${
+                    isSwapped ? 'bg-[var(--primary)] text-white' : 'bg-[var(--card)] text-gray-300 hover:text-white'
+                  }`}
+                  type="button"
                 >
                   SELL
                 </button>
@@ -301,6 +620,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                   <span className="text-gray-400">From</span>
                   <span className="text-gray-400">Balance: {isSwapped ? tokenBalance : ethBalance}</span>
                 </div>
+
                 <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
                   <input
                     type="number"
@@ -310,18 +630,23 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                     placeholder="0.00"
                     disabled={isTransacting}
                   />
-                  <button
-                    onClick={handleMaxClick}
-                    className="text-xs text-[var(--primary)] hover:text-[var(--primary-hover)] font-medium px-2 py-1 rounded transition-colors"
-                  >
-                    MAX
-                  </button>
+                  <div className="ml-2 flex items-center gap-2">
+                    <span className="text-xs text-gray-400">{fromToken.symbol || 'SOL'}</span>
+                    <button
+                      onClick={handleMaxClick}
+                      className="text-xs text-[var(--primary)] hover:text-[var(--primary-hover)] font-medium px-2 py-1 rounded transition-colors"
+                      type="button"
+                    >
+                      MAX
+                    </button>
+                  </div>
                 </div>
               </div>
 
               <button
                 onClick={handleSwap}
                 className="w-full flex justify-center p-2 text-gray-400 hover:text-[var(--primary)]"
+                type="button"
               >
                 <ArrowUpDownIcon size={20} />
               </button>
@@ -331,21 +656,31 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                   <span className="text-gray-400">To</span>
                   <span className="text-gray-400">Balance: {isSwapped ? ethBalance : tokenBalance}</span>
                 </div>
+
                 <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
                   <input
                     type="text"
                     value={isCalculating ? 'Calculating...' : toToken.amount}
                     readOnly
                     className="w-full bg-transparent text-white outline-none text-sm"
-                    placeholder="0.00"
+                    placeholder={isSwapped ? '0.000000' : '0.000'}
                   />
+                  <span className="ml-2 text-xs text-gray-400">{toToken.symbol || tokenSymbol}</span>
                 </div>
+
+                {!isSwapped && PRICE_UNIT === 'SOL' && (
+                  <div className="mt-2 text-xs text-gray-500">Input SOL → estimated token out (rounded 3 decimals).</div>
+                )}
+                {isSwapped && PRICE_UNIT === 'SOL' && (
+                  <div className="mt-2 text-xs text-gray-500">Input TOKEN → estimated SOL out (rounded 6 decimals).</div>
+                )}
               </div>
 
               <button
                 onClick={handleAction}
                 disabled={!fromToken.amount || isCalculating || isTransacting}
                 className="btn btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                type="button"
               >
                 {isTransacting ? 'Processing...' : actionButtonText}
               </button>
@@ -371,42 +706,20 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
             <div className="card gradient-border p-4">
               <Tab.Group>
                 <Tab.List className="flex space-x-1 rounded-lg bg-[var(--card2)] p-1 mb-4 border-thin">
-                  <Tab
-                    className={({ selected }) =>
-                      `w-full rounded-md py-2.5 text-sm font-medium leading-5 transition-colors
-                      ${
-                        selected
-                          ? 'bg-[var(--card-boarder)] text-white'
-                          : 'text-gray-400 hover:bg-[var(--card-hover)] hover:text-white'
-                      }`
-                    }
-                  >
-                    Trades
-                  </Tab>
-                  <Tab
-                    className={({ selected }) =>
-                      `w-full rounded-md py-2.5 text-sm font-medium leading-5 transition-colors
-                      ${
-                        selected
-                          ? 'bg-[var(--card-boarder)] text-white'
-                          : 'text-gray-400 hover:bg-[var(--card-hover)] hover:text-white'
-                      }`
-                    }
-                  >
-                    Chat
-                  </Tab>
-                  <Tab
-                    className={({ selected }) =>
-                      `w-full rounded-md py-2.5 text-sm font-medium leading-5 transition-colors 
-                      ${
-                        selected
-                          ? 'bg-[var(--card-boarder)] text-white'
-                          : 'text-gray-400 hover:bg-[var(--card-hover)] hover:text-white'
-                      }`
-                    }
-                  >
-                    Holders
-                  </Tab>
+                  {['Trades', 'Chat', 'Holders'].map((t) => (
+                    <Tab
+                      key={t}
+                      className={({ selected }) =>
+                        `w-full rounded-md py-2.5 text-sm font-medium leading-5 transition-colors ${
+                          selected
+                            ? 'bg-[var(--card-boarder)] text-white'
+                            : 'text-gray-400 hover:bg-[var(--card-hover)] hover:text-white'
+                        }`
+                      }
+                    >
+                      {t}
+                    </Tab>
+                  ))}
                 </Tab.List>
 
                 <Tab.Panels>
@@ -419,18 +732,13 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                   </Tab.Panel>
 
                   <Tab.Panel>
-                    {/* Optional: auto load more holders in background */}
-                    {holdersError && (
-                      <div className="mb-3 text-sm text-red-400">
-                        Failed to load holders: {holdersError}
-                      </div>
-                    )}
+                    {holdersError && <div className="mb-3 text-sm text-red-400">Failed to load holders: {holdersError}</div>}
 
                     <TokenHolders
-                      tokenHolders={[]} // compat, component sẽ ưu tiên allHolders
+                      tokenHolders={[]}
                       currentPage={currentPage}
-                      totalPages={1} // compat
-                      tokenSymbol={(tokenInfo as any).symbol}
+                      totalPages={1}
+                      tokenSymbol={tokenSymbol}
                       creatorAddress={(tokenInfo as any).creatorAddress}
                       tokenAddress={tokenAddr as string}
                       onPageChange={paginate}
@@ -449,9 +757,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                         </button>
                       )}
 
-                      {!holdersNextCursor && holdersAll.length > 0 && (
-                        <div className="text-sm text-gray-400">All holders loaded</div>
-                      )}
+                      {!holdersNextCursor && holdersAll.length > 0 && <div className="text-sm text-gray-400">All holders loaded</div>}
                     </div>
                   </Tab.Panel>
                 </Tab.Panels>
@@ -461,7 +767,6 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
           {/* Right */}
           <div className="space-y-6">
-            {/* Quick Actions (desktop) */}
             <div className="hidden lg:block card gradient-border p-4 relative">
               <div className="mb-3 flex items-center justify-between">
                 <label className="text-sm font-semibold text-gray-400">Slippage (%)</label>
@@ -478,15 +783,19 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
               <div className="mb-4 flex items-center gap-2">
                 <button
                   onClick={() => setIsSwapped(false)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border-thin
-                    ${!isSwapped ? 'bg-[var(--primary)] text-white' : 'bg-[var(--card)] text-gray-300 hover:text-white'}`}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border-thin ${
+                    !isSwapped ? 'bg-[var(--primary)] text-white' : 'bg-[var(--card)] text-gray-300 hover:text-white'
+                  }`}
+                  type="button"
                 >
                   BUY
                 </button>
                 <button
                   onClick={() => setIsSwapped(true)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border-thin
-                    ${isSwapped ? 'bg-[var(--primary)] text-white' : 'bg-[var(--card)] text-gray-300 hover:text-white'}`}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border-thin ${
+                    isSwapped ? 'bg-[var(--primary)] text-white' : 'bg-[var(--card)] text-gray-300 hover:text-white'
+                  }`}
+                  type="button"
                 >
                   SELL
                 </button>
@@ -497,6 +806,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                   <span className="text-gray-400">From</span>
                   <span className="text-gray-400">Balance: {isSwapped ? tokenBalance : ethBalance}</span>
                 </div>
+
                 <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
                   <input
                     type="number"
@@ -506,18 +816,23 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                     placeholder="0.00"
                     disabled={isTransacting}
                   />
-                  <button
-                    onClick={handleMaxClick}
-                    className="text-xs text-[var(--primary)] hover:text-[var(--primary-hover)] font-medium px-2 py-1 rounded transition-colors"
-                  >
-                    MAX
-                  </button>
+                  <div className="ml-2 flex items-center gap-2">
+                    <span className="text-xs text-gray-400">{fromToken.symbol || 'SOL'}</span>
+                    <button
+                      onClick={handleMaxClick}
+                      className="text-xs text-[var(--primary)] hover:text-[var(--primary-hover)] font-medium px-2 py-1 rounded transition-colors"
+                      type="button"
+                    >
+                      MAX
+                    </button>
+                  </div>
                 </div>
               </div>
 
               <button
                 onClick={handleSwap}
                 className="w-full flex justify-center p-2 text-gray-400 hover:text-[var(--primary)]"
+                type="button"
               >
                 <ArrowUpDownIcon size={20} />
               </button>
@@ -527,21 +842,31 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                   <span className="text-gray-400">To (Estimated)</span>
                   <span className="text-gray-400">Balance: {isSwapped ? ethBalance : tokenBalance}</span>
                 </div>
+
                 <div className="flex items-center bg-[var(--card)] rounded-lg p-3 border-thin">
                   <input
                     type="text"
                     value={isCalculating ? 'Calculating...' : toToken.amount}
                     readOnly
                     className="w-full bg-transparent text-white outline-none text-sm"
-                    placeholder="0.00"
+                    placeholder={isSwapped ? '0.000000' : '0.000'}
                   />
+                  <span className="ml-2 text-xs text-gray-400">{toToken.symbol || tokenSymbol}</span>
                 </div>
+
+                {!isSwapped && PRICE_UNIT === 'SOL' && (
+                  <div className="mt-2 text-xs text-gray-500">Input SOL → estimated token out (rounded 3 decimals).</div>
+                )}
+                {isSwapped && PRICE_UNIT === 'SOL' && (
+                  <div className="mt-2 text-xs text-gray-500">Input TOKEN → estimated SOL out (rounded 6 decimals).</div>
+                )}
               </div>
 
               <button
                 onClick={handleAction}
                 disabled={!fromToken.amount || isCalculating || isTransacting}
                 className="btn btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                type="button"
               >
                 {isTransacting ? 'Processing...' : actionButtonText}
               </button>
@@ -563,7 +888,6 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
               )}
             </div>
 
-            {/* Token Info Header (desktop) */}
             <div className="hidden lg:block card gradient-border p-4">
               <TokenInfo
                 tokenInfo={tokenInfo as any}
@@ -603,10 +927,10 @@ function SettingsPanel(props: {
         <div className="flex items-center justify-between">
           <span className="text-gray-300">Anti-MEV Protection</span>
           <div className="flex items-center gap-2">
-            <button onClick={() => setAntiMEV(true)} className={antiMEV ? activeBtn : idleBtn}>
+            <button onClick={() => setAntiMEV(true)} className={antiMEV ? activeBtn : idleBtn} type="button">
               ON
             </button>
-            <button onClick={() => setAntiMEV(false)} className={!antiMEV ? activeBtn : idleBtn}>
+            <button onClick={() => setAntiMEV(false)} className={!antiMEV ? activeBtn : idleBtn} type="button">
               OFF
             </button>
           </div>
@@ -615,10 +939,10 @@ function SettingsPanel(props: {
         <div className="flex items-center justify-between">
           <span className="text-gray-300">Transaction Speed</span>
           <div className="flex items-center gap-2">
-            <button onClick={() => setTxSpeed('auto')} className={txSpeed === 'auto' ? activeBtn : idleBtn}>
+            <button onClick={() => setTxSpeed('auto')} className={txSpeed === 'auto' ? activeBtn : idleBtn} type="button">
               AUTO
             </button>
-            <button onClick={() => setTxSpeed('manual')} className={txSpeed === 'manual' ? activeBtn : idleBtn}>
+            <button onClick={() => setTxSpeed('manual')} className={txSpeed === 'manual' ? activeBtn : idleBtn} type="button">
               MANUAL
             </button>
           </div>
@@ -656,6 +980,7 @@ function SettingsPanel(props: {
         <button
           onClick={onClose}
           className="px-3 py-1 rounded-md bg-[var(--card)] border-thin text-sm text-gray-300 hover:text-white"
+          type="button"
         >
           Close
         </button>
