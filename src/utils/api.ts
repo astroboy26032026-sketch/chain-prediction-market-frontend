@@ -330,8 +330,14 @@ export async function updateToken(_payload: UpdateTokenRequest): Promise<Token> 
 // =====================
 export type ProfileInfoResponse = {
   address: string;
+
+  // ✅ add fields used by UI
+  avatar?: string | null; // ✅ FIX: profileInfo?.avatar
+  username?: string | null;
+
   tokens?: Token[];
   totalPages?: number;
+
   stats?: {
     totalTrades?: number;
     volumeUsd?: number;
@@ -343,6 +349,8 @@ export async function getProfileInfo(address: string): Promise<ProfileInfoRespon
   const addr = String(address ?? '').trim();
   return {
     address: addr,
+    avatar: null,
+    username: null,
     tokens: [],
     totalPages: 1,
     stats: {
@@ -933,11 +941,7 @@ export async function getReferralList(opts?: { limit?: number; cursor?: string |
   const limitRaw = opts?.limit ?? 50;
   const limit = Math.min(Math.max(Number(limitRaw) || 50, 1), 200);
 
-  const { data } = await getViaProxy<ReferralListResponse>(
-    '/referrals/list',
-    { limit, cursor: opts?.cursor ?? undefined },
-    headers
-  );
+  const { data } = await getViaProxy<ReferralListResponse>('/referrals/list', { limit, cursor: opts?.cursor ?? undefined }, headers);
 
   return { items: data?.items ?? [] };
 }

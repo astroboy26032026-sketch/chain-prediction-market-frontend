@@ -66,11 +66,9 @@ export const getTradingStatus = (...args: Parameters<typeof realApi.getTradingSt
 // =====================
 // ✅ Chatroom
 // =====================
-export const getChatMessages = (...args: Parameters<typeof realApi.getChatMessages>) =>
-  realApi.getChatMessages(...args);
+export const getChatMessages = (...args: Parameters<typeof realApi.getChatMessages>) => realApi.getChatMessages(...args);
 
-export const addChatMessage = (...args: Parameters<typeof realApi.addChatMessage>) =>
-  realApi.addChatMessage(...args);
+export const addChatMessage = (...args: Parameters<typeof realApi.addChatMessage>) => realApi.addChatMessage(...args);
 
 // =====================
 // ✅ Create Token Flow (Solana)
@@ -97,14 +95,11 @@ export const prepareMint = (...args: Parameters<typeof realApi.prepareMint>) => 
 
 export const confirmMint = (...args: Parameters<typeof realApi.confirmMint>) => realApi.confirmMint(...args);
 
-export const uploadTokenImage = (...args: Parameters<typeof realApi.uploadTokenImage>) =>
-  realApi.uploadTokenImage(...args);
+export const uploadTokenImage = (...args: Parameters<typeof realApi.uploadTokenImage>) => realApi.uploadTokenImage(...args);
 
-export const createTokenDraft = (...args: Parameters<typeof realApi.createTokenDraft>) =>
-  realApi.createTokenDraft(...args);
+export const createTokenDraft = (...args: Parameters<typeof realApi.createTokenDraft>) => realApi.createTokenDraft(...args);
 
-export const previewInitialBuy = (...args: Parameters<typeof realApi.previewInitialBuy>) =>
-  realApi.previewInitialBuy(...args);
+export const previewInitialBuy = (...args: Parameters<typeof realApi.previewInitialBuy>) => realApi.previewInitialBuy(...args);
 
 export const finalizeTokenCreation = (...args: Parameters<typeof realApi.finalizeTokenCreation>) =>
   realApi.finalizeTokenCreation(...args);
@@ -128,18 +123,15 @@ export const getTotalVolume = (...args: Parameters<typeof realApi.getTotalVolume
 
 export const getVolumeRange = (...args: Parameters<typeof realApi.getVolumeRange>) => realApi.getVolumeRange(...args);
 
-export const getTotalTokenCount = (...args: Parameters<typeof realApi.getTotalTokenCount>) =>
-  realApi.getTotalTokenCount(...args);
+export const getTotalTokenCount = (...args: Parameters<typeof realApi.getTotalTokenCount>) => realApi.getTotalTokenCount(...args);
 
 export const getRecentTokens = (...args: Parameters<typeof realApi.getRecentTokens>) => realApi.getRecentTokens(...args);
 
 export const searchTokens = (...args: Parameters<typeof realApi.searchTokens>) => realApi.searchTokens(...args);
 
-export const getLeaderboardTop = (...args: Parameters<typeof realApi.getLeaderboardTop>) =>
-  realApi.getLeaderboardTop(...args);
+export const getLeaderboardTop = (...args: Parameters<typeof realApi.getLeaderboardTop>) => realApi.getLeaderboardTop(...args);
 
-export const getLeaderboardList = (...args: Parameters<typeof realApi.getLeaderboardList>) =>
-  realApi.getLeaderboardList(...args);
+export const getLeaderboardList = (...args: Parameters<typeof realApi.getLeaderboardList>) => realApi.getLeaderboardList(...args);
 
 // =====================
 // ✅ Referrals
