@@ -159,8 +159,7 @@ export interface TokenHoldersResponse {
 /**
  * TransactionResponse: giữ logic cũ.
  */
-export interface TransactionResponse
-  extends Omit<PaginatedResponse<Transaction>, 'data' | 'tokens'> {
+export interface TransactionResponse extends Omit<PaginatedResponse<Transaction>, 'data' | 'tokens'> {
   transactions: Transaction[];
 }
 
@@ -389,7 +388,10 @@ export type ChatWriteResponse = {
 };
 
 /* =========================================================
-   ✅ Trading (Solana) - POST /trading/buy + /trading/sell + submit-signature + status
+   ✅ Trading (Solana)
+   - POST /trading/buy + /trading/sell
+   - POST /trading/preview-buy + /trading/preview-sell  (bonding curve)
+   - submit-signature + status
    ========================================================= */
 
 export type UUIDv4 = string;
@@ -452,6 +454,59 @@ export type TradingSellResponse = {
   feeReferral: number;
 
   tracking: TradingTracking;
+};
+
+/**
+ * ✅ NEW: Preview buy (bonding curve)
+ * POST /trading/preview-buy
+ *
+ * Request: { tokenAddress, amountSol }
+ * Response: { estimatedTokens, price, feeLamports, totalSol, ... }
+ */
+export type TradingPreviewBuyRequest = {
+  tokenAddress: string;
+  amountSol: number;
+};
+
+export type TradingPreviewBuyResponse = {
+  tokenAddress: string;
+  amountSol: number;
+
+  estimatedTokens: number;
+  price: number;
+
+  quoteLamports: string;
+  feeLamports: string;
+
+  totalSol: number;
+
+  firstBuyFeeSol: number;
+  isFirstBuy: boolean;
+
+  note?: string;
+};
+
+/**
+ * ✅ NEW: Preview sell (bonding curve)
+ * POST /trading/preview-sell
+ *
+ * Request: { tokenAddress, amountInToken }
+ * Response: { estimatedSol, lamportsOut, price, ... }
+ */
+export type TradingPreviewSellRequest = {
+  tokenAddress: string;
+  amountInToken: number;
+};
+
+export type TradingPreviewSellResponse = {
+  tokenAddress: string;
+  amountInToken: number;
+
+  estimatedSol: number;
+  lamportsOut: string;
+
+  price: number;
+  note?: string;
 };
 
 /**

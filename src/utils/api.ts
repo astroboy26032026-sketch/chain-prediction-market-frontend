@@ -32,6 +32,10 @@ import {
   TradingBuyResponse,
   TradingSellRequest,
   TradingSellResponse,
+  TradingPreviewBuyRequest,
+  TradingPreviewBuyResponse,
+  TradingPreviewSellRequest,
+  TradingPreviewSellResponse,
   SubmitSignatureResponse,
   TradingTxStatusResponse,
 } from '@/interface/types';
@@ -548,6 +552,45 @@ export async function sellToken(payload: TradingSellRequest, opts?: IdempotencyO
   return data;
 }
 
+// =====================
+// ✅ Trading Preview API (Solana) - bonding curve preview (NO auth required)
+// =====================
+export async function previewBuy(payload: TradingPreviewBuyRequest): Promise<TradingPreviewBuyResponse> {
+  const tokenAddress = String(payload?.tokenAddress ?? '').trim();
+  if (!tokenAddress) throw new Error('tokenAddress is required');
+
+  const amountSol = Number(payload?.amountSol ?? 0);
+  if (!Number.isFinite(amountSol) || amountSol <= 0) throw new Error('amountSol must be a number > 0');
+
+  const headers = getAuthHeaders();
+
+  const { data } = await postViaProxy<TradingPreviewBuyResponse>(
+    '/trading/preview-buy',
+    { tokenAddress, amountSol },
+    headers
+  );
+
+  return data;
+}
+
+export async function previewSell(payload: TradingPreviewSellRequest): Promise<TradingPreviewSellResponse> {
+  const tokenAddress = String(payload?.tokenAddress ?? '').trim();
+  if (!tokenAddress) throw new Error('tokenAddress is required');
+
+  const amountInToken = Number(payload?.amountInToken ?? 0);
+  if (!Number.isFinite(amountInToken) || amountInToken <= 0) throw new Error('amountInToken must be a number > 0');
+
+  const headers = getAuthHeaders();
+
+  const { data } = await postViaProxy<TradingPreviewSellResponse>(
+    '/trading/preview-sell',
+    { tokenAddress, amountInToken },
+    headers
+  );
+
+  return data;
+}
+
 export async function submitSignature(
   endpointOrPath: string,
   payload: { id: string; txSignature: string },
@@ -940,18 +983,13 @@ export async function getReferralList(opts?: { limit?: number; cursor?: string |
   return { items: data?.items ?? [] };
 }
 
-export async function claimReferralRewards(
-  payload: ClaimReferralRequest | number
-): Promise<ClaimReferralResponse> {
+export async function claimReferralRewards(payload: ClaimReferralRequest | number): Promise<ClaimReferralResponse> {
   const headers = getAuthHeaders();
   if (!headers?.Authorization) {
     throw new Error('Unauthorized (Bearer token required)');
   }
 
-  const amountSol =
-    typeof payload === 'number'
-      ? payload
-      : Number(payload?.amountSol ?? 0);
+  const amountSol = typeof payload === 'number' ? payload : Number(payload?.amountSol ?? 0);
 
   if (!Number.isFinite(amountSol) || amountSol <= 0) {
     throw new Error('amountSol must be a number > 0');
@@ -965,7 +1003,6 @@ export async function claimReferralRewards(
 
   return data;
 }
-
 
 // =====================
 // ✅ ADD BACK: functions used by Dashboard (to avoid TS error)
@@ -1017,7 +1054,11 @@ export async function getTransactionsByAddress(
 
   try {
     const headers = getAuthHeaders();
-    const { data } = await getViaProxy<any>('/wallet/transactions', { address: addr, page, limit }, headers);
+    const { data } = await getViaProxy<any>(
+      '/wallet/transactions',
+      { address: addr, page, limit },
+      headers
+    );
 
     return {
       transactions: (data?.transactions ?? data?.items ?? []) as Transaction[],

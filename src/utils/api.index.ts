@@ -51,11 +51,16 @@ export const getTokenTrades = (...args: Parameters<typeof realApi.getTokenTrades
 export const getTokenHolders = (...args: Parameters<typeof realApi.getTokenHolders>) => realApi.getTokenHolders(...args);
 
 // =====================
-// ✅ Trading (Solana): Buy / Sell + submit-signature + status
+// ✅ Trading (Solana): Buy / Sell + preview + submit-signature + status
 // =====================
 export const buyToken = (...args: Parameters<typeof realApi.buyToken>) => realApi.buyToken(...args);
 
 export const sellToken = (...args: Parameters<typeof realApi.sellToken>) => realApi.sellToken(...args);
+
+// ✅ NEW: bonding-curve preview endpoints (no auth)
+export const previewBuy = (...args: Parameters<typeof realApi.previewBuy>) => realApi.previewBuy(...args);
+
+export const previewSell = (...args: Parameters<typeof realApi.previewSell>) => realApi.previewSell(...args);
 
 export const submitSignature = (...args: Parameters<typeof realApi.submitSignature>) =>
   realApi.submitSignature(...args);
