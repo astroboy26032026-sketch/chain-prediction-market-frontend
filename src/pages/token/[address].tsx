@@ -20,18 +20,18 @@ import TokenInfo from '@/components/TokenDetails/TokenInfo';
 import Chats from '@/components/TokenDetails/Chats';
 
 import {
-  getTokenInfo, // ✅ /token/info
-  getTokenLiquidity, // ✅ /token/liquidity
-  getTokenHolders, // ✅ /token/holders
+  getTokenInfo,
+  getTokenLiquidity,
+  getTokenHolders,
 
-  // ✅ NEW: bonding curve previews
-  previewBuy, // ✅ POST /trading/preview-buy
-  previewSell, // ✅ POST /trading/preview-sell
+  // ✅ bonding curve previews
+  previewBuy,
+  previewSell,
 
-  buyToken, // ✅ /trading/buy
-  sellToken, // ✅ /trading/sell
-  submitSignature, // ✅ tracking.submitSignatureEndpoint
-  getTradingStatus, // ✅ tracking.statusEndpoint
+  buyToken,
+  sellToken,
+  submitSignature,
+  getTradingStatus,
   newIdempotencyKey,
 } from '@/utils/api.index';
 
@@ -55,7 +55,7 @@ interface TokenDetailProps {
 const PRICE_UNIT: 'SOL' = 'SOL';
 
 const POLL_INTERVAL_MS = 1000;
-const POLL_MAX_TRIES = 12; // ~12s (nhanh hơn)
+const POLL_MAX_TRIES = 12; // ~12s
 
 const clamp = (n: number, a: number, b: number) => Math.min(Math.max(n, a), b);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -101,9 +101,34 @@ const parseNumberInput = (v: string) => {
 };
 
 /**
+ * Convert human token amount -> base units string (no float issues)
+ */
+const toBaseUnitsString = (amountHumanInput: string, decimalsInput: number) => {
+  const raw = String(amountHumanInput ?? '').trim();
+  if (!raw) return '0';
+
+  // handle scientific notation
+  if (/e/i.test(raw)) {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return '0';
+    return toBaseUnitsString(n.toFixed(18), decimalsInput);
+  }
+
+  if (!/^\d+(\.\d+)?$/.test(raw)) return '0';
+
+  const d = clamp(Math.trunc(Number(decimalsInput) || 0), 0, 18);
+  const [intsRaw, fracsRaw = ''] = raw.split('.');
+  const ints = (intsRaw || '0').replace(/^0+(?=\d)/, '') || '0';
+  const fracs = fracsRaw.replace(/[^\d]/g, '').slice(0, d).padEnd(d, '0');
+
+  const joined = `${ints}${fracs}`.replace(/^0+(?=\d)/, '') || '0';
+  return joined;
+};
+
+/**
  * ✅ Preview BUY using bonding curve (accurate)
- * - input: SOL (human)
- * - output: estimatedTokens (number)
+ * input: SOL (human)
+ * output: estimatedTokens (human)
  */
 async function estimateTokensFromSol({
   tokenAddr,
@@ -127,11 +152,11 @@ async function estimateTokensFromSol({
 
 /**
  * ✅ Preview SELL using bonding curve (accurate)
- * - input: TOKEN (human number)
- * - output: estimatedSol (number)
+ * input: TOKEN (human)
+ * output: estimatedSol (human SOL)
  *
- * NOTE: API spec shows amountInToken is number. If your BE expects base units,
- * update FE accordingly. For now follow spec.
+ * NOTE: Spec preview-sell uses amountInToken as number (human token).
+ * If BE changes to base units later, update here accordingly.
  */
 async function estimateSolFromTokens({
   tokenAddr,
@@ -150,18 +175,6 @@ async function estimateSolFromTokens({
 
   return { solOut, preview: res };
 }
-
-/**
- * helper: SOL -> lamports string
- */
-const SOL_LAMPORTS = 1_000_000_000;
-const toLamportsString = (sol: number) => {
-  const n = Number(sol);
-  if (!Number.isFinite(n) || n <= 0) return '0';
-  // round down to avoid spending more than user typed
-  const lamports = Math.floor(n * SOL_LAMPORTS);
-  return String(Math.max(lamports, 0));
-};
 
 const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
   const router = useRouter();
@@ -216,7 +229,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
   const [refreshCounter, setRefreshCounter] = useState(0);
   const [debouncedFromAmount] = useDebounce(fromToken.amount, 350);
 
-  // keep decimals for other UI parts (not used in preview path)
+  // decimals needed for base-units conversion when sending /trading/buy or /trading/sell
   const decimals = useMemo(() => {
     const d = Number((tokenInfo as any)?.decimals ?? 9);
     return clamp(Math.trunc(Number.isFinite(d) ? d : 9), 0, 18);
@@ -421,7 +434,6 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
       const slippagePct = 1; // TODO wire UI
       const slippageBps = clamp(Math.trunc(slippagePct * 100), 0, 10_000);
 
-      // ===== Build quote depending BUY/SELL =====
       const idk = newIdempotencyKey(isSwapped ? 'sell' : 'buy');
 
       let quote: any;
@@ -430,39 +442,33 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
       if (!isSwapped) {
         /**
          * ✅ BUY:
-         * Spec preview-buy uses amountSol (human SOL).
-         * Most BE buy endpoints take amountInSol (lamports string) OR amountSol.
+         * Backend /trading/buy does NOT support amountInSol yet.
+         * Must send amountInToken (smallest units).
          *
-         * Current FE buyToken type expects amountInSol string (lamports) OR amountInToken.
-         * -> we send lamports string, no more spot price conversions.
+         * Flow:
+         * 1) preview-buy(tokenAddress, amountSol) -> estimatedTokens (human)
+         * 2) convert estimatedTokens -> base units string using decimals
+         * 3) buyToken(tokenAddress, amountInToken)
          */
-        const amountInSol = toLamportsString(inNum);
+        const pv = await estimateTokensFromSol({ tokenAddr, solIn: inNum });
+        const estTokensHuman = pv.tokenOutHuman;
+
+        const humanStr = estTokensHuman.toFixed(clamp(decimals, 0, 18));
+        const amountInToken = toBaseUnitsString(humanStr, decimals);
+        if (!amountInToken || amountInToken === '0') throw new Error('Amount too small');
 
         quote = (await buyToken(
-          { tokenAddress: tokenAddr, amountInSol, slippageBps },
+          { tokenAddress: tokenAddr, amountInToken, slippageBps },
           { idempotencyKey: idk }
         )) as TradingBuyResponse;
       } else {
         /**
          * ✅ SELL:
-         * preview-sell takes amountInToken as number (human).
-         * But sell endpoint in your FE expects amountInToken (string, smallest units).
-         *
-         * => We keep existing behavior by converting human->base units IF token has decimals.
-         * However: you removed price conversion; we still need base-units conversion.
-         * If BE sell endpoint is also changed to accept human number, update this part accordingly.
+         * UI preview uses amountInToken as human number per spec.
+         * But sell endpoint requires amountInToken base units string.
          */
-        const d = clamp(Math.trunc(Number((tokenInfo as any)?.decimals ?? decimals) || 9), 0, 18);
-        const humanStr = inNum.toFixed(d);
-        // base units string:
-        const amountInToken = (() => {
-          const [intsRaw, fracsRaw = ''] = String(humanStr).split('.');
-          const ints = (intsRaw || '0').replace(/^0+(?=\d)/, '') || '0';
-          const fracs = fracsRaw.replace(/[^\d]/g, '').slice(0, d).padEnd(d, '0');
-          const joined = `${ints}${fracs}`.replace(/^0+(?=\d)/, '') || '0';
-          return joined;
-        })();
-
+        const humanStr = inNum.toFixed(clamp(decimals, 0, 18));
+        const amountInToken = toBaseUnitsString(humanStr, decimals);
         if (!amountInToken || amountInToken === '0') throw new Error('Amount too small');
 
         quote = await sellToken(
@@ -602,7 +608,9 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 <button
                   onClick={() => setIsSwapped(false)}
                   className={`flex-1 py-2 rounded-lg text-sm font-semibold border-thin ${
-                    !isSwapped ? 'bg-[var(--primary)] text-white' : 'bg-[var(--card)] text-gray-300 hover:text-white'
+                    !isSwapped
+                      ? 'bg-[var(--primary)] text-white'
+                      : 'bg-[var(--card)] text-gray-300 hover:text-white'
                   }`}
                   type="button"
                 >
@@ -611,7 +619,9 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 <button
                   onClick={() => setIsSwapped(true)}
                   className={`flex-1 py-2 rounded-lg text-sm font-semibold border-thin ${
-                    isSwapped ? 'bg-[var(--primary)] text-white' : 'bg-[var(--card)] text-gray-300 hover:text-white'
+                    isSwapped
+                      ? 'bg-[var(--primary)] text-white'
+                      : 'bg-[var(--card)] text-gray-300 hover:text-white'
                   }`}
                   type="button"
                 >
@@ -673,14 +683,10 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 </div>
 
                 {!isSwapped && PRICE_UNIT === 'SOL' && (
-                  <div className="mt-2 text-xs text-gray-500">
-                    Input SOL → estimated token out (rounded 3 decimals).
-                  </div>
+                  <div className="mt-2 text-xs text-gray-500">Input SOL → estimated token out (rounded 3 decimals).</div>
                 )}
                 {isSwapped && PRICE_UNIT === 'SOL' && (
-                  <div className="mt-2 text-xs text-gray-500">
-                    Input TOKEN → estimated SOL out (rounded 6 decimals).
-                  </div>
+                  <div className="mt-2 text-xs text-gray-500">Input TOKEN → estimated SOL out (rounded 6 decimals).</div>
                 )}
               </div>
 
@@ -740,9 +746,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                   </Tab.Panel>
 
                   <Tab.Panel>
-                    {holdersError && (
-                      <div className="mb-3 text-sm text-red-400">Failed to load holders: {holdersError}</div>
-                    )}
+                    {holdersError && <div className="mb-3 text-sm text-red-400">Failed to load holders: {holdersError}</div>}
 
                     <TokenHolders
                       tokenHolders={[]}
@@ -767,9 +771,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                         </button>
                       )}
 
-                      {!holdersNextCursor && holdersAll.length > 0 && (
-                        <div className="text-sm text-gray-400">All holders loaded</div>
-                      )}
+                      {!holdersNextCursor && holdersAll.length > 0 && <div className="text-sm text-gray-400">All holders loaded</div>}
                     </div>
                   </Tab.Panel>
                 </Tab.Panels>
@@ -796,7 +798,9 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 <button
                   onClick={() => setIsSwapped(false)}
                   className={`flex-1 py-2 rounded-lg text-sm font-semibold border-thin ${
-                    !isSwapped ? 'bg-[var(--primary)] text-white' : 'bg-[var(--card)] text-gray-300 hover:text-white'
+                    !isSwapped
+                      ? 'bg-[var(--primary)] text-white'
+                      : 'bg-[var(--card)] text-gray-300 hover:text-white'
                   }`}
                   type="button"
                 >
@@ -805,7 +809,9 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 <button
                   onClick={() => setIsSwapped(true)}
                   className={`flex-1 py-2 rounded-lg text-sm font-semibold border-thin ${
-                    isSwapped ? 'bg-[var(--primary)] text-white' : 'bg-[var(--card)] text-gray-300 hover:text-white'
+                    isSwapped
+                      ? 'bg-[var(--primary)] text-white'
+                      : 'bg-[var(--card)] text-gray-300 hover:text-white'
                   }`}
                   type="button"
                 >
@@ -867,14 +873,10 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 </div>
 
                 {!isSwapped && PRICE_UNIT === 'SOL' && (
-                  <div className="mt-2 text-xs text-gray-500">
-                    Input SOL → estimated token out (rounded 3 decimals).
-                  </div>
+                  <div className="mt-2 text-xs text-gray-500">Input SOL → estimated token out (rounded 3 decimals).</div>
                 )}
                 {isSwapped && PRICE_UNIT === 'SOL' && (
-                  <div className="mt-2 text-xs text-gray-500">
-                    Input TOKEN → estimated SOL out (rounded 6 decimals).
-                  </div>
+                  <div className="mt-2 text-xs text-gray-500">Input TOKEN → estimated SOL out (rounded 6 decimals).</div>
                 )}
               </div>
 
@@ -958,11 +960,7 @@ function SettingsPanel(props: {
             <button onClick={() => setTxSpeed('auto')} className={txSpeed === 'auto' ? activeBtn : idleBtn} type="button">
               AUTO
             </button>
-            <button
-              onClick={() => setTxSpeed('manual')}
-              className={txSpeed === 'manual' ? activeBtn : idleBtn}
-              type="button"
-            >
+            <button onClick={() => setTxSpeed('manual')} className={txSpeed === 'manual' ? activeBtn : idleBtn} type="button">
               MANUAL
             </button>
           </div>
