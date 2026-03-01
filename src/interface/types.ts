@@ -128,6 +128,61 @@ export interface USDHistoricalPrice {
   timestamp: string;
 }
 
+/**
+ * TransactionResponse: giữ logic cũ.
+ */
+export interface TransactionResponse extends Omit<PaginatedResponse<Transaction>, 'data' | 'tokens'> {
+  transactions: Transaction[];
+}
+
+export interface PriceCache {
+  price: string;
+  timestamp: number;
+}
+
+/* =========================================================
+   ✅ User Profile (NEW) - /profile/info + /profile/stats
+   ========================================================= */
+
+/**
+ * GET /profile/info?walletAddress=...
+ */
+export type ProfileInfoResponse = {
+  walletAddress: string;
+  username: string;
+  avatar: string;
+  bio: string;
+  joinedAt: string;
+  totalTokensCreated: number;
+  totalTokensBought: number;
+  totalTokensSold: number;
+};
+
+/**
+ * Recent activity item in GET /profile/stats
+ */
+export type ProfileRecentActivity = {
+  type: string;
+  tokenAddress: string;
+  amount: number;
+  timestamp: string;
+};
+
+/**
+ * GET /profile/stats?walletAddress=...&limitActivities=20&limitFavoriteTokens=10
+ * NOTE: rank hiện backend trả 0 theo doc.
+ */
+export type ProfileStatsResponse = {
+  walletAddress: string;
+  totalBuys: number;
+  totalSells: number;
+  totalVolumeSOL: number;
+  totalPnL: number;
+  rank: number;
+  favoriteTokens: string[];
+  recentActivities: ProfileRecentActivity[];
+};
+
 /* =========================================================
    ✅ Token Holders (Solana) - GET /token/holders
    ========================================================= */
@@ -154,18 +209,6 @@ export interface TokenHoldersResponse {
   totalHolders: number;
   nextCursor?: string | null;
   holders: TokenHolder[];
-}
-
-/**
- * TransactionResponse: giữ logic cũ.
- */
-export interface TransactionResponse extends Omit<PaginatedResponse<Transaction>, 'data' | 'tokens'> {
-  transactions: Transaction[];
-}
-
-export interface PriceCache {
-  price: string;
-  timestamp: number;
 }
 
 /* =========================================================

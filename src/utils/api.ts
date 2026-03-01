@@ -322,65 +322,110 @@ export async function updateToken(_payload: UpdateTokenRequest): Promise<Token> 
 }
 
 // =====================
-// ✅ STUB: Profile (Backend chưa implement / chưa export)
-// - FIX TS cho /profile/[address].tsx
+// ✅ Profile (NEW DOC IMPLEMENTATION)
+// - GET /profile/info?walletAddress=...
+// - GET /profile/stats?walletAddress=...&limitActivities=20&limitFavoriteTokens=10
 // =====================
-//
-// NOTE: để khỏi chase từng field trong UI, type này "mở".
-// Bạn có thể tighten lại khi BE đã có schema thật.
+
 export type ProfileInfoResponse = {
-  // ✅ page uses (đã dính lỗi trước đó):
   walletAddress: string;
-  avatar?: string | null;
-
-  // common profile fields
-  username?: string | null;
-  bio?: string | null;
-
-  // common counters UI hay dùng
-  totalTokensCreated?: number;
-  totalTokensHeld?: number;
-  totalFollowers?: number;
-  totalFollowing?: number;
-
-  // lists
-  tokens?: Token[];
-  totalPages?: number;
-
-  // stats
-  stats?: {
-    totalTrades?: number;
-    volumeUsd?: number;
-    pnlUsd?: number;
-  };
-
-  // ✅ allow any extra fields used by UI (vd: totalTokensCreated, totalLikes, badges...)
-  [key: string]: any;
+  username: string;
+  avatar: string;
+  bio: string;
+  joinedAt: string;
+  totalTokensCreated: number;
+  totalTokensBought: number;
+  totalTokensSold: number;
 };
 
-export async function getProfileInfo(address: string): Promise<ProfileInfoResponse> {
-  const addr = String(address ?? '').trim();
+export type ProfileStatsResponse = {
+  walletAddress: string;
+  totalBuys: number;
+  totalSells: number;
+  totalVolumeSOL: number;
+  totalPnL: number;
+  rank: number; // backend note: currently 0
+  favoriteTokens: string[];
+  recentActivities: Array<{
+    type: string;
+    tokenAddress: string;
+    amount: number;
+    timestamp: string;
+  }>;
+};
 
-  // STUB safe data (build-pass)
+function normalizeProfileInfo(input: any, walletAddress: string): ProfileInfoResponse {
+  // đảm bảo không crash UI khi backend trả null/undefined field
   return {
-    walletAddress: addr,
-    avatar: null,
-    username: null,
-    bio: null,
-
-    totalTokensCreated: 0,
-    totalTokensHeld: 0,
-    totalFollowers: 0,
-    totalFollowing: 0,
-
-    tokens: [],
-    totalPages: 1,
-    stats: {
-      totalTrades: 0,
-      volumeUsd: 0,
-      pnlUsd: 0,
-    },
+    walletAddress: String(input?.walletAddress ?? walletAddress ?? '').trim(),
+    username: String(input?.username ?? ''),
+    avatar: String(input?.avatar ?? ''),
+    bio: String(input?.bio ?? ''),
+    joinedAt: String(input?.joinedAt ?? ''),
+    totalTokensCreated: Number(input?.totalTokensCreated ?? 0),
+    totalTokensBought: Number(input?.totalTokensBought ?? 0),
+    totalTokensSold: Number(input?.totalTokensSold ?? 0),
   };
+}
+
+function normalizeProfileStats(input: any, walletAddress: string): ProfileStatsResponse {
+  return {
+    walletAddress: String(input?.walletAddress ?? walletAddress ?? '').trim(),
+    totalBuys: Number(input?.totalBuys ?? 0),
+    totalSells: Number(input?.totalSells ?? 0),
+    totalVolumeSOL: Number(input?.totalVolumeSOL ?? 0),
+    totalPnL: Number(input?.totalPnL ?? 0),
+    rank: Number(input?.rank ?? 0),
+    favoriteTokens: Array.isArray(input?.favoriteTokens) ? input.favoriteTokens.map(String) : [],
+    recentActivities: Array.isArray(input?.recentActivities)
+      ? input.recentActivities.map((x: any) => ({
+          type: String(x?.type ?? ''),
+          tokenAddress: String(x?.tokenAddress ?? ''),
+          amount: Number(x?.amount ?? 0),
+          timestamp: String(x?.timestamp ?? ''),
+        }))
+      : [],
+  };
+}
+
+/**
+ * Get user profile information
+ * GET /profile/info?walletAddress=...
+ */
+export async function getProfileInfo(walletAddress: string): Promise<ProfileInfoResponse> {
+  const addr = String(walletAddress ?? '').trim();
+  if (!addr) throw new Error('Missing walletAddress');
+
+  // thống nhất đi qua proxy giống các endpoint khác
+  const headers = getAuthHeaders();
+  const { data } = await getViaProxy<ProfileInfoResponse>('/profile/info', { walletAddress: addr }, headers);
+
+  return normalizeProfileInfo(data, addr);
+}
+
+/**
+ * Get user trading statistics
+ * GET /profile/stats?walletAddress=...&limitActivities=20&limitFavoriteTokens=10
+ */
+export async function getProfileStats(
+  walletAddress: string,
+  opts?: { limitActivities?: number; limitFavoriteTokens?: number }
+): Promise<ProfileStatsResponse> {
+  const addr = String(walletAddress ?? '').trim();
+  if (!addr) throw new Error('Missing walletAddress');
+
+  const limitActivities = opts?.limitActivities == null ? 20 : toNonNegInt(opts.limitActivities, 'limitActivities');
+  const limitFavoriteTokens =
+    opts?.limitFavoriteTokens == null ? 10 : toNonNegInt(opts.limitFavoriteTokens, 'limitFavoriteTokens');
+
+  const headers = getAuthHeaders();
+  const { data } = await getViaProxy<ProfileStatsResponse>(
+    '/profile/stats',
+    { walletAddress: addr, limitActivities, limitFavoriteTokens },
+    headers
+  );
+
+  return normalizeProfileStats(data, addr);
 }
 
 // =====================
@@ -995,11 +1040,7 @@ export async function claimReferralRewards(payload: ClaimReferralRequest | numbe
     throw new Error('amountSol must be a number > 0');
   }
 
-  const { data } = await postViaProxy<ClaimReferralResponse>(
-    '/referrals/claim',
-    { amountSol },
-    headers
-  );
+  const { data } = await postViaProxy<ClaimReferralResponse>('/referrals/claim', { amountSol }, headers);
 
   return data;
 }
@@ -1054,11 +1095,7 @@ export async function getTransactionsByAddress(
 
   try {
     const headers = getAuthHeaders();
-    const { data } = await getViaProxy<any>(
-      '/wallet/transactions',
-      { address: addr, page, limit },
-      headers
-    );
+    const { data } = await getViaProxy<any>('/wallet/transactions', { address: addr, page, limit }, headers);
 
     return {
       transactions: (data?.transactions ?? data?.items ?? []) as Transaction[],

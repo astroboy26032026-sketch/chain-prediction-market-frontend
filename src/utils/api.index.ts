@@ -31,10 +31,16 @@ export type UpdateTokenRequest = realApi.UpdateTokenRequest;
 export const updateToken = (...args: Parameters<typeof realApi.updateToken>) => realApi.updateToken(...args);
 
 // =====================
-// ✅ Profile (STUB until BE is ready)
+// ✅ Profile (NEW DOC)
+// - GET /profile/info?walletAddress=...
+// - GET /profile/stats?walletAddress=...&limitActivities=20&limitFavoriteTokens=10
 // =====================
 export type ProfileInfoResponse = realApi.ProfileInfoResponse;
 export const getProfileInfo = (...args: Parameters<typeof realApi.getProfileInfo>) => realApi.getProfileInfo(...args);
+
+// ✅ NEW: stats endpoint
+export type ProfileStatsResponse = realApi.ProfileStatsResponse;
+export const getProfileStats = (...args: Parameters<typeof realApi.getProfileStats>) => realApi.getProfileStats(...args);
 
 // =====================
 // ✅ NEW BE API (Solana): Token Info / Price / Liquidity / Trades / Holders

@@ -1,5 +1,5 @@
 // src/pages/profile/[address].tsx
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -7,42 +7,11 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import Layout from '@/components/layout/Layout';
 import SEO from '@/components/seo/SEO';
 import LoadingBar from '@/components/ui/LoadingBar';
-import TokenUpdateModal from '@/components/token/TokenUpdateModal';
 
-import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/20/solid';
+import { getProfileInfo, getProfileStats, getTokenInfo } from '@/utils/api.index';
+import { formatAddressV2 } from '@/utils/blockchainUtils';
 
-import {
-  getProfileInfo,
-  // getTransactionsByAddress,
-  // getAllTokenAddresses,
-  // getTokensByCreator,
-} from '@/utils/api.index';
-
-import { Transaction, PaginatedResponse, Token } from '@/interface/types';
-import { formatTimestamp, formatAddressV2, formatAmountV3 } from '@/utils/blockchainUtils';
-
-/* =========================
-   Types
-========================= */
-interface TransactionResponse extends Omit<PaginatedResponse<Transaction>, 'data'> {
-  transactions: Transaction[];
-}
-
-interface TokenBalanceItemProps {
-  tokenAddress: string;
-  symbol: string;
-  onClick: () => void;
-}
-
-// Kiểu dữ liệu chuẩn cho danh sách token address + symbol
-type AddrSymbol = { address: string; symbol: string };
-
-// Type guard để phân biệt khi API trả về đúng dạng hoặc chỉ string[]
-const isAddrSymbolArray = (v: unknown): v is AddrSymbol[] =>
-  Array.isArray(v) &&
-  v.every((i) => i && typeof i === 'object' && 'address' in (i as any) && 'symbol' in (i as any));
-
-type ProfileInfo = Awaited<ReturnType<typeof getProfileInfo>>;
+import { Check, Copy, Wallet } from 'lucide-react';
 
 /* =========================
    Helpers
@@ -53,12 +22,6 @@ function getQueryAddress(v: unknown): string {
   return '';
 }
 
-/**
- * Normalize image URL:
- * - keep relative (/...) as-is
- * - convert ipfs://CID or ipfs://ipfs/CID -> https://gateway.pinata.cloud/ipfs/CID
- * - otherwise keep http(s)
- */
 function normalizeImageUrl(input?: string | null): string {
   const s = (input || '').trim();
   if (!s) return '';
@@ -72,535 +35,494 @@ function normalizeImageUrl(input?: string | null): string {
   return s;
 }
 
-/* =========================
-   Token Balance Item
-   (GIỮ UI, BỎ on-chain balance)
-========================= */
-const TokenBalanceItem: React.FC<TokenBalanceItemProps> = ({ tokenAddress, symbol, onClick }) => {
-  const handleAddressClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    window.open(`https://shibariumscan.io/address/${tokenAddress}`, '_blank');
-  };
-
-  return (
-    <div
-      className="bg-[var(--card)] rounded-lg p-4 cursor-pointer hover:bg-[var(--card-hover)] transition-colors duration-200"
-      onClick={onClick}
-    >
-      <h3 className="text-xs sm:text-sm font-semibold text-[var(--accent)] mb-2">{symbol}</h3>
-
-      {/* giữ dòng balance để UI không thay đổi layout (nhưng không gọi chain) */}
-      <p className="text-gray-400 text-[10px] sm:text-xs">Balance: --</p>
-
-      <p className="text-gray-400 text-[10px] sm:text-xs mt-2">
-        Address:
-        <span className="text-[var(--primary)] hover:underline ml-1 cursor-pointer" onClick={handleAddressClick}>
-          {formatAddressV2(tokenAddress)}
-        </span>
-      </p>
-    </div>
-  );
-};
-
-/* =========================
-   Pagination (GIỮ NGUYÊN)
-========================= */
-interface PaginationProps {
-  currentPage: number;
-  totalPages: number;
-  onPageChange: (page: number) => void;
+function formatMonthYear(input?: string | null) {
+  const s = String(input ?? '').trim();
+  if (!s) return '—';
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
+  return d.toLocaleString('en-US', { month: 'short', year: 'numeric' });
 }
 
-const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPageChange }) => {
-  return (
-    <div className="flex justify-center items-center space-x-2 mt-6">
-      <button
-        onClick={() => onPageChange(currentPage - 1)}
-        disabled={currentPage === 1}
-        className="p-2 rounded-md bg-[var(--card)] text-gray-400 hover:bg-[var(--card-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <ChevronLeftIcon className="h-4 w-4 sm:h-5 sm:w-5" />
-      </button>
+function timeAgo(input?: string | null) {
+  const s = String(input ?? '').trim();
+  if (!s) return '—';
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
 
-      <div className="flex items-center space-x-1">
-        {[...Array(totalPages)].map((_, index) => {
-          const page = index + 1;
-          if (page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1)) {
-            return (
-              <button
-                key={page}
-                onClick={() => onPageChange(page)}
-                className={`px-3 py-1 rounded-md text-sm transition-colors duration-200 ${
-                  currentPage === page
-                    ? 'bg-[var(--primary)] text-black'
-                    : 'bg-[var(--card)] text-gray-400 hover:bg-[var(--card-hover)]'
-                }`}
-              >
-                {page}
-              </button>
-            );
-          } else if (page === currentPage - 2 || page === currentPage + 2) {
-            return (
-              <span key={page} className="text-gray-500 text-xs sm:text-sm">
-                ...
-              </span>
-            );
-          }
-          return null;
-        })}
-      </div>
+  const diff = Date.now() - d.getTime();
+  const sec = Math.max(0, Math.floor(diff / 1000));
+  const min = Math.floor(sec / 60);
+  const hr = Math.floor(min / 60);
+  const day = Math.floor(hr / 24);
 
-      <button
-        onClick={() => onPageChange(currentPage + 1)}
-        disabled={currentPage === totalPages}
-        className="p-2 rounded-md bg-[var(--card)] text-gray-400 hover:bg-[var(--card-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <ChevronRightIcon className="h-4 w-4 sm:h-5 sm:w-5" />
-      </button>
-    </div>
-  );
-};
-
-/* =========================
-   Token Tab (GIỮ NGUYÊN)
-========================= */
-interface TokenTabProps {
-  title: string;
-  isActive: boolean;
-  onClick: () => void;
+  if (day > 0) return `${day} day${day > 1 ? 's' : ''} ago`;
+  if (hr > 0) return `${hr} hour${hr > 1 ? 's' : ''} ago`;
+  if (min > 0) return `${min} min${min > 1 ? 's' : ''} ago`;
+  return 'just now';
 }
 
-const TokenTab: React.FC<TokenTabProps> = ({ title, isActive, onClick }) => (
+/* =========================
+   Types
+========================= */
+type ProfileInfo = Awaited<ReturnType<typeof getProfileInfo>>;
+type ProfileStats = Awaited<ReturnType<typeof getProfileStats>>;
+
+type TabKey = 'profile' | 'holding' | 'created' | 'history';
+
+type TokenMini = {
+  address: string;
+  name: string;
+  symbol: string;
+  logo?: string;
+  marketCap?: number;
+  holders?: number;
+};
+
+const StatTile: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
+  <div className="flex-1 min-w-[180px] rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 sm:p-5 shadow-sm">
+    <div className="text-xs opacity-80">{label}</div>
+    <div className="mt-3 text-2xl font-extrabold tracking-tight">{value}</div>
+  </div>
+);
+
+const TabButton: React.FC<{ active: boolean; title: string; onClick: () => void }> = ({
+  active,
+  title,
+  onClick,
+}) => (
   <button
-    className={`w-full rounded-lg py-2.5 text-xs sm:text-sm font-medium leading-5 ${
-      isActive
-        ? 'bg-[var(--card-boarder)] text-[var(--accent)]'
-        : 'text-gray-400 hover:bg-[var(--card-hover)] hover:text-[var(--accent)]'
-    }`}
     onClick={onClick}
+    className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold tracking-wide transition-colors border border-[var(--card-border)] ${
+      active
+        ? 'bg-[var(--primary)] text-black'
+        : 'bg-[var(--card2)] text-[var(--foreground)] hover:bg-[var(--card-hover)]'
+    }`}
   >
-    {title}
+    {title.toUpperCase()}
   </button>
 );
 
-/* =========================
-   Profile Page
-========================= */
+const SectionCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+  <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] overflow-hidden shadow-sm">
+    <div className="px-4 sm:px-6 py-4 border-b border-[var(--card-border)] text-sm font-extrabold tracking-wide">
+      {title.toUpperCase()}
+    </div>
+    <div className="p-4 sm:p-6">{children}</div>
+  </div>
+);
+
 const ProfilePage: React.FC = () => {
   const router = useRouter();
   const { publicKey } = useWallet();
 
-  // connected wallet (Solana)
   const connectedAddress = useMemo(() => publicKey?.toBase58() || '', [publicKey]);
-
-  // profile address from route
   const profileAddress = getQueryAddress(router.query.address);
-
-  // address precedence: URL -> connected wallet
   const addressToUse = (profileAddress || connectedAddress || '').trim();
-
-  // NEW: profile info
-  const [profileInfo, setProfileInfo] = useState<ProfileInfo | null>(null);
-  const [profileLoading, setProfileLoading] = useState(false);
-
-  // Transactions
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [isLoading, setIsLoading] = useState(false);
-
-  // Tokens held list (still from old API)
-  const [tokenAddresses, setTokenAddresses] = useState<AddrSymbol[]>([]);
-  const [isTokenLoading, setIsTokenLoading] = useState(false);
-
-  // Tabs & Created tokens
-  const [activeTab, setActiveTab] = useState<'held' | 'created'>('held');
-  const [createdTokens, setCreatedTokens] = useState<Token[]>([]);
-  const [createdTokensPage, setCreatedTokensPage] = useState(1);
-  const [createdTokensTotalPages, setCreatedTokensTotalPages] = useState(1);
-
-  // Modal update token
-  const [selectedToken, setSelectedToken] = useState<Token | null>(null);
-  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
-
-  const fetchProfile = useCallback(async (walletAddress: string) => {
-    if (!walletAddress) return;
-    setProfileLoading(true);
-    try {
-      const data = await getProfileInfo(walletAddress);
-      setProfileInfo({
-        ...data,
-        avatar: normalizeImageUrl((data as any).avatar),
-      } as any);
-    } catch (error) {
-      console.error('Error fetching profile info:', error);
-      setProfileInfo(null);
-    } finally {
-      setProfileLoading(false);
-    }
-  }, []);
-
-  // const fetchTransactions = useCallback(async (address: string, page: number) => {
-  //   setIsLoading(true);
-  //   try {
-  //     const response: TransactionResponse = await getTransactionsByAddress(address, page);
-  //     setTransactions(response.transactions || []);
-  //     setTotalPages(response.totalPages || 1);
-  //   } catch (error) {
-  //     console.error('Error fetching transactions:', error);
-  //     setTransactions([]);
-  //     setTotalPages(1);
-  //   } finally {
-  //     setIsLoading(false);
-  //   }
-  // }, []);
-
-  // accept API can return string[] or {address,symbol}[]
-  // const fetchTokenAddresses = useCallback(async () => {
-  //   try {
-  //     const res = await getAllTokenAddresses();
-
-  //     if (isAddrSymbolArray(res)) {
-  //       setTokenAddresses(res);
-  //     } else if (Array.isArray(res)) {
-  //       setTokenAddresses((res as string[]).map((addr) => ({ address: addr, symbol: 'Unknown' })));
-  //     } else {
-  //       setTokenAddresses([]);
-  //     }
-  //   } catch (error) {
-  //     console.error('Error fetching token addresses:', error);
-  //     setTokenAddresses([]);
-  //   }
-  // }, []);
-
-  // const fetchCreatedTokens = useCallback(async (creatorAddress: string, page: number) => {
-  //   setIsLoading(true);
-  //   try {
-  //     const response = await getTokensByCreator(creatorAddress, page);
-  //     setCreatedTokens(response.tokens || []);
-  //     setCreatedTokensTotalPages(response.totalPages || 1);
-  //   } catch (error) {
-  //     console.error('Error fetching created tokens:', error);
-  //     setCreatedTokens([]);
-  //     setCreatedTokensTotalPages(1);
-  //   } finally {
-  //     setIsLoading(false);
-  //   }
-  // }, []);
-
-  // const handleTokenUpdate = useCallback(async () => {
-  //   if (addressToUse) {
-  //     await fetchCreatedTokens(addressToUse, createdTokensPage);
-  //   }
-  // }, [addressToUse, createdTokensPage, fetchCreatedTokens]);
-
-  // fetch all data
-  useEffect(() => {
-    if (!addressToUse) return;
-
-    fetchProfile(addressToUse);
-
-    // keep old APIs for now
-    // fetchTransactions(addressToUse, currentPage);
-    // fetchTokenAddresses();
-    // fetchCreatedTokens(addressToUse, createdTokensPage);
-  }, [
-    addressToUse,
-    currentPage,
-    createdTokensPage,
-    fetchProfile,
-    // fetchTransactions,
-    // fetchTokenAddresses,
-    // fetchCreatedTokens,
-  ]);
-
-  // if address changes, reset pages (avoid invalid page state)
-  useEffect(() => {
-    setCurrentPage(1);
-    setCreatedTokensPage(1);
-  }, [addressToUse]);
-
-  const handlePageChange = (newPage: number) => setCurrentPage(newPage);
-  const handleCreatedTokensPageChange = (newPage: number) => setCreatedTokensPage(newPage);
-
-  const getTokenSymbol = (tokenAddress: string) => {
-    const token = tokenAddresses.find((t) => t.address.toLowerCase() === tokenAddress.toLowerCase());
-    return token?.symbol ?? 'Unknown';
-  };
-
-  const handleTokenClick = (tokenAddress: string) => {
-    setIsTokenLoading(true);
-    router.push(`/token/${tokenAddress}`).finally(() => setIsTokenLoading(false));
-  };
-
-  const isTokenIncomplete = (token: Token) => {
-    const socialCount = [token.website, token.telegram, token.discord, token.twitter, token.youtube].filter(Boolean)
-      .length;
-    return !token.logo || !token.description || socialCount < 3;
-  };
 
   const isOwner =
     !!connectedAddress && !!addressToUse && connectedAddress.toLowerCase() === addressToUse.toLowerCase();
 
+  const [tab, setTab] = useState<TabKey>('profile');
+
+  const [profileInfo, setProfileInfo] = useState<ProfileInfo | null>(null);
+  const [profileStats, setProfileStats] = useState<ProfileStats | null>(null);
+  const [loadingHeader, setLoadingHeader] = useState(false);
+
+  const [copied, setCopied] = useState(false);
+
+  // holding + history data
+  const [holdingTokens, setHoldingTokens] = useState<TokenMini[]>([]);
+  const [loadingHolding, setLoadingHolding] = useState(false);
+
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [tokenMetaMap, setTokenMetaMap] = useState<Record<string, TokenMini>>({});
+
   const avatarSrc = useMemo(() => normalizeImageUrl(profileInfo?.avatar), [profileInfo?.avatar]);
+
+  const username = profileInfo?.username ? String(profileInfo.username) : 'Anonymous';
+  const joinedAt = (profileInfo as any)?.joinedAt ?? '';
+  const memberSince = formatMonthYear(joinedAt);
+
+  const tokensCreatedTile = '—'; // bạn bảo để trống cũng được
+
+  const totalTrades = useMemo(() => {
+    const buys = Number((profileStats as any)?.totalBuys ?? 0);
+    const sells = Number((profileStats as any)?.totalSells ?? 0);
+    const sum = buys + sells;
+    return Number.isFinite(sum) ? sum : 0;
+  }, [profileStats]);
+
+  const portfolioValue = '—'; // BE chưa có -> để —
+
+  const onCopyAddress = async () => {
+    if (!addressToUse) return;
+    try {
+      await navigator.clipboard.writeText(addressToUse);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {}
+  };
+
+  const fetchHeaderData = useCallback(async (walletAddress: string) => {
+    if (!walletAddress) return;
+
+    setLoadingHeader(true);
+    try {
+      const [info, stats] = await Promise.all([getProfileInfo(walletAddress), getProfileStats(walletAddress)]);
+      setProfileInfo({
+        ...info,
+        avatar: normalizeImageUrl((info as any).avatar),
+      } as any);
+      setProfileStats(stats as any);
+    } catch (e) {
+      console.error('Error fetching profile:', e);
+      setProfileInfo(null);
+      setProfileStats(null);
+    } finally {
+      setLoadingHeader(false);
+    }
+  }, []);
+
+  // hydrate token meta for holding
+  const fetchHolding = useCallback(async (stats: any) => {
+    const addrs: string[] = Array.isArray(stats?.favoriteTokens) ? stats.favoriteTokens.filter(Boolean).map(String) : [];
+    if (addrs.length === 0) {
+      setHoldingTokens([]);
+      return;
+    }
+
+    setLoadingHolding(true);
+    try {
+      const unique = Array.from(new Set(addrs)).slice(0, 30); // hard cap
+      const infos = await Promise.allSettled(unique.map((a) => getTokenInfo(a)));
+
+      const list: TokenMini[] = infos
+        .map((r, i) => {
+          if (r.status !== 'fulfilled') return null;
+          const d: any = r.value;
+          return {
+            address: unique[i],
+            name: String(d?.name ?? 'Unknown'),
+            symbol: String(d?.symbol ?? '—'),
+            logo: normalizeImageUrl(d?.logo),
+            marketCap: typeof d?.marketCap === 'number' ? d.marketCap : undefined,
+            holders: typeof d?.holders === 'number' ? d.holders : undefined,
+          } as TokenMini;
+        })
+        .filter(Boolean) as TokenMini[];
+
+      setHoldingTokens(list);
+    } catch (e) {
+      console.error('holding hydrate failed', e);
+      setHoldingTokens([]);
+    } finally {
+      setLoadingHolding(false);
+    }
+  }, []);
+
+  // hydrate token meta map for history (recentActivities)
+  const fetchHistoryMeta = useCallback(async (stats: any) => {
+    const acts: any[] = Array.isArray(stats?.recentActivities) ? stats.recentActivities : [];
+    const addrs = acts.map((a) => String(a?.tokenAddress ?? '').trim()).filter(Boolean);
+    const unique = Array.from(new Set(addrs)).slice(0, 50);
+
+    if (unique.length === 0) {
+      setTokenMetaMap({});
+      return;
+    }
+
+    setHistoryLoading(true);
+    try {
+      const infos = await Promise.allSettled(unique.map((a) => getTokenInfo(a)));
+
+      const map: Record<string, TokenMini> = {};
+      infos.forEach((r, idx) => {
+        const addr = unique[idx];
+        if (r.status !== 'fulfilled') return;
+        const d: any = r.value;
+        map[addr] = {
+          address: addr,
+          name: String(d?.name ?? 'Unknown'),
+          symbol: String(d?.symbol ?? '—'),
+          logo: normalizeImageUrl(d?.logo),
+          marketCap: typeof d?.marketCap === 'number' ? d.marketCap : undefined,
+          holders: typeof d?.holders === 'number' ? d.holders : undefined,
+        };
+      });
+
+      setTokenMetaMap(map);
+    } catch (e) {
+      console.error('history hydrate failed', e);
+      setTokenMetaMap({});
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!addressToUse) return;
+    fetchHeaderData(addressToUse);
+  }, [addressToUse, fetchHeaderData]);
+
+  // when stats loaded -> load holding + history meta
+  useEffect(() => {
+    if (!profileStats) return;
+    fetchHolding(profileStats);
+    fetchHistoryMeta(profileStats);
+  }, [profileStats, fetchHolding, fetchHistoryMeta]);
+
+  useEffect(() => {
+    setTab('profile');
+  }, [addressToUse]);
+
+  const recentActivities: any[] = useMemo(() => {
+    const acts: any[] = Array.isArray((profileStats as any)?.recentActivities) ? (profileStats as any).recentActivities : [];
+    return acts;
+  }, [profileStats]);
 
   return (
     <Layout>
       <SEO
-        title={`${addressToUse ? `Profile: ${formatAddressV2(addressToUse)}` : 'Your Profile'} - Bondle`}
-        description={`View token holdings and transactions for ${addressToUse ? formatAddressV2(addressToUse) : 'your account'}.`}
+        title={`${addressToUse ? `User Profile: ${formatAddressV2(addressToUse)}` : 'User Profile'} - Bondle`}
+        description="User profile dashboard"
         image="seo/profile.jpg"
       />
 
       <div className="min-h-screen flex flex-col items-center justify-start py-10">
         <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-10 xl:px-16">
-          {/* Title aligned LEFT */}
           <div className="w-full mb-6">
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-left">
-              {isOwner ? 'Your Profile' : `Profile: ${formatAddressV2(addressToUse)}`}
-            </h1>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-left">User Profile</h1>
           </div>
 
-          {/* ✅ User Info (NEW) */}
-          <div className="w-full mb-8">
-            <div className="bg-[var(--card)] rounded-lg p-4 sm:p-5">
-              {profileLoading ? (
-                <div className="flex justify-center py-3">
-                  <LoadingBar size="medium" />
+          {/* Header */}
+          <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 sm:p-6 shadow-sm">
+            {loadingHeader ? (
+              <div className="flex justify-center py-6">
+                <LoadingBar size="medium" />
+              </div>
+            ) : (
+              <div className="flex items-start gap-4">
+                <div className="relative w-14 h-14 rounded-2xl overflow-hidden bg-[var(--card2)] border border-[var(--card-border)] flex items-center justify-center shrink-0">
+                  {avatarSrc ? (
+                    <Image src={avatarSrc} alt="avatar" fill sizes="56px" className="object-cover" />
+                  ) : (
+                    <span className="text-sm font-extrabold opacity-80">
+                      {String(username || 'A').slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
                 </div>
-              ) : profileInfo ? (
-                <div className="flex items-start gap-4">
-                  <div className="relative w-12 h-12 rounded-lg bg-[var(--card2)] overflow-hidden flex items-center justify-center">
-                    {avatarSrc ? (
-                      <Image src={avatarSrc} alt="avatar" fill sizes="48px" className="object-cover" />
-                    ) : (
-                      <span className="text-gray-500 text-xs">No Avatar</span>
-                    )}
+
+                <div className="flex-1 min-w-0">
+                  <div className="text-lg sm:text-xl font-extrabold tracking-tight truncate">
+                    {username}
                   </div>
 
-                  <div className="flex-1">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                      <div>
-                        <p className="text-sm sm:text-base font-semibold text-[var(--accent)]">
-                          {profileInfo.username || 'Anonymous'}
-                        </p>
-                        <p className="text-gray-400 text-[10px] sm:text-xs">
-                          {formatAddressV2(profileInfo.walletAddress)}
-                        </p>
-                      </div>
+                  {/* wallet + copy under name */}
+                  <div className="mt-1 flex items-center gap-2 text-sm opacity-80 min-w-0">
+                    <Wallet className="w-4 h-4 opacity-70 shrink-0" />
+                    <span className="font-mono truncate">{addressToUse ? formatAddressV2(addressToUse) : '—'}</span>
 
-                      <div className="flex gap-2 sm:gap-3 flex-wrap">
-                        <div className="bg-[var(--card2)] rounded-lg px-3 py-2">
-                          <p className="text-[10px] text-gray-400">Created</p>
-                          <p className="text-xs font-semibold">{profileInfo.totalTokensCreated}</p>
-                        </div>
-                        <div className="bg-[var(--card2)] rounded-lg px-3 py-2">
-                          <p className="text-[10px] text-gray-400">Bought</p>
-                          <p className="text-xs font-semibold">{profileInfo.totalTokensBought}</p>
-                        </div>
-                        <div className="bg-[var(--card2)] rounded-lg px-3 py-2">
-                          <p className="text-[10px] text-gray-400">Sold</p>
-                          <p className="text-xs font-semibold">{profileInfo.totalTokensSold}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {profileInfo.bio ? <p className="text-gray-300 text-xs mt-2">{profileInfo.bio}</p> : null}
-                    {profileInfo.joinedAt ? (
-                      <p className="text-gray-500 text-[10px] mt-2">Joined: {profileInfo.joinedAt}</p>
+                    {addressToUse ? (
+                      <button
+                        onClick={onCopyAddress}
+                        className="ml-1 px-2.5 py-1 rounded-xl border border-[var(--card-border)] bg-[var(--card2)] hover:bg-[var(--card-hover)] transition-colors"
+                        title="Copy address"
+                      >
+                        {copied ? <Check className="w-4 h-4 text-[var(--accent)]" /> : <Copy className="w-4 h-4" />}
+                      </button>
                     ) : null}
                   </div>
+
+                  {profileInfo?.bio ? <div className="mt-2 text-sm opacity-80">{String(profileInfo.bio)}</div> : null}
                 </div>
-              ) : (
-                <p className="text-gray-400 text-sm">No profile info.</p>
-              )}
-            </div>
+              </div>
+            )}
+          </div>
+
+          {/* Stats */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 sm:gap-5 mt-5">
+            <StatTile label="Portfolio Value" value={portfolioValue} />
+            <StatTile label="Tokens Created" value={loadingHeader ? '—' : tokensCreatedTile} />
+            <StatTile label="Total Trades" value={loadingHeader ? '—' : String(totalTrades)} />
+            <StatTile label="Member Since" value={loadingHeader ? '—' : memberSince} />
           </div>
 
           {/* Tabs */}
-          <div className="mb-8 w-full">
-            <div className="flex justify-center mb-4 space-x-1 bg-[var(--card2)] rounded-lg p-1">
-              <TokenTab title="Tokens Held" isActive={activeTab === 'held'} onClick={() => setActiveTab('held')} />
-              <TokenTab title="Tokens Created" isActive={activeTab === 'created'} onClick={() => setActiveTab('created')} />
-            </div>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <TabButton active={tab === 'profile'} title="Profile Info" onClick={() => setTab('profile')} />
+            <TabButton active={tab === 'holding'} title="Holding Tokens" onClick={() => setTab('holding')} />
+            <TabButton active={tab === 'created'} title="Created Tokens" onClick={() => setTab('created')} />
+            <TabButton active={tab === 'history'} title="Transaction History" onClick={() => setTab('history')} />
+          </div>
 
-            {/* Tokens Held */}
-            {activeTab === 'held' && (
-              <div>
-                {tokenAddresses.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {tokenAddresses.map((token) => (
-                      <TokenBalanceItem
-                        key={token.address}
-                        tokenAddress={token.address}
-                        symbol={token.symbol}
-                        onClick={() => handleTokenClick(token.address)}
-                      />
-                    ))}
+          {/* Content */}
+          <div className="mt-5 space-y-4">
+            {tab === 'profile' && (
+              <>
+                <SectionCard title="Basic Information">
+                  <div className="space-y-3 text-sm">
+                    <div>
+                      <div className="text-xs opacity-70">Username</div>
+                      <div className="font-semibold">{username}</div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs opacity-70">Bio</div>
+                      <div className="opacity-90">{profileInfo?.bio ? String(profileInfo.bio) : '—'}</div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs opacity-70">Member Since</div>
+                      <div className="opacity-90">{memberSince}</div>
+                    </div>
                   </div>
-                ) : (
-                  <p className="text-gray-400 text-center text-sm sm:text-base">No tokens held</p>
-                )}
-              </div>
+                </SectionCard>
+
+                <SectionCard title="Wallet Information">
+                  <div className="space-y-3 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs opacity-70">Wallet Address</div>
+                        <div className="font-mono truncate">{addressToUse || '—'}</div>
+                      </div>
+                      {addressToUse ? (
+                        <button
+                          onClick={onCopyAddress}
+                          className="px-4 py-2.5 rounded-xl font-extrabold border border-[var(--card-border)] bg-[var(--card2)] hover:bg-[var(--card-hover)] transition-colors"
+                        >
+                          {copied ? 'COPIED' : 'COPY'}
+                        </button>
+                      ) : null}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card2)] p-3">
+                        <div className="text-xs opacity-70">Total Buys</div>
+                        <div className="font-extrabold">{String((profileStats as any)?.totalBuys ?? 0)}</div>
+                      </div>
+                      <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card2)] p-3">
+                        <div className="text-xs opacity-70">Total Sells</div>
+                        <div className="font-extrabold">{String((profileStats as any)?.totalSells ?? 0)}</div>
+                      </div>
+                      <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card2)] p-3">
+                        <div className="text-xs opacity-70">Total Volume (SOL)</div>
+                        <div className="font-extrabold">{String((profileStats as any)?.totalVolumeSOL ?? 0)}</div>
+                      </div>
+                    </div>
+                  </div>
+                </SectionCard>
+              </>
             )}
 
-            {/* Tokens Created */}
-            {activeTab === 'created' && (
-              <div>
-                {isLoading ? (
-                  <div className="flex justify-center py-8">
+            {tab === 'holding' && (
+              <SectionCard title="Holding Tokens">
+                {loadingHolding ? (
+                  <div className="flex justify-center py-6">
                     <LoadingBar size="medium" />
                   </div>
-                ) : createdTokens.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {createdTokens.map((token) => {
-                      const logoSrc = normalizeImageUrl(token.logo || '/chats/noimg.svg');
+                ) : holdingTokens.length === 0 ? (
+                  <div className="text-sm opacity-70 text-center py-4">No holding tokens.</div>
+                ) : (
+                  <div className="space-y-3">
+                    {holdingTokens.map((t) => (
+                      <button
+                        key={t.address}
+                        onClick={() => router.push(`/token/${t.address}`)}
+                        className="w-full text-left rounded-2xl border border-[var(--card-border)] bg-[var(--card2)] hover:bg-[var(--card-hover)] transition-colors p-4 flex items-center gap-4"
+                      >
+                        <div className="relative w-12 h-12 rounded-2xl overflow-hidden bg-[var(--card)] border border-[var(--card-border)] shrink-0">
+                          {t.logo ? (
+                            <Image src={t.logo} alt={t.symbol} fill sizes="48px" className="object-cover" />
+                          ) : null}
+                        </div>
 
-                      return (
-                        <div
-                          key={token.address}
-                          className="bg-[var(--card)] rounded-lg p-3 sm:p-4 cursor-pointer hover:bg-[var(--card-hover)] transition-colors duration-200 flex items-start relative"
-                          onClick={() => handleTokenClick(token.address)}
-                        >
-                          {isOwner && isTokenIncomplete(token) && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedToken(token);
-                                setIsUpdateModalOpen(true);
-                              }}
-                              className="absolute top-2 right-2 p-2 rounded-full bg-[var(--card-boarder)] hover:bg-[#444444] transition-colors duration-200"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-4 w-4 text-gray-400"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                              >
-                                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                              </svg>
-                            </button>
-                          )}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-extrabold truncate">{t.name}</div>
+                          <div className="text-xs opacity-70 truncate">{t.symbol}</div>
+                        </div>
 
-                          <div className="relative w-16 h-16 mr-3 sm:mr-4 rounded-lg overflow-hidden bg-[var(--card2)]">
-                            <Image
-                              src={logoSrc}
-                              alt={`${token.name} logo`}
-                              fill
-                              sizes="64px"
-                              className="object-cover"
-                            />
-                          </div>
-
-                          <div>
-                            <h3 className="text-xs sm:text-sm font-semibold text-[var(--accent)] mb-1">
-                              {token.name} <span className="text-gray-400">({token.symbol})</span>
-                            </h3>
-                            <p className="text-gray-400 text-[9px] sm:text-xs">{token.description}</p>
+                        <div className="text-right shrink-0">
+                          <div className="text-xs opacity-70">MC</div>
+                          <div className="font-extrabold">
+                            {typeof t.marketCap === 'number' ? `$${t.marketCap.toLocaleString()}` : '—'}
                           </div>
                         </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </SectionCard>
+            )}
+
+            {tab === 'created' && (
+              <SectionCard title="Created Tokens">
+                <div className="text-sm opacity-70 text-center py-4">—</div>
+              </SectionCard>
+            )}
+
+            {tab === 'history' && (
+              <SectionCard title="Transaction History">
+                {historyLoading ? (
+                  <div className="flex justify-center py-6">
+                    <LoadingBar size="medium" />
+                  </div>
+                ) : recentActivities.length === 0 ? (
+                  <div className="text-sm opacity-70 text-center py-4">No recent activities.</div>
+                ) : (
+                  <div className="space-y-3">
+                    {recentActivities.map((a, idx) => {
+                      const typeRaw = String(a?.type ?? '').toUpperCase();
+                      const isBuy = typeRaw.includes('BUY');
+                      const badgeText = isBuy ? 'BUY' : 'SELL';
+
+                      const tokenAddress = String(a?.tokenAddress ?? '').trim();
+                      const meta = tokenMetaMap[tokenAddress];
+
+                      const tokenName = meta?.name ?? 'Unknown';
+                      const tokenSymbol = meta?.symbol ?? '—';
+                      const logo = meta?.logo;
+
+                      return (
+                        <button
+                          key={`${tokenAddress}-${idx}`}
+                          onClick={() => (tokenAddress ? router.push(`/token/${tokenAddress}`) : null)}
+                          className="w-full text-left rounded-2xl border border-[var(--card-border)] bg-[var(--card2)] hover:bg-[var(--card-hover)] transition-colors p-4 flex items-center gap-4"
+                        >
+                          <div
+                            className={`px-3 py-1 rounded-xl text-xs font-extrabold border border-[var(--card-border)] ${
+                              isBuy ? 'bg-[var(--card)] text-[var(--accent)]' : 'bg-[var(--card)] text-red-400'
+                            }`}
+                          >
+                            {badgeText}
+                          </div>
+
+                          <div className="relative w-10 h-10 rounded-2xl overflow-hidden bg-[var(--card)] border border-[var(--card-border)] shrink-0">
+                            {logo ? <Image src={logo} alt={tokenSymbol} fill sizes="40px" className="object-cover" /> : null}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="font-extrabold truncate">{tokenName}</div>
+                            <div className="text-xs opacity-70 truncate">{tokenSymbol}</div>
+                            <div className="text-xs opacity-70">{timeAgo(a?.timestamp)}</div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <div className="font-extrabold">
+                              {isBuy ? '+' : '-'}
+                              {Number(a?.amount ?? 0).toLocaleString()}
+                            </div>
+                            <div className="text-xs opacity-70">amount</div>
+                          </div>
+                        </button>
                       );
                     })}
                   </div>
-                ) : (
-                  <p className="text-gray-400 text-center text-sm sm:text-base">No tokens created</p>
                 )}
-
-                {createdTokensTotalPages > 1 && (
-                  <Pagination
-                    currentPage={createdTokensPage}
-                    totalPages={createdTokensTotalPages}
-                    onPageChange={handleCreatedTokensPageChange}
-                  />
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Transactions */}
-          <div className="w-full">
-            <h2 className="text-lg sm:text-xl font-semibold text-[var(--accent)] mb-4 text-left">Recent Transactions</h2>
-
-            {isLoading ? (
-              <div className="flex justify-center py-8">
-                <LoadingBar size="medium" />
-              </div>
-            ) : transactions && transactions.length > 0 ? (
-              <div className="overflow-x-auto bg-[var(--card)] rounded-lg">
-                <table className="min-w-full divide-y divide-[var(--card-boarder)]">
-                  <thead className="bg-[var(--card2)]">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        Type
-                      </th>
-                      <th className="px-4 py-3 text-left text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        Token
-                      </th>
-                      <th className="px-4 py-3 text-left text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        Amount
-                      </th>
-                      <th className="px-4 py-3 text-left text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        Bone
-                      </th>
-                      <th className="px-4 py-3 text-left text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        Date
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-[var(--card-boarder)]">
-                    {transactions.map((tx) => (
-                      <tr key={tx.id} className="hover:bg-[var(--card-hover)] transition-colors duration-150">
-                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">
-                          {(tx as any).type}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">
-                          {getTokenSymbol((tx as any).recipientAddress)}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">
-                          {formatAmountV3((tx as any).tokenAmount)}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">
-                          {formatAmountV3((tx as any).ethAmount)} BONE
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-[10px] sm:text-xs text-gray-300">
-                          {formatTimestamp((tx as any).timestamp)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-gray-400 bg-[var(--card)] rounded-lg p-4 text-center">No recent transactions.</p>
-            )}
-
-            {totalPages > 1 && (
-              <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={handlePageChange} />
+              </SectionCard>
             )}
           </div>
         </div>
       </div>
-
-      {/* Loading overlay */}
-      {isTokenLoading && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <LoadingBar size="large" />
-        </div>
-      )}
-
-      {/* Update Modal */}
-      {/* {selectedToken && (
-        <TokenUpdateModal
-          token={selectedToken}
-          isOpen={isUpdateModalOpen}
-          onClose={() => {
-            setIsUpdateModalOpen(false);
-            setSelectedToken(null);
-          }}
-          onUpdate={handleTokenUpdate}
-        />
-      )} */}
     </Layout>
   );
 };
