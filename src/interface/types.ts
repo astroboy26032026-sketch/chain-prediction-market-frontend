@@ -184,6 +184,45 @@ export type ProfileStatsResponse = {
 };
 
 /* =========================================================
+   ✅ Points (NEW) - /points/overview + /points/view + /points/history
+   ========================================================= */
+
+/**
+ * GET /points/overview?walletAddress=...
+ */
+export type PointsOverviewResponse = {
+  points: number;
+  tickets: number;
+};
+
+/**
+ * GET /points/view?walletAddress=...
+ */
+export type PointsViewResponse = {
+  rank: {
+    current: string;
+    next: string;
+    currentVolume: number;
+    nextRankVolume: number;
+    remainingVolume: number;
+    progressPercent: number;
+  };
+};
+
+/**
+ * GET /points/history?walletAddress=...
+ */
+export type PointsHistoryItem = {
+  type: string;
+  points: number;
+  timestamp: string; // ISO datetime string
+};
+
+export type PointsHistoryResponse = {
+  items: PointsHistoryItem[];
+};
+
+/* =========================================================
    ✅ Token Holders (Solana) - GET /token/holders
    ========================================================= */
 
@@ -502,9 +541,6 @@ export type TradingSellResponse = {
 /**
  * ✅ NEW: Preview buy (bonding curve)
  * POST /trading/preview-buy
- *
- * Request: { tokenAddress, amountSol }
- * Response: { estimatedTokens, price, feeLamports, totalSol, ... }
  */
 export type TradingPreviewBuyRequest = {
   tokenAddress: string;
@@ -532,9 +568,6 @@ export type TradingPreviewBuyResponse = {
 /**
  * ✅ NEW: Preview sell (bonding curve)
  * POST /trading/preview-sell
- *
- * Request: { tokenAddress, amountInToken }
- * Response: { estimatedSol, lamportsOut, price, ... }
  */
 export type TradingPreviewSellRequest = {
   tokenAddress: string;
@@ -554,14 +587,10 @@ export type TradingPreviewSellResponse = {
 
 /**
  * Submit signature (generic)
- * - Một số BE yêu cầu signature + transactionId
- * - Một số BE nhận signature và tự map theo transactionId trong path
- * => FE nên support cả 2 dạng payload.
  *
  * NOTE:
- * - Trong code FE bạn đang gọi: submitSignature(endpoint, { id, txSignature })
- *   => BE của bạn có vẻ đang dùng keys khác.
- * - Để không break, type này support cả 2 naming.
+ * - FE đang gọi: submitSignature(endpoint, { id, txSignature })
+ * => type support cả 2 naming.
  */
 export type SubmitSignatureRequest = {
   /** base58 signature string */

@@ -130,6 +130,11 @@ const Navbar: React.FC = () => {
     router.push(`/profile/${address}`);
   };
 
+    const handlePointClick = () => {
+    if (!address) return toast.error('Please connect your wallet first');
+    router.push(`/point/${address}`);
+  };
+
   return (
     <>
       <nav className="navbar app-navbar fixed left-0 top-0 z-40 h-screen w-[248px] flex flex-col justify-between px-4 py-6">
@@ -169,10 +174,10 @@ const Navbar: React.FC = () => {
               <span className="sidebar-label">Rewards</span>
             </NavLink>
 
-            <NavLink href="/point">
+            <button onClick={handlePointClick} className="sidebar-link">
               <Gem className="sidebar-icon" />
               <span className="sidebar-label">Points</span>
-            </NavLink>
+            </button>
 
             <NavLink href="/stake">
               <Coins className="sidebar-icon" />

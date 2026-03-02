@@ -43,6 +43,23 @@ export type ProfileStatsResponse = realApi.ProfileStatsResponse;
 export const getProfileStats = (...args: Parameters<typeof realApi.getProfileStats>) => realApi.getProfileStats(...args);
 
 // =====================
+// ✅ Points (NEW DOC)
+// - GET /points/overview?walletAddress=...
+// - GET /points/view?walletAddress=...
+// - GET /points/history?walletAddress=...
+// =====================
+export type PointsOverviewResponse = realApi.PointsOverviewResponse;
+export const getPointsOverview = (...args: Parameters<typeof realApi.getPointsOverview>) =>
+  realApi.getPointsOverview(...args);
+
+export type PointsViewResponse = realApi.PointsViewResponse;
+export const getPointsView = (...args: Parameters<typeof realApi.getPointsView>) => realApi.getPointsView(...args);
+
+export type PointsHistoryResponse = realApi.PointsHistoryResponse;
+export const getPointsHistory = (...args: Parameters<typeof realApi.getPointsHistory>) =>
+  realApi.getPointsHistory(...args);
+
+// =====================
 // ✅ NEW BE API (Solana): Token Info / Price / Liquidity / Trades / Holders
 // =====================
 export const getTokenInfo = (...args: Parameters<typeof realApi.getTokenInfo>) => realApi.getTokenInfo(...args);
