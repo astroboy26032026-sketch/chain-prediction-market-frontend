@@ -83,10 +83,14 @@ const TierBadge: React.FC<{ tierNum: number }> = ({ tierNum }) => {
 /* =========================
    Helpers
 ========================= */
-const fmtNum = (n: number) => (Number(n ?? 0)).toLocaleString();
+const fmtNum = (n: number) => Number(n ?? 0).toLocaleString();
 
 const fmtDate = (iso: string) =>
-  new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
+  new Date(iso).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+  });
 
 /* =========================
    Types for page state
@@ -105,7 +109,7 @@ type TierProgress = {
   rangeEndPoints: number | null;
 
   pointsIntoRange: number;
-  rangeSize: number; // ✅ always number (max tier => 0)
+  rangeSize: number;
 };
 
 type HistoryRow = {
@@ -144,6 +148,8 @@ function buildTierProgress(points: number, tickets: number): TierProgress {
 /* =========================
    Page
 ========================= */
+const HISTORY_STEP = 10;
+
 const PointsPage: React.FC = () => {
   const router = useRouter();
   const walletAddress = useMemo(() => {
@@ -155,12 +161,15 @@ const PointsPage: React.FC = () => {
   const [tierProg, setTierProg] = useState<TierProgress | null>(null);
   const [rows, setRows] = useState<HistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [visibleCount, setVisibleCount] = useState(HISTORY_STEP);
 
   useEffect(() => {
     if (!router.isReady) return;
 
     (async () => {
       setLoading(true);
+      setVisibleCount(HISTORY_STEP);
+
       try {
         if (!walletAddress) {
           const tp = buildTierProgress(0, 0);
@@ -204,6 +213,9 @@ const PointsPage: React.FC = () => {
     return `Tier ${tierProg.nextTier.tier} · ${TIER_LABEL[plant]}`;
   }, [tierProg?.nextTier]);
 
+  const visibleRows = useMemo(() => rows.slice(0, visibleCount), [rows, visibleCount]);
+  const hasMoreRows = visibleCount < rows.length;
+
   return (
     <Layout>
       <SEO title="Points" description="Earn points for doing stuff: trade, create, stake have fun!" />
@@ -223,14 +235,14 @@ const PointsPage: React.FC = () => {
               <div className="flex items-center justify-end gap-6">
                 <div>
                   <div className="text-sm opacity-80">Points</div>
-                  <div className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+                  <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[var(--primary)]">
                     {tierProg ? fmtNum(tierProg.points) : '—'}
                   </div>
                 </div>
 
                 <div>
                   <div className="text-sm opacity-80">Tickets</div>
-                  <div className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+                  <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[var(--primary)]">
                     {overview ? fmtNum(overview.tickets) : '—'}
                   </div>
                 </div>
@@ -274,7 +286,6 @@ const PointsPage: React.FC = () => {
                   : 'Max tier reached'}
               </div>
 
-              {/* ✅ only show range info when nextTier exists */}
               {tierProg?.nextTier ? (
                 <div className="opacity-70">
                   {fmtNum(tierProg.pointsIntoRange)} / {fmtNum(tierProg.rangeSize)} pts in this tier
@@ -314,11 +325,13 @@ const PointsPage: React.FC = () => {
                           </td>
                         </tr>
                       ) : (
-                        rows.map((r, idx) => (
-                          <tr key={idx} className="hover:bg-[var(--card-hover)]">
+                        visibleRows.map((r, idx) => (
+                          <tr key={`${r.dateISO}-${idx}`} className="hover:bg-[var(--card-hover)]">
                             <td className="px-4 py-3 text-center">{fmtDate(r.dateISO)}</td>
                             <td className="px-4 py-3 text-center">{r.type || '—'}</td>
-                            <td className="px-4 py-3 text-center font-extrabold">{fmtNum(r.points)}</td>
+                            <td className="px-4 py-3 text-center font-extrabold text-[var(--primary)]">
+                              {fmtNum(r.points)}
+                            </td>
                           </tr>
                         ))
                       )}
@@ -326,6 +339,18 @@ const PointsPage: React.FC = () => {
                   </table>
                 </div>
               </div>
+
+              {!loading && hasMoreRows ? (
+                <div className="px-4 sm:px-6 py-5 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount((prev) => Math.min(prev + HISTORY_STEP, rows.length))}
+                    className="btn btn-primary min-w-[160px] font-semibold flex items-center justify-center"
+                  >
+                    More
+                  </button>
+                </div>
+              ) : null}
 
               {!loading && rows.length === 0 ? (
                 <div className="px-4 sm:px-6 py-6 text-center opacity-80">
