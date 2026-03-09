@@ -998,7 +998,7 @@ const RewardPage: React.FC = () => {
         .marquee-track {
           display: inline-block;
           white-space: nowrap;
-          animation: marqueeX 30s linear infinite;
+          animation: marqueeX 90s linear infinite;
           will-change: transform;
           padding-left: 100%;
         }
