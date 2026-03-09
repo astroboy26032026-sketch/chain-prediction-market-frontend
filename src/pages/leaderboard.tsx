@@ -3,7 +3,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import Layout from "@/components/layout/Layout";
 import SEO from "@/components/seo/SEO";
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/router";
 import LoadingBar from "@/components/ui/LoadingBar";
 import { getLeaderboardTop, getLeaderboardList } from "@/utils/api.index";
@@ -18,13 +17,13 @@ type LeaderItem = {
   name: string;
   subtitle?: string;
   icon: string;
-  creator: { handle: string; avatar: string }; // giữ type để không đụng nhiều chỗ
+  creator: { handle: string; avatar: string };
   mcapUsd: number;
   vol24hUsd: number;
   mcapChangePct: number;
   volChangePct: number;
   createdAgo: string;
-  followers?: number | "n/a"; // giữ type để không đụng mapper cũ
+  followers?: number | "n/a";
 };
 
 /* =========================
@@ -66,11 +65,10 @@ const shortAddr = (addr?: string) => {
 
 const DEFAULT_ICON = "/placeholder-token.png";
 const DEFAULT_AVATAR = "/avatars/avatar1.png";
+const LIST_STEP = 10;
 
 /**
  * Map API /leaderboard/top item -> LeaderItem (GIỮ UI)
- * API schema:
- * { rank, tokenAddress, name, symbol, subtitle, creatorAddress, marketCap, marketCapChange24h, volume24h, volumeChange24h, createdAt, logo }
  */
 const mapTopToLeader = (t: any): LeaderItem => {
   const address = String(t.tokenAddress || "");
@@ -98,8 +96,6 @@ const mapTopToLeader = (t: any): LeaderItem => {
 
 /**
  * Map API /leaderboard/list item -> LeaderItem (GIỮ UI)
- * API schema:
- * { rank, tokenAddress, name, symbol, creatorAddress, holders, marketCap, marketCapChange24h, logo }
  */
 const mapListToLeader = (t: any): LeaderItem => {
   const address = String(t.tokenAddress || "");
@@ -133,6 +129,7 @@ const mapListToLeader = (t: any): LeaderItem => {
 const LeaderboardPage: React.FC = () => {
   const [items, setItems] = useState<LeaderItem[]>([]);
   const [isPageLoading, setIsPageLoading] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(LIST_STEP);
   const router = useRouter();
 
   useEffect(() => {
@@ -156,9 +153,11 @@ const LeaderboardPage: React.FC = () => {
 
         merged.sort((a, b) => (a.rank || 0) - (b.rank || 0));
         setItems(merged);
+        setVisibleCount(LIST_STEP);
       } catch (e) {
         console.error("Failed to load leaderboard:", e);
         setItems([]);
+        setVisibleCount(LIST_STEP);
       }
     })();
   }, []);
@@ -174,6 +173,8 @@ const LeaderboardPage: React.FC = () => {
   }, [router.events]);
 
   const data = useMemo(() => items, [items]);
+  const visibleData = useMemo(() => data.slice(0, visibleCount), [data, visibleCount]);
+  const hasMore = visibleCount < data.length;
 
   const handleBuyClick = (href: string, isExternal = false) => {
     setIsPageLoading(true);
@@ -253,7 +254,6 @@ const LeaderboardPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* ✅ BỎ LOGO CREATOR: chỉ giữ text */}
                   <div className="mt-6 flex items-center gap-2 text-sm opacity-90">
                     <span className="opacity-70">by</span>
                     <span className="font-semibold">{shortAddr(t.creator.handle)}</span>
@@ -273,7 +273,7 @@ const LeaderboardPage: React.FC = () => {
             </div>
 
             <div className="divide-y divide-[var(--card-border)]">
-              {data.map((t) => {
+              {visibleData.map((t) => {
                 const href = `/token/${encodeURIComponent(t.address)}`;
                 return (
                   <div
@@ -299,18 +299,18 @@ const LeaderboardPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* creator (✅ bỏ avatar, chỉ còn handle) */}
+                    {/* creator */}
                     <div className="col-span-3 hidden sm:flex items-center min-w-0">
                       <span className="truncate">{shortAddr(t.creator.handle)}</span>
                     </div>
 
-                    {/* ✅ Thay followers bằng MarketCap */}
+                    {/* MarketCap */}
                     <div className="col-span-2 text-sm">
                       <div className="font-semibold">{usd(t.mcapUsd)}</div>
                       <div className="text-xs opacity-70">{pctEl(t.mcapChangePct)}</div>
                     </div>
 
-                    {/* buy (✅ màu giống create: btn-primary) */}
+                    {/* buy */}
                     <div className="col-span-1 mt-3 md:mt-0 md:justify-self-end">
                       <button className="btn btn-primary" onClick={() => handleBuyClick(href)}>
                         buy
@@ -324,6 +324,18 @@ const LeaderboardPage: React.FC = () => {
                 <div className="px-6 py-10 text-center opacity-70">No data</div>
               )}
             </div>
+
+            {data.length > 0 && hasMore ? (
+              <div className="px-4 sm:px-6 py-5 flex justify-center border-t border-[var(--card-border)]">
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((prev) => Math.min(prev + LIST_STEP, data.length))}
+                  className="btn btn-primary min-w-[160px] font-semibold flex items-center justify-center"
+                >
+                  More
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
