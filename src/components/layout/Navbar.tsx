@@ -130,9 +130,14 @@ const Navbar: React.FC = () => {
     router.push(`/profile/${address}`);
   };
 
-    const handlePointClick = () => {
+  const handlePointClick = () => {
     if (!address) return toast.error('Please connect your wallet first');
     router.push(`/point/${address}`);
+  };
+
+  const handleRewardClick = () => {
+    if (!address) return toast.error('Please connect your wallet first');
+    router.push(`/reward/${address}`);
   };
 
   return (
@@ -169,10 +174,10 @@ const Navbar: React.FC = () => {
               <span className="sidebar-label">Referrals</span>
             </NavLink>
 
-            <NavLink href="/reward">
+            <button onClick={handleRewardClick} className="sidebar-link">
               <Gift className="sidebar-icon" />
               <span className="sidebar-label">Rewards</span>
-            </NavLink>
+            </button>
 
             <button onClick={handlePointClick} className="sidebar-link">
               <Gem className="sidebar-icon" />

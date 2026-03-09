@@ -8,10 +8,57 @@ import * as realApi from './api';
  */
 
 // =====================
+// ✅ TYPE RE-EXPORTS
+// =====================
+export type { IdempotencyOptions } from './api';
+
+export type { UpdateTokenRequest } from './api';
+
+export type { ProfileInfoResponse, ProfileStatsResponse } from './api';
+
+export type { PointsOverviewResponse, PointsViewResponse, PointsHistoryResponse } from './api';
+
+export type {
+  RewardSpinHistoryItem,
+  RewardInfoResponse,
+  RewardClaimRequest,
+  RewardClaimResponse,
+  RewardConvertRequest,
+  RewardConvertResponse,
+  RewardMarqueeItem,
+  RewardMarqueeResponse,
+  RewardSpinConfigResponse,
+  RewardSpinRequest,
+  RewardSpinResponse,
+} from './api';
+
+export type {
+  PrepareMintRequest,
+  PrepareMintResponse,
+  ConfirmMintRequest,
+  ConfirmMintResponse,
+  UploadTokenImageRequest,
+  UploadTokenImageResponse,
+  CreateTokenDraftRequest,
+  CreateTokenDraftResponse,
+  PreviewInitialBuyRequest,
+  PreviewInitialBuyResponse,
+  FinalizeTokenRequest,
+  FinalizeTokenResponse,
+} from './api';
+
+export type { TokenCategory, TokenSearchFilters } from './api';
+
+export type {
+  LeaderboardTopItem,
+  LeaderboardListItem,
+  LeaderboardListResponse,
+} from './api';
+
+// =====================
 // ✅ AUTH helpers
 // =====================
 export const AUTH_BASE_URL = realApi.AUTH_BASE_URL;
-
 export const authApi = realApi.authApi;
 
 export const getStoredToken = realApi.getStoredToken;
@@ -21,43 +68,52 @@ export const setAuthToken = realApi.setAuthToken;
 // =====================
 // ✅ Idempotency helpers
 // =====================
-export type IdempotencyOptions = realApi.IdempotencyOptions;
 export const newIdempotencyKey = realApi.newIdempotencyKey;
 
 // =====================
 // ✅ Token metadata update (STUB until BE is ready)
 // =====================
-export type UpdateTokenRequest = realApi.UpdateTokenRequest;
 export const updateToken = (...args: Parameters<typeof realApi.updateToken>) => realApi.updateToken(...args);
 
 // =====================
-// ✅ Profile (NEW DOC)
-// - GET /profile/info?walletAddress=...
-// - GET /profile/stats?walletAddress=...&limitActivities=20&limitFavoriteTokens=10
+// ✅ Profile
 // =====================
-export type ProfileInfoResponse = realApi.ProfileInfoResponse;
 export const getProfileInfo = (...args: Parameters<typeof realApi.getProfileInfo>) => realApi.getProfileInfo(...args);
 
-// ✅ NEW: stats endpoint
-export type ProfileStatsResponse = realApi.ProfileStatsResponse;
 export const getProfileStats = (...args: Parameters<typeof realApi.getProfileStats>) => realApi.getProfileStats(...args);
 
 // =====================
-// ✅ Points (NEW DOC)
-// - GET /points/overview?walletAddress=...
-// - GET /points/view?walletAddress=...
-// - GET /points/history?walletAddress=...
+// ✅ Points
 // =====================
-export type PointsOverviewResponse = realApi.PointsOverviewResponse;
 export const getPointsOverview = (...args: Parameters<typeof realApi.getPointsOverview>) =>
   realApi.getPointsOverview(...args);
 
-export type PointsViewResponse = realApi.PointsViewResponse;
-export const getPointsView = (...args: Parameters<typeof realApi.getPointsView>) => realApi.getPointsView(...args);
+export const getPointsView = (...args: Parameters<typeof realApi.getPointsView>) =>
+  realApi.getPointsView(...args);
 
-export type PointsHistoryResponse = realApi.PointsHistoryResponse;
 export const getPointsHistory = (...args: Parameters<typeof realApi.getPointsHistory>) =>
   realApi.getPointsHistory(...args);
+
+// =====================
+// ✅ Reward
+// =====================
+export const getRewardInfo = (...args: Parameters<typeof realApi.getRewardInfo>) =>
+  realApi.getRewardInfo(...args);
+
+export const claimReward = (...args: Parameters<typeof realApi.claimReward>) =>
+  realApi.claimReward(...args);
+
+export const convertRewardPoints = (...args: Parameters<typeof realApi.convertRewardPoints>) =>
+  realApi.convertRewardPoints(...args);
+
+export const getRewardMarquee = (...args: Parameters<typeof realApi.getRewardMarquee>) =>
+  realApi.getRewardMarquee(...args);
+
+export const getRewardSpinConfig = (...args: Parameters<typeof realApi.getRewardSpinConfig>) =>
+  realApi.getRewardSpinConfig(...args);
+
+export const spinReward = (...args: Parameters<typeof realApi.spinReward>) =>
+  realApi.spinReward(...args);
 
 // =====================
 // ✅ NEW BE API (Solana): Token Info / Price / Liquidity / Trades / Holders
@@ -69,18 +125,19 @@ export const getTokenPrice = (...args: Parameters<typeof realApi.getTokenPrice>)
 export const getTokenLiquidity = (...args: Parameters<typeof realApi.getTokenLiquidity>) =>
   realApi.getTokenLiquidity(...args);
 
-export const getTokenTrades = (...args: Parameters<typeof realApi.getTokenTrades>) => realApi.getTokenTrades(...args);
+export const getTokenTrades = (...args: Parameters<typeof realApi.getTokenTrades>) =>
+  realApi.getTokenTrades(...args);
 
-export const getTokenHolders = (...args: Parameters<typeof realApi.getTokenHolders>) => realApi.getTokenHolders(...args);
+export const getTokenHolders = (...args: Parameters<typeof realApi.getTokenHolders>) =>
+  realApi.getTokenHolders(...args);
 
 // =====================
-// ✅ Trading (Solana): Buy / Sell + preview + submit-signature + status
+// ✅ Trading
 // =====================
 export const buyToken = (...args: Parameters<typeof realApi.buyToken>) => realApi.buyToken(...args);
 
 export const sellToken = (...args: Parameters<typeof realApi.sellToken>) => realApi.sellToken(...args);
 
-// ✅ NEW: bonding-curve preview endpoints (no auth)
 export const previewBuy = (...args: Parameters<typeof realApi.previewBuy>) => realApi.previewBuy(...args);
 
 export const previewSell = (...args: Parameters<typeof realApi.previewSell>) => realApi.previewSell(...args);
@@ -101,26 +158,8 @@ export const addChatMessage = (...args: Parameters<typeof realApi.addChatMessage
   realApi.addChatMessage(...args);
 
 // =====================
-// ✅ Create Token Flow (Solana)
+// ✅ Create Token Flow
 // =====================
-export type PrepareMintRequest = realApi.PrepareMintRequest;
-export type PrepareMintResponse = realApi.PrepareMintResponse;
-
-export type ConfirmMintRequest = realApi.ConfirmMintRequest;
-export type ConfirmMintResponse = realApi.ConfirmMintResponse;
-
-export type UploadTokenImageRequest = realApi.UploadTokenImageRequest;
-export type UploadTokenImageResponse = realApi.UploadTokenImageResponse;
-
-export type CreateTokenDraftRequest = realApi.CreateTokenDraftRequest;
-export type CreateTokenDraftResponse = realApi.CreateTokenDraftResponse;
-
-export type PreviewInitialBuyRequest = realApi.PreviewInitialBuyRequest;
-export type PreviewInitialBuyResponse = realApi.PreviewInitialBuyResponse;
-
-export type FinalizeTokenRequest = realApi.FinalizeTokenRequest;
-export type FinalizeTokenResponse = realApi.FinalizeTokenResponse;
-
 export const prepareMint = (...args: Parameters<typeof realApi.prepareMint>) => realApi.prepareMint(...args);
 
 export const confirmMint = (...args: Parameters<typeof realApi.confirmMint>) => realApi.confirmMint(...args);
@@ -140,13 +179,6 @@ export const finalizeTokenCreation = (...args: Parameters<typeof realApi.finaliz
 // =====================
 // ✅ Legacy exports still used by FE
 // =====================
-export type TokenCategory = realApi.TokenCategory;
-export type TokenSearchFilters = realApi.TokenSearchFilters;
-
-export type LeaderboardTopItem = realApi.LeaderboardTopItem;
-export type LeaderboardListItem = realApi.LeaderboardListItem;
-export type LeaderboardListResponse = realApi.LeaderboardListResponse;
-
 export const getAllTokens = (...args: Parameters<typeof realApi.getAllTokens>) => realApi.getAllTokens(...args);
 
 export const getAllTokensWithoutLiquidity = (...args: Parameters<typeof realApi.getAllTokensWithoutLiquidity>) =>
@@ -159,7 +191,8 @@ export const getVolumeRange = (...args: Parameters<typeof realApi.getVolumeRange
 export const getTotalTokenCount = (...args: Parameters<typeof realApi.getTotalTokenCount>) =>
   realApi.getTotalTokenCount(...args);
 
-export const getRecentTokens = (...args: Parameters<typeof realApi.getRecentTokens>) => realApi.getRecentTokens(...args);
+export const getRecentTokens = (...args: Parameters<typeof realApi.getRecentTokens>) =>
+  realApi.getRecentTokens(...args);
 
 export const searchTokens = (...args: Parameters<typeof realApi.searchTokens>) => realApi.searchTokens(...args);
 
@@ -178,17 +211,17 @@ export const getReferralSummary = (...args: Parameters<typeof realApi.getReferra
 export const getReferralLinkInfo = (...args: Parameters<typeof realApi.getReferralLinkInfo>) =>
   realApi.getReferralLinkInfo(...args);
 
-// ✅ BACKWARD COMPAT ALIAS (FE đang import getReferralLink)
 export const getReferralLink = (...args: Parameters<typeof realApi.getReferralLinkInfo>) =>
   realApi.getReferralLinkInfo(...args);
 
-export const getReferralList = (...args: Parameters<typeof realApi.getReferralList>) => realApi.getReferralList(...args);
+export const getReferralList = (...args: Parameters<typeof realApi.getReferralList>) =>
+  realApi.getReferralList(...args);
 
 export const claimReferralRewards = (...args: Parameters<typeof realApi.claimReferralRewards>) =>
   realApi.claimReferralRewards(...args);
 
 // =====================
-// ✅ Dashboard helpers (legacy)
+// ✅ Dashboard helpers
 // =====================
 export const getTokensByCreator = (...args: Parameters<typeof realApi.getTokensByCreator>) =>
   realApi.getTokensByCreator(...args);
