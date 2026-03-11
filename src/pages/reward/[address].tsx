@@ -1,6 +1,10 @@
 // src/pages/reward/[address].tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
+import { Buffer } from 'buffer';
+import { VersionedTransaction } from '@solana/web3.js';
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+
 import Layout from '@/components/layout/Layout';
 import SEO from '@/components/seo/SEO';
 import {
@@ -228,15 +232,7 @@ function getConvertMessageFromError(error: any): { title: string; text: string; 
 }
 
 function getClaimMessageFromError(error: any): { title: string; text: string; tone: 'success' | 'error' } {
-  const { status } = extractErrorInfo(error);
-
-  if (status === 404) {
-    return {
-      title: 'User Not Found',
-      text: 'We could not find reward data for this wallet. Please reconnect your wallet and try again.',
-      tone: 'error',
-    };
-  }
+  const { status, code } = extractErrorInfo(error);
 
   if (status === 400) {
     return {
@@ -246,10 +242,26 @@ function getClaimMessageFromError(error: any): { title: string; text: string; to
     };
   }
 
+  if (status === 404) {
+    return {
+      title: 'User Not Found',
+      text: 'We could not find reward data for this wallet. Please reconnect your wallet and try again.',
+      tone: 'error',
+    };
+  }
+
   if (status === 500) {
     return {
       title: 'Server Error',
-      text: 'Something went wrong while claiming your reward. Please try again later.',
+      text: 'Something went wrong while preparing your claim. Please try again later.',
+      tone: 'error',
+    };
+  }
+
+  if (status === 503 || code.includes('reward_claim_unavailable')) {
+    return {
+      title: 'Claim Unavailable',
+      text: 'The reward claim system is temporarily unavailable right now. Please try again later.',
       tone: 'error',
     };
   }
@@ -267,6 +279,17 @@ function formatCountdown(ms: number): string {
   const seconds = totalSeconds % 60;
   if (minutes > 0) return `${minutes}:${String(seconds).padStart(2, '0')}`;
   return `${seconds}s`;
+}
+
+function isWalletRejected(error: any): boolean {
+  const msg = String(error?.message ?? '').toLowerCase();
+  return (
+    msg.includes('user rejected') ||
+    msg.includes('user declined') ||
+    msg.includes('rejected the request') ||
+    msg.includes('cancelled') ||
+    msg.includes('canceled')
+  );
 }
 
 /* =========================
@@ -325,7 +348,7 @@ function Reel({
 
       while (targetPx <= currentOffset) targetPx += totalHeight;
       targetPx = ((targetPx % totalHeight) + totalHeight) % totalHeight;
-      if (targetPx <= (currentOffset % totalHeight)) targetPx += totalHeight;
+      if (targetPx <= currentOffset % totalHeight) targetPx += totalHeight;
 
       const duration = STOP_DURATION_MS + index * 180;
 
@@ -461,11 +484,7 @@ const StatusModal: React.FC<StatusModalProps> = ({ open, title, text, tone = 'su
         <div className="p-8">
           <div className="grid place-items-center mb-5">{isError ? <ErrorSVG /> : <TrophySVG />}</div>
 
-          <h4
-            className={`text-2xl font-extrabold text-center mb-1 ${
-              isError ? 'text-red-400' : 'text-[var(--primary)]'
-            }`}
-          >
+          <h4 className={`text-2xl font-extrabold text-center mb-1 ${isError ? 'text-red-400' : 'text-[var(--primary)]'}`}>
             {title}
           </h4>
 
@@ -492,9 +511,10 @@ type ClaimModalProps = {
   amountText: string;
   onCancel: () => void;
   onConfirm: () => void;
+  loading?: boolean;
 };
 
-const ClaimModal: React.FC<ClaimModalProps> = ({ open, amountText, onCancel, onConfirm }) => {
+const ClaimModal: React.FC<ClaimModalProps> = ({ open, amountText, onCancel, onConfirm, loading }) => {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[80] grid place-items-center">
@@ -516,14 +536,19 @@ const ClaimModal: React.FC<ClaimModalProps> = ({ open, amountText, onCancel, onC
           </p>
 
           <div className="flex flex-col items-center gap-3">
-            <button onClick={onConfirm} className="btn btn-primary w-[180px] h-10 text-[14px] font-semibold tracking-wide text-white">
-              Confirm
+            <button
+              onClick={onConfirm}
+              disabled={loading}
+              className="btn btn-primary w-[180px] h-10 text-[14px] font-semibold tracking-wide text-white disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {loading ? 'PROCESSING…' : 'Confirm'}
             </button>
             <button
               onClick={onCancel}
+              disabled={loading}
               className="w-[180px] h-10 rounded-full font-semibold tracking-wide text-[14px]
                          border border-[var(--primary)]/50
-                         text-[var(--primary)] hover:bg-[var(--card2)]/60 transition-colors"
+                         text-[var(--primary)] hover:bg-[var(--card2)]/60 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
@@ -547,6 +572,9 @@ type HistoryRow = {
 
 const RewardPage: React.FC = () => {
   const router = useRouter();
+  const { connection } = useConnection();
+  const wallet = useWallet();
+
   const address = useMemo(() => {
     const raw = router.query.address;
     return typeof raw === 'string' ? raw.trim() : '';
@@ -604,9 +632,7 @@ const RewardPage: React.FC = () => {
   }, [rewardInfo?.recentSpins]);
 
   const winners = useMemo(() => {
-    if (!marqueeItems.length) {
-      return ['Loading winners...'];
-    }
+    if (!marqueeItems.length) return ['Loading winners...'];
     return marqueeItems.map((item) => {
       const user = maskUserId(item.userId);
       return `${user} won ${fmtSol(item.payoutSol)} SOL ${item.timeAgo}`;
@@ -614,12 +640,7 @@ const RewardPage: React.FC = () => {
   }, [marqueeItems]);
 
   const openStatusModal = (title: string, text: string, tone: 'success' | 'error') => {
-    setStatusModal({
-      open: true,
-      title,
-      text,
-      tone,
-    });
+    setStatusModal({ open: true, title, text, tone });
   };
 
   const loadAll = async () => {
@@ -672,8 +693,7 @@ const RewardPage: React.FC = () => {
   const canClaim = !loading && !spinning && !claiming && claimableSol > 0;
   const canConvert = !loading && !spinning && !converting && points > 0;
 
-  const actionBtnClass =
-    'btn btn-primary w-[160px] h-10 text-[14px] font-semibold tracking-wide text-white';
+  const actionBtnClass = 'btn btn-primary w-[160px] h-10 text-[14px] font-semibold tracking-wide text-white';
 
   const handleSpin = async () => {
     if (!address || !canSpin) return;
@@ -749,9 +769,47 @@ const RewardPage: React.FC = () => {
   const confirmClaim = async () => {
     if (!address || claiming || claimableSol <= 0) return;
 
+    if (!wallet?.connected || !wallet.publicKey) {
+      openStatusModal('Wallet Not Connected', 'Please connect your wallet before claiming SOL.', 'error');
+      return;
+    }
+
+    if (!wallet.sendTransaction) {
+      openStatusModal('Wallet Unsupported', 'Your wallet does not support sending transactions.', 'error');
+      return;
+    }
+
     try {
       setClaiming(true);
+
       const res = await claimReward(address);
+
+      if (!res.transaction) {
+        setRewardInfo((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            claimableSol: Number(res.claimableSol ?? prev.claimableSol),
+          };
+        });
+
+        setClaimModal({ open: false });
+        openStatusModal(
+          'Nothing To Claim',
+          res.message || 'There is no pending SOL available to claim right now.',
+          'success'
+        );
+        return;
+      }
+
+      const rawTx = Buffer.from(String(res.transaction), 'base64');
+      const tx = VersionedTransaction.deserialize(rawTx);
+
+      const signature = await wallet.sendTransaction(tx, connection, {
+        preflightCommitment: 'processed',
+      });
+
+      await connection.confirmTransaction(signature, 'processed');
 
       setRewardInfo((prev) => {
         if (!prev) return prev;
@@ -768,8 +826,16 @@ const RewardPage: React.FC = () => {
         'success'
       );
     } catch (error: any) {
-      const msg = getClaimMessageFromError(error);
-      openStatusModal(msg.title, msg.text, msg.tone);
+      if (isWalletRejected(error)) {
+        openStatusModal(
+          'Transaction Rejected',
+          'You rejected the wallet transaction, so your reward was not claimed.',
+          'error'
+        );
+      } else {
+        const msg = getClaimMessageFromError(error);
+        openStatusModal(msg.title, msg.text, msg.tone);
+      }
     } finally {
       setClaiming(false);
     }
@@ -987,6 +1053,7 @@ const RewardPage: React.FC = () => {
         amountText={`${fmtSol(claimableSol)} SOL`}
         onCancel={() => setClaimModal({ open: false })}
         onConfirm={confirmClaim}
+        loading={claiming}
       />
 
       <style jsx>{`

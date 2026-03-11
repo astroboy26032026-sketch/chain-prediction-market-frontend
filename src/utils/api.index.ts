@@ -49,11 +49,7 @@ export type {
 
 export type { TokenCategory, TokenSearchFilters } from './api';
 
-export type {
-  LeaderboardTopItem,
-  LeaderboardListItem,
-  LeaderboardListResponse,
-} from './api';
+export type { LeaderboardTopItem, LeaderboardListItem, LeaderboardListResponse } from './api';
 
 // =====================
 // ✅ AUTH helpers
@@ -80,7 +76,8 @@ export const updateToken = (...args: Parameters<typeof realApi.updateToken>) => 
 // =====================
 export const getProfileInfo = (...args: Parameters<typeof realApi.getProfileInfo>) => realApi.getProfileInfo(...args);
 
-export const getProfileStats = (...args: Parameters<typeof realApi.getProfileStats>) => realApi.getProfileStats(...args);
+export const getProfileStats = (...args: Parameters<typeof realApi.getProfileStats>) =>
+  realApi.getProfileStats(...args);
 
 // =====================
 // ✅ Points

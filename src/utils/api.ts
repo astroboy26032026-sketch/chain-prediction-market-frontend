@@ -1234,6 +1234,9 @@ export type RewardClaimRequest = {
 export type RewardClaimResponse = {
   claimedSol: number;
   claimableSol: number;
+  transaction: string | null;
+  pendingTierSol?: number;
+  message?: string;
 };
 
 export type RewardConvertRequest = {
@@ -1302,6 +1305,13 @@ function normalizeRewardClaimResponse(input: any): RewardClaimResponse {
   return {
     claimedSol: Number(input?.claimedSol ?? 0),
     claimableSol: Number(input?.claimableSol ?? 0),
+    transaction:
+      input?.transaction == null || String(input?.transaction).trim() === ''
+        ? null
+        : String(input.transaction),
+    pendingTierSol:
+      input?.pendingTierSol == null ? undefined : Number(input.pendingTierSol ?? 0),
+    message: input?.message == null ? undefined : String(input.message),
   };
 }
 

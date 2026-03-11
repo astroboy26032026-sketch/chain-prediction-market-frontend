@@ -258,6 +258,9 @@ export type RewardClaimRequest = {
 export type RewardClaimResponse = {
   claimedSol: number;
   claimableSol: number;
+  transaction: string | null;
+  pendingTierSol?: number;
+  message?: string;
 };
 
 /**
