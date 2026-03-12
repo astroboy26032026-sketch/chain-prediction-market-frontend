@@ -101,6 +101,7 @@ export function formatCompactNumber(value: number): string {
    Amount/time formatting (SAFE)
 ========================= */
 
+/** Compact: 2 decimals, k/M/B/T, smart small-number precision. Used in dashboard. */
 export const formatAmountV3 = (amount: string | number, decimals: number = 18) => {
   const n = parseAmountToNumber(amount, decimals);
   if (n === null) return '0';
@@ -165,6 +166,7 @@ export function formatTimestamp(timestamp: string): string {
   return result.trim() + ' ago';
 }
 
+/** Single-unit short format (e.g. "5m", "3hr"). Used in TokenCard. */
 export function formatTimestampV1(timestamp: string): string {
   const now = new Date();
   const date = new Date(timestamp);
@@ -183,6 +185,7 @@ export function formatTimestampV1(timestamp: string): string {
   return `${diffInYears}yr`;
 }
 
+/** Full precision: 4-8 decimals. Used in TokenInfo price display. */
 export const formatAmount = (amount: string | number, decimals: number = 18) => {
   const n = parseAmountToNumber(amount, decimals);
   if (n === null) return '0';
@@ -195,6 +198,7 @@ export const formatAmount = (amount: string | number, decimals: number = 18) => 
   return n.toFixed(8);
 };
 
+/** Medium precision: 1-3 decimals. Used in notifications & liquidity display. */
 export const formatAmountV2 = (amount: string | number, decimals: number = 18) => {
   const n = parseAmountToNumber(amount, decimals);
   if (n === null) return '0';
@@ -301,8 +305,9 @@ export function useCreateTokenSolana() {
 }
 
 /* =========================
-   EVM Hooks: NO-THROW disabled stubs
-   (keep to avoid crashing legacy pages)
+   @deprecated EVM Hooks: disabled stubs returning safe defaults.
+   Still imported by PriceLiquidity.tsx & TokenCard.tsx.
+   TODO: remove these stubs once those components are migrated to Solana API.
 ========================= */
 
 type DisabledHookBase = { disabled: true };

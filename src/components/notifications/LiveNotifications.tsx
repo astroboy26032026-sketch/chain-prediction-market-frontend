@@ -74,13 +74,11 @@ const LiveNotifications: React.FC = () => {
     };
 
     if (newTokens.length > 0) {
-      console.log(newTokens)
       const notification = createNotificationMessage({ type: 'tokenCreated', data: newTokens[0] });
       handleNewNotification(notification);
     }
 
     if (newTransactions.length > 0) {
-      console.log(newTransactions)
       const notification = createNotificationMessage({ type: newTransactions[0].type, data: newTransactions[0] });
       handleNewNotification(notification);
     }

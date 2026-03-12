@@ -16,6 +16,7 @@ export default async function handler(
     const response = await axios.get(`${API_BASE_URL}/api/tokens/without-liquidityEvent`);
     res.status(200).json(response.data);
   } catch (error) {
+    console.error('[getAllTokensWithoutLiquidity] API error:', error instanceof Error ? error.message : error);
     res.status(500).json([]);
   }
 }

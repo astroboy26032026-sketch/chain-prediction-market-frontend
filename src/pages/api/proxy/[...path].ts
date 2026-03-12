@@ -20,12 +20,15 @@ const getBackendBaseUrl = () => {
 function setCors(req: NextApiRequest, res: NextApiResponse) {
   const origin = req.headers.origin;
 
-  const allowList = new Set<string>([
-    'http://localhost:3000',
-    // add prod/staging here if needed
-    // 'https://pumpfunclone2025.win',
-    // 'https://dev.pumpfunclone2025.win',
-  ]);
+  const allowList = new Set<string>(
+    (
+      process.env.CORS_ALLOWED_ORIGINS ||
+      'http://localhost:3000,https://pumpfunclone2025.win,https://dev.pumpfunclone2025.win'
+    )
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  );
 
   if (origin && allowList.has(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
@@ -54,6 +57,10 @@ function buildUpstreamUrl(req: NextApiRequest, baseUrl: string) {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   setCors(req, res);
+
+  // security headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
 
   // preflight
   if (req.method === 'OPTIONS') return res.status(204).end();

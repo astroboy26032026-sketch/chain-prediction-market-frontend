@@ -16,6 +16,7 @@ export default async function handler(
     const response = await axios.get<PriceResponse>(`${API_BASE_URL}/api/price`);
     res.status(200).json(response.data);
   } catch (error) {
+    console.error('[getCurrentPrice] API error:', error instanceof Error ? error.message : error);
     res.status(500).json({ price: '0' });
   }
 }

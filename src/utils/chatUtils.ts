@@ -16,6 +16,4 @@ export function getRandomAvatarImage(): string {
   return `/chats/${randomNumber}.png`;
 }
 
-export function shortenAddress(address: string): string {
-  return address.slice(2, 8);
-}
+export { shortenAddress } from '@/utils/blockchainUtils';

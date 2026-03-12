@@ -18,6 +18,7 @@ import '@solana/wallet-adapter-react-ui/styles.css';
 
 import { WebSocketProvider } from '@/components/providers/WebSocketProvider';
 import { AuthProvider } from '@/components/providers/AuthProvider';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 const queryClient = new QueryClient();
 
@@ -37,7 +38,9 @@ export default function App({ Component, pageProps }: AppProps) {
           <WalletModalProvider>
             <AuthProvider>
               <WebSocketProvider>
-                <Component {...pageProps} />
+                <ErrorBoundary>
+                  <Component {...pageProps} />
+                </ErrorBoundary>
                 <ToastContainer />
               </WebSocketProvider>
             </AuthProvider>

@@ -22,7 +22,8 @@ export default async function handler(
     });
     res.status(200).json(response.data);
   } catch (error) {
-    res.status(500).json({ 
+    console.error('[getTokensWithLiquidity] API error:', error instanceof Error ? error.message : error);
+    res.status(500).json({
       tokens: [],
       data: [],
       totalCount: 0,

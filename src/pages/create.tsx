@@ -116,7 +116,7 @@ const CreateToken: React.FC = () => {
 
   // ===== Step 2: Curve params =====
   const [decimals, setDecimals] = useState<number>(6);
-  const [curveType] = useState<number>(0);
+  const curveType = 0;
 
   const [basePriceLamports, setBasePriceLamports] = useState<number>(1000);
   const [slopeLamports, setSlopeLamports] = useState<number>(1);
@@ -389,7 +389,7 @@ const CreateToken: React.FC = () => {
     if (!isNumericString(graduateTargetLamports)) return 'Graduate target must be numeric string';
     if (!isNonNegInt(curveType)) return 'Invalid curve type';
     return null;
-  }, [draft?.draftId, decimals, basePriceLamports, slopeLamports, bondingCurveSupply, graduateTargetLamports, curveType]);
+  }, [draft?.draftId, decimals, basePriceLamports, slopeLamports, bondingCurveSupply, graduateTargetLamports]);
 
   // ===== Finalize: /token/create/finalize =====
   const runFinalize = useCallback(

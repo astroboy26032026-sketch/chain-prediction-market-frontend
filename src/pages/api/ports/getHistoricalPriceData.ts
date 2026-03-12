@@ -21,6 +21,7 @@ export default async function handler(
     const response = await axios.get(`${API_BASE_URL}/api/tokens/address/${address}/historical-prices`);
     res.status(200).json(response.data);
   } catch (error) {
+    console.error('[getHistoricalPriceData] API error:', error instanceof Error ? error.message : error);
     res.status(500).json({ error: 'Failed to fetch historical price data' } as any);
   }
 }

@@ -111,8 +111,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (autoTriedRef.current[pk]) return;
     autoTriedRef.current[pk] = true;
 
-    signInWithSolana().catch(() => {
-      // user reject signature -> do nothing, don't loop
+    signInWithSolana().catch((err) => {
+      // user reject signature -> log but don't loop
+      console.warn('[AuthProvider] Auto sign-in failed:', err?.message || err);
     });
   }, [connected, publicKey, authenticated, signInWithSolana]);
 

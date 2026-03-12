@@ -53,8 +53,21 @@ export interface Token {
     liquidityEvents: number;
   };
 
-  // ✅ allow extra fields từ BE (ví dụ: external_url, attributes...)
-  [key: string]: any;
+  // extra BE fields
+  mcapUsd?: number;
+  marketcapUsd?: number;
+  marketCapUsd?: number;
+  marketcap?: number;
+  mcap?: number;
+  mc?: number;
+  vol24hUsd?: number;
+  volume24hUsd?: number;
+  vol24h?: number;
+  vol?: number;
+  mint?: string;
+  tokenAddress?: string;
+  ca?: string;
+  external_url?: string;
 }
 
 export interface TokenWithLiquidityEvents extends Token {
@@ -85,8 +98,6 @@ export interface PaginatedResponse<T> {
 
   // ✅ cursor pagination
   nextCursor?: string | null;
-
-  [key: string]: any;
 }
 
 export interface Transaction {

@@ -52,7 +52,7 @@ export const getChainConfig = (chainId: number): ChainConfig | undefined => {
   return chainConfigs[chainId]
 }
 
-// Helper function to get current active contract address for a chain //wrong ill fix later on
+// Helper function to get current active contract address for a chain (returns first/newest address)
 export const getActiveContractAddress = (chainId: number): string | undefined => {
   const config = chainConfigs[chainId]
   return config?.contractAddresses[0] // Returns the most recent contract address

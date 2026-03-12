@@ -225,6 +225,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
   const [txSpeed, setTxSpeed] = useState<'auto' | 'manual'>('auto');
   const [priorityFee, setPriorityFee] = useState<string>('0.002');
   const [bribe, setBribe] = useState<string>('0.01');
+  const [slippagePct, setSlippagePct] = useState<number>(1);
 
   const [refreshCounter, setRefreshCounter] = useState(0);
   const [debouncedFromAmount] = useDebounce(fromToken.amount, 350);
@@ -431,7 +432,6 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
     setIsTransacting(true);
     try {
-      const slippagePct = 1; // TODO wire UI
       const slippageBps = clamp(Math.trunc(slippagePct * 100), 0, 10_000);
 
       const idk = newIdempotencyKey(isSwapped ? 'sell' : 'buy');
@@ -710,6 +710,8 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                     setPriorityFee={setPriorityFee}
                     bribe={bribe}
                     setBribe={setBribe}
+                    slippagePct={slippagePct}
+                    setSlippagePct={setSlippagePct}
                     onClose={() => setIsSettingsOpenMobile(false)}
                   />
                 </div>
@@ -900,6 +902,8 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                     setPriorityFee={setPriorityFee}
                     bribe={bribe}
                     setBribe={setBribe}
+                    slippagePct={slippagePct}
+                    setSlippagePct={setSlippagePct}
                     onClose={() => setIsSettingsOpenDesktop(false)}
                   />
                 </div>
@@ -932,9 +936,11 @@ function SettingsPanel(props: {
   setPriorityFee: (v: string) => void;
   bribe: string;
   setBribe: (v: string) => void;
+  slippagePct: number;
+  setSlippagePct: (v: number) => void;
   onClose: () => void;
 }) {
-  const { antiMEV, setAntiMEV, txSpeed, setTxSpeed, priorityFee, setPriorityFee, bribe, setBribe, onClose } = props;
+  const { antiMEV, setAntiMEV, txSpeed, setTxSpeed, priorityFee, setPriorityFee, bribe, setBribe, slippagePct, setSlippagePct, onClose } = props;
 
   const activeBtn = 'px-3 py-1 rounded-md bg-[var(--primary)] text-white';
   const idleBtn = 'px-3 py-1 rounded-md bg-[var(--card)] text-gray-300 border-thin hover:text-white';
@@ -942,6 +948,34 @@ function SettingsPanel(props: {
   return (
     <>
       <div className="space-y-3 text-sm">
+        <div>
+          <label className="text-gray-300 block mb-1">Slippage Tolerance (%)</label>
+          <div className="flex items-center gap-2">
+            {[0.5, 1, 2, 5].map((v) => (
+              <button
+                key={v}
+                onClick={() => setSlippagePct(v)}
+                className={slippagePct === v ? activeBtn : idleBtn}
+                type="button"
+              >
+                {v}%
+              </button>
+            ))}
+            <input
+              type="number"
+              min="0.1"
+              max="50"
+              step="0.1"
+              value={slippagePct}
+              onChange={(e) => {
+                const n = parseFloat(e.target.value);
+                if (Number.isFinite(n) && n > 0 && n <= 50) setSlippagePct(n);
+              }}
+              className="w-16 bg-[var(--card)] border-thin rounded-md px-2 py-1 text-white outline-none text-center"
+            />
+          </div>
+        </div>
+
         <div className="flex items-center justify-between">
           <span className="text-gray-300">Anti-MEV Protection</span>
           <div className="flex items-center gap-2">

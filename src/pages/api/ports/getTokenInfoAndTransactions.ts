@@ -25,10 +25,7 @@ const emptyToken: Token = {
   _count: {
     liquidityEvents: 0
   },
-  // liquidityEvents: 0,
-  map: null,
-
-    // ✅ THÊM 2 FIELD BẮT BUỘC
+  // ✅ THÊM 2 FIELD BẮT BUỘC
   marketCap: 0,
   priceUsd: 0,
 

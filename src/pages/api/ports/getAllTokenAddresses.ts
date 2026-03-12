@@ -20,6 +20,7 @@ export default async function handler(
     const response = await axios.get(`${API_BASE_URL}/api/tokens/addresses`);
     res.status(200).json(response.data);
   } catch (error) {
+    console.error('[getAllTokenAddresses] API error:', error instanceof Error ? error.message : error);
     res.status(500).json([]);
   }
 }

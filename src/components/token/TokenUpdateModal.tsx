@@ -226,7 +226,7 @@ export const TokenUpdateModal: React.FC<TokenUpdateModalProps> = ({
                   </div>
 
                   {uploadedImageUrl && (
-                    <img src={uploadedImageUrl} className="w-16 h-16 mx-auto rounded-full mt-2" />
+                    <img src={uploadedImageUrl} alt="Token logo preview" className="w-16 h-16 mx-auto rounded-full mt-2" />
                   )}
                 </>
               )}

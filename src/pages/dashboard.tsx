@@ -15,7 +15,6 @@ import {
 
 import {
   Transaction,
-  PaginatedResponse,
   Token,
 } from '@/interface/types';
 
@@ -34,10 +33,6 @@ import {
    Types
 ======================= */
 
-interface TransactionResponse
-  extends Omit<PaginatedResponse<Transaction>, 'data'> {
-  transactions: Transaction[];
-}
 
 /* =======================
    Components
@@ -143,7 +138,7 @@ const UserDashboard: React.FC = () => {
   const fetchTransactions = async (addr: string, page: number) => {
     setLoading(true);
     try {
-      const res: TransactionResponse = await getTransactionsByAddress(addr, page);
+      const res = await getTransactionsByAddress(addr, page);
       setTransactions(res.transactions || []);
       setTotalPages(res.totalPages || 1);
     } catch {

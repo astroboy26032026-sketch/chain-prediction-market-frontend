@@ -21,8 +21,8 @@ export default async function handler(
 
   try {
     const {
-      q,
-      category,
+      q: rawQ,
+      category: rawCategory,
       includeNsfw,
       mcapMin,
       mcapMax,
@@ -38,6 +38,16 @@ export default async function handler(
       cursor,
     } = req.query;
 
+    // sanitize string inputs
+    const MAX_QUERY_LENGTH = 100;
+    const ALLOWED_CATEGORIES = new Set([
+      'trending', 'new', 'finalized', 'mcap', 'volume', 'gainers', 'losers', '',
+    ]);
+
+    const q = typeof rawQ === 'string' ? rawQ.slice(0, MAX_QUERY_LENGTH).trim() : undefined;
+    const rawCat = Array.isArray(rawCategory) ? rawCategory[0] : rawCategory;
+    const category = rawCat && ALLOWED_CATEGORIES.has(rawCat) ? rawCat : undefined;
+
     const pageNum = Number(Array.isArray(page) ? page[0] : page);
     const pageSizeNum = Number(Array.isArray(pageSize) ? pageSize[0] : pageSize);
 
@@ -49,8 +59,8 @@ export default async function handler(
     );
 
     const params: any = {
-      q: Array.isArray(q) ? q[0] : q,
-      category: Array.isArray(category) ? category[0] : category,
+      q,
+      category,
       cursor: Array.isArray(cursor) ? cursor[0] : cursor,
       includeNsfw:
         includeNsfw === undefined
@@ -72,10 +82,18 @@ export default async function handler(
     const nVolMin = pickNum(volMin);
     const nVolMax = pickNum(volMax);
 
-    if (nMcapMin !== undefined) params.mcapMin = nMcapMin;
-    if (nMcapMax !== undefined) params.mcapMax = nMcapMax;
-    if (nVolMin !== undefined) params.volMin = nVolMin;
-    if (nVolMax !== undefined) params.volMax = nVolMax;
+    if (nMcapMin !== undefined && nMcapMin >= 0) params.mcapMin = nMcapMin;
+    if (nMcapMax !== undefined && nMcapMax >= 0) params.mcapMax = nMcapMax;
+    if (nVolMin !== undefined && nVolMin >= 0) params.volMin = nVolMin;
+    if (nVolMax !== undefined && nVolMax >= 0) params.volMax = nVolMax;
+
+    // ensure min <= max
+    if (params.mcapMin !== undefined && params.mcapMax !== undefined && params.mcapMin > params.mcapMax) {
+      [params.mcapMin, params.mcapMax] = [params.mcapMax, params.mcapMin];
+    }
+    if (params.volMin !== undefined && params.volMax !== undefined && params.volMin > params.volMax) {
+      [params.volMin, params.volMax] = [params.volMax, params.volMin];
+    }
 
     // ⚠️ page-based: nếu page > 1 mà không có cursor thì không map được chính xác
     if (pageNum > 1 && !params.cursor) {
@@ -107,6 +125,7 @@ export default async function handler(
       nextCursor,
     });
   } catch (error) {
+    console.error('[searchTokens] API error:', error instanceof Error ? error.message : error);
     return res.status(500).json({
       tokens: [],
       data: [],

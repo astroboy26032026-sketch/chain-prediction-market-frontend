@@ -31,6 +31,7 @@ export default async function handler(
     });
     res.status(200).json(response.data);
   } catch (error) {
+    console.error('[getChatMessages] API error:', error instanceof Error ? error.message : error);
     res.status(500).json([]);
   }
 }
