@@ -15,7 +15,7 @@ import type { ReferralSummary, ReferralLinkInfo, ReferralListItem } from '@/inte
 const fmtSOL = (n: number) =>
   `${(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL`;
 
-const shorten = (a: string, left = 4, right = 4) =>
+const shorten = (a: string, left: number = 4, right: number = 4): string =>
   a?.length > left + right + 3 ? `${a.slice(0, left)}…${a.slice(-right)}` : a;
 
 const StatTile: React.FC<{ icon: React.ReactNode; label: string; value: string }> = ({
@@ -84,7 +84,9 @@ const ReferralsPage: React.FC = () => {
       await navigator.clipboard.writeText(linkInfo.referralLink);
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
-    } catch {}
+    } catch (e) {
+      console.warn('[Referrals] Clipboard copy failed:', e);
+    }
   };
 
   const onGenerate = async () => {

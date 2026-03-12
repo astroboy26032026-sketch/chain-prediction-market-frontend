@@ -228,9 +228,6 @@ function normalizeTrackingPath(input: string): string {
   s = s.replace(/^(GET|POST|PUT|PATCH|DELETE)\s*:\s*/i, '');
   s = s.replace(/^(GET|POST|PUT|PATCH|DELETE)\s+/i, '');
 
-  s = s.replace(/^(GET|POST|PUT|PATCH|DELETE)\s*:\s*/i, '');
-  s = s.replace(/^(GET|POST|PUT|PATCH|DELETE)\s+/i, '');
-
   if (!s.startsWith('/')) s = `/${s}`;
   s = s.replace(/\/{2,}/g, '/');
 

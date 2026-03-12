@@ -177,16 +177,6 @@ const StakingPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Animation */}
-      <style jsx>{`
-        @keyframes seed-bounce {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-10px); }
-        }
-        .seed-bounce {
-          animation: seed-bounce 2.4s ease-in-out infinite;
-        }
-      `}</style>
     </Layout>
   );
 };

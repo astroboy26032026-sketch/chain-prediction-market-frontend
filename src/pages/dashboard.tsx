@@ -141,7 +141,8 @@ const UserDashboard: React.FC = () => {
       const res = await getTransactionsByAddress(addr, page);
       setTransactions(res.transactions || []);
       setTotalPages(res.totalPages || 1);
-    } catch {
+    } catch (e) {
+      console.error('[Dashboard] fetchTransactions error:', e);
       setTransactions([]);
       setTotalPages(1);
     } finally {
@@ -153,7 +154,8 @@ const UserDashboard: React.FC = () => {
     try {
       const res = await getAllTokenAddresses();
       setTokenAddresses(Array.isArray(res) ? res : []);
-    } catch {
+    } catch (e) {
+      console.error('[Dashboard] fetchTokenAddresses error:', e);
       setTokenAddresses([]);
     }
   };
@@ -164,7 +166,8 @@ const UserDashboard: React.FC = () => {
       const res = await getTokensByCreator(addr, page);
       setCreatedTokens(res.tokens || []);
       setCreatedTotalPages(res.totalPages || 1);
-    } catch {
+    } catch (e) {
+      console.error('[Dashboard] fetchCreatedTokens error:', e);
       setCreatedTokens([]);
       setCreatedTotalPages(1);
     } finally {

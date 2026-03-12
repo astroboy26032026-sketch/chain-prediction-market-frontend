@@ -15,7 +15,7 @@ interface SEOProps {
 
 const SEO: React.FC<SEOProps> = ({ title, description, image, token }) => {
   const router = useRouter();
-  const domain = process.env.NEXT_PUBLIC_DOMAIN || 'https://bondle.xyz';
+  const domain = process.env.NEXT_PUBLIC_DOMAIN || 'https://pumpfunclone2025.win';
 
   const seo = {
     title: token ? `${token.name} (${token.symbol}) - Bondle` : title || 'Bondle - Explore and Trade Tokens',

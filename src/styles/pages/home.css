@@ -1,0 +1,54 @@
+/* =========================
+   Home page – slider accent (range inputs)
+========================= */
+.slider-accent {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 8px;
+  background: transparent;
+}
+.slider-accent::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.slider-accent::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--accent);
+  cursor: pointer;
+}
+.slider-accent::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.slider-accent::-moz-range-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.slider-accent::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--accent);
+  cursor: pointer;
+}
+.slider-accent::-ms-fill-lower,
+.slider-accent::-ms-fill-upper {
+  background: var(--accent);
+}
+.slider-accent::-ms-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--accent);
+}

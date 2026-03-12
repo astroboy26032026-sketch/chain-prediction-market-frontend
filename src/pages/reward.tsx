@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
+import { toast } from 'react-toastify';
 import Layout from '@/components/layout/Layout';
 import SEO from '@/components/seo/SEO';
 
@@ -428,7 +429,7 @@ const RewardPage: React.FC = () => {
 
   const confirmClaim = () => {
     setClaimModal({ open: false });
-    alert(`Claimed ${fmtDisplay(rewardMicro)} SOL`);
+    toast.success(`Claimed ${fmtDisplay(rewardMicro)} SOL`);
     setRewardMicro(0);
   };
 

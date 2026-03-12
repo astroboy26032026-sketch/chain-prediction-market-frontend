@@ -172,15 +172,14 @@ const LeaderboardPage: React.FC = () => {
     };
   }, [router.events]);
 
-  const data = useMemo(() => items, [items]);
-  const visibleData = useMemo(() => data.slice(0, visibleCount), [data, visibleCount]);
-  const hasMore = visibleCount < data.length;
+  const visibleData = useMemo(() => items.slice(0, visibleCount), [items, visibleCount]);
+  const hasMore = visibleCount < items.length;
 
   const handleBuyClick = (href: string, isExternal = false) => {
     setIsPageLoading(true);
     if (isExternal) {
       window.open(href, "_blank");
-      setTimeout(() => setIsPageLoading(false), 300);
+      setIsPageLoading(false);
     } else {
       router.push(href);
     }
@@ -206,7 +205,7 @@ const LeaderboardPage: React.FC = () => {
 
           {/* ===== Top 3 Cards ===== */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6 mb-10">
-            {data.slice(0, 3).map((t) => {
+            {items.slice(0, 3).map((t) => {
               const href = `/token/${encodeURIComponent(t.address)}`;
               return (
                 <article
@@ -320,16 +319,16 @@ const LeaderboardPage: React.FC = () => {
                 );
               })}
 
-              {data.length === 0 && (
+              {items.length === 0 && (
                 <div className="px-6 py-10 text-center opacity-70">No data</div>
               )}
             </div>
 
-            {data.length > 0 && hasMore ? (
+            {items.length > 0 && hasMore ? (
               <div className="px-4 sm:px-6 py-5 flex justify-center border-t border-[var(--card-border)]">
                 <button
                   type="button"
-                  onClick={() => setVisibleCount((prev) => Math.min(prev + LIST_STEP, data.length))}
+                  onClick={() => setVisibleCount((prev) => Math.min(prev + LIST_STEP, items.length))}
                   className="btn btn-primary min-w-[160px] font-semibold flex items-center justify-center"
                 >
                   More

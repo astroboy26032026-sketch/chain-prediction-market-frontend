@@ -52,8 +52,8 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
             } else if (data.type === 'tokensBought' || data.type === 'tokensSold') {
               setNewTransactions(prev => [data.data, ...prev].slice(0, MAX_BUFFER_SIZE));
             }
-          } catch {
-            // ignore malformed messages
+          } catch (e) {
+            console.warn('[WebSocket] Malformed message:', e);
           }
         };
 

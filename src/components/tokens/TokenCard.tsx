@@ -283,7 +283,9 @@ const TokenCard: React.FC<TokenCardProps> = ({
    * - Nếu về sau chain khác -> nên chuyển link builder ra config/helper.
    */
   if (isEnded && isCompleted && 'liquidityEvents' in token) {
-    const uniswapLink = `https://chewyswap.dog/swap/?outputCurrency=${token.address}&chain=shibarium`;
+    const dexLink = process.env.NEXT_PUBLIC_DEX_SWAP_URL
+      ? `${process.env.NEXT_PUBLIC_DEX_SWAP_URL}?outputCurrency=${token.address}`
+      : `https://chewyswap.dog/swap/?outputCurrency=${token.address}&chain=shibarium`;
 
     return (
       <div onClick={handleClick} className="cursor-pointer">
@@ -303,7 +305,7 @@ const TokenCard: React.FC<TokenCardProps> = ({
             {/* Actions: Trade + View */}
             <div className="flex gap-2 mt-4">
               <a
-                href={uniswapLink}
+                href={dexLink}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()} // tránh click lan lên card (không trigger onTokenClick)
@@ -315,7 +317,7 @@ const TokenCard: React.FC<TokenCardProps> = ({
               {/* Link nội bộ Next.js để xem trang detail */}
               <Link
                 href={`/token/${token.address}`}
-                className="flex-1 text-center py-2 text-sm bg-[var(--card-boarder)] text-white rounded-md"
+                className="flex-1 text-center py-2 text-sm bg-[var(--card-border)] text-white rounded-md"
               >
                 View
               </Link>
@@ -390,7 +392,7 @@ const Header = ({ token, volume, marketCap, formatUSD }: any) => (
     </div>
 
     <div className="flex-grow">
-      <h3 className="text-lg font-semibold text-orange">{token.name}</h3>
+      <h3 className="text-lg font-semibold text-orange-400">{token.name}</h3>
       <div className="text-sm text-gray-400">{token.symbol}</div>
 
       <div className="mt-3 grid grid-cols-2 gap-2 text-sm">

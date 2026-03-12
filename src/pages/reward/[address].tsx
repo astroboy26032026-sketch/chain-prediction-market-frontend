@@ -658,6 +658,7 @@ const RewardPage: React.FC = () => {
       setMarqueeItems(Array.isArray(marqueeRes?.items) ? marqueeRes.items : []);
       setSpinConfig(spinConfigRes);
     } catch (error: any) {
+      console.error('[Reward] Load error:', error);
       openStatusModal(
         'Load Failed',
         error?.message || 'Reward data could not be loaded right now. Please refresh and try again.',
@@ -756,6 +757,7 @@ const RewardPage: React.FC = () => {
         setSpinning(false);
       }, totalStop);
     } catch (error: any) {
+      console.error('[Reward] Spin error:', error);
       const msg = getSpinMessageFromError(error);
       openStatusModal(msg.title, msg.text, msg.tone);
     }
@@ -863,6 +865,7 @@ const RewardPage: React.FC = () => {
         'success'
       );
     } catch (error: any) {
+      console.error('[Reward] Convert error:', error);
       const msg = getConvertMessageFromError(error);
       openStatusModal(msg.title, msg.text, msg.tone);
     } finally {

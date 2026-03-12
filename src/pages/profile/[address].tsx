@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
+import { toast } from 'react-toastify';
 import { useWallet } from '@solana/wallet-adapter-react';
 
 import Layout from '@/components/layout/Layout';
@@ -192,6 +193,7 @@ const ProfilePage: React.FC = () => {
       setProfileStats(stats as any);
     } catch (e) {
       console.error('Error fetching profile:', e);
+      toast.error('Failed to load profile data');
       setProfileInfo(null);
       setProfileStats(null);
     } finally {
