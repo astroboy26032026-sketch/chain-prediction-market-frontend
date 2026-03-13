@@ -4,6 +4,10 @@ import { useWallet } from '@solana/wallet-adapter-react';
 
 import type { AuthMeResponse } from '@/interface/auth.type';
 import { authMe, issueChallenge, loginWallet, logoutAuth, refreshAuth, setToken } from '@/utils/authApi';
+import { trackReferral } from '@/utils/api.index';
+
+const REFERRAL_KEY = 'pf_referral_code';
+const REFERRAL_TRACKED_KEY = 'pf_referral_tracked';
 
 type AuthState = {
   loading: boolean;
@@ -100,7 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loadMe();
   }, [loadMe]);
 
-  // ✅ AUTO SIGN-IN AFTER CONNECT
+  // ✅ AUTO SIGN-IN AFTER CONNECT + REFERRAL TRACKING
   useEffect(() => {
     const pk = publicKey?.toBase58();
     if (!connected || !pk) return;
@@ -111,10 +115,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (autoTriedRef.current[pk]) return;
     autoTriedRef.current[pk] = true;
 
-    signInWithSolana().catch((err) => {
-      // user reject signature -> log but don't loop
-      console.warn('[AuthProvider] Auto sign-in failed:', err?.message || err);
-    });
+    // Read referral code from localStorage (saved by /join/[code] page)
+    const refCode = localStorage.getItem(REFERRAL_KEY) || undefined;
+
+    signInWithSolana(refCode)
+      .then(() => {
+        // Track referral for first-time users
+        const alreadyTracked = localStorage.getItem(REFERRAL_TRACKED_KEY);
+        if (refCode && !alreadyTracked) {
+          trackReferral(pk)
+            .then(() => {
+              localStorage.setItem(REFERRAL_TRACKED_KEY, '1');
+              localStorage.removeItem(REFERRAL_KEY);
+            })
+            .catch((err) => {
+              console.warn('[AuthProvider] Referral track failed:', err?.message || err);
+            });
+        }
+      })
+      .catch((err) => {
+        // user reject signature -> log but don't loop
+        console.warn('[AuthProvider] Auto sign-in failed:', err?.message || err);
+      });
   }, [connected, publicKey, authenticated, signInWithSolana]);
 
   // If wallet disconnected manually -> clear FE auth state/token (no /auth/logout)

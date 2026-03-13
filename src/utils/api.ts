@@ -1144,6 +1144,14 @@ export async function claimReferralRewards(payload: ClaimReferralRequest | numbe
   return data;
 }
 
+export async function trackReferral(walletAddress: string): Promise<{ ok: boolean }> {
+  const { data } = await postViaProxy<{ ok: boolean }>(
+    '/referrals/track',
+    { walletAddress, tradingVolumeSol: 0 },
+  );
+  return data;
+}
+
 // =====================
 // ✅ ADD BACK: functions used by Dashboard (to avoid TS error)
 // =====================

@@ -217,6 +217,9 @@ export const getReferralList = (...args: Parameters<typeof realApi.getReferralLi
 export const claimReferralRewards = (...args: Parameters<typeof realApi.claimReferralRewards>) =>
   realApi.claimReferralRewards(...args);
 
+export const trackReferral = (...args: Parameters<typeof realApi.trackReferral>) =>
+  realApi.trackReferral(...args);
+
 // =====================
 // ✅ Dashboard helpers
 // =====================
