@@ -28,7 +28,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <Navbar />
 
       {/* MAIN CONTENT (shifted right) */}
-      <main className="flex-grow w-full py-8 px-4 sm:px-6 lg:px-8 md:pl-[280px] lg:pl-[320px] xl:pl-[340px]">
+      <main className="flex-grow w-full pt-[72px] md:pt-8 pb-8 px-4 sm:px-6 lg:px-8 md:pl-[280px] lg:pl-[320px] xl:pl-[340px]">
         {children}
       </main>
 

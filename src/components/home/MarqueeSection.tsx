@@ -74,7 +74,7 @@ const MarqueeSection: React.FC<MarqueeSectionProps> = ({
               rel={isExternal ? 'noopener noreferrer' : undefined}
               onClick={handleClick}
               className="inline-flex items-center gap-3 px-3 py-2 mr-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card)] hover:shadow-xl cursor-pointer"
-              style={{ minWidth: 220 }}
+              style={{ minWidth: 180 }}
             >
               <div className="w-12 h-12 rounded-xl overflow-hidden border border-[var(--card-border)] shrink-0 bg-[var(--card-border)] relative">
                 {showLogo ? (

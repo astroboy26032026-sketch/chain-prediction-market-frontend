@@ -93,3 +93,19 @@ html:not(.dark) body{
 /* Light button adjustments */
 html:not(.dark) .btn-primary{color:var(--on-primary)!important;}
 html:not(.dark) .btn-secondary{color:var(--on-secondary)!important;}
+
+/* =========================
+   Mobile safe area & performance
+========================= */
+.safe-area-top { padding-top: env(safe-area-inset-top, 0); }
+.safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 0); }
+
+@media (max-width: 640px) {
+  body {
+    background-image: none;
+    background-color: var(--background);
+  }
+  html:not(.dark) body {
+    background-image: none;
+  }
+}

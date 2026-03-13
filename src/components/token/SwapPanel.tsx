@@ -153,7 +153,7 @@ const SwapPanel: React.FC<SwapPanelProps> = ({
       </button>
 
       {isSettingsOpen && (
-        <div className="absolute right-4 top-20 z-20 w-[320px] bg-[var(--card2)] border-thin rounded-xl shadow-xl p-4">
+        <div className="absolute right-0 sm:right-4 top-20 z-20 w-[calc(100vw-2rem)] sm:w-[320px] bg-[var(--card2)] border-thin rounded-xl shadow-xl p-4">
           <SettingsPanel
             antiMEV={antiMEV}
             setAntiMEV={setAntiMEV}
