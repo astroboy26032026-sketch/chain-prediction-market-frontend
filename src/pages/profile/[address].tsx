@@ -488,7 +488,7 @@ const ProfilePage: React.FC = () => {
                           </div>
 
                           <div className="text-right shrink-0">
-                            <div className="text-xs opacity-70">MC</div>
+                            <div className="text-xs opacity-70">Market Cap</div>
                             <div className="font-extrabold">
                               {typeof t.marketCap === 'number' ? `$${t.marketCap.toLocaleString()}` : '—'}
                             </div>
@@ -580,7 +580,6 @@ const ProfilePage: React.FC = () => {
                                 {isBuy ? '+' : '-'}
                                 {Number(a?.amount ?? 0).toLocaleString()}
                               </div>
-                              <div className="text-xs opacity-70">amount</div>
                             </div>
                           </button>
                         );
