@@ -63,6 +63,8 @@ const STRIP_REPEAT = 80;
 const BASE_CYCLES = 8;
 const STOP_GAP_MS = 220;
 const STOP_DURATION_MS = 900;
+const CLAIM_STATUS_TIMEOUT_MS = 20000;
+const CLAIM_STATUS_POLL_MS = 1500;
 
 /* =========================
    UTILS
@@ -119,12 +121,12 @@ function extractErrorInfo(error: any): { status: number; code: string; message: 
     typeof raw === 'string'
       ? raw
       : typeof raw?.message === 'string'
-      ? raw.message
-      : typeof raw?.error === 'string'
-      ? raw.error
-      : typeof error?.message === 'string'
-      ? error.message
-      : '';
+        ? raw.message
+        : typeof raw?.error === 'string'
+          ? raw.error
+          : typeof error?.message === 'string'
+            ? error.message
+            : '';
 
   return {
     status,
@@ -290,6 +292,10 @@ function isWalletRejected(error: any): boolean {
     msg.includes('cancelled') ||
     msg.includes('canceled')
   );
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /* =========================
@@ -644,7 +650,7 @@ const RewardPage: React.FC = () => {
   };
 
   const loadAll = async () => {
-    if (!address) return;
+    if (!address) return null;
 
     try {
       setLoading(true);
@@ -657,6 +663,7 @@ const RewardPage: React.FC = () => {
       setRewardInfo(infoRes);
       setMarqueeItems(Array.isArray(marqueeRes?.items) ? marqueeRes.items : []);
       setSpinConfig(spinConfigRes);
+      return infoRes;
     } catch (error: any) {
       console.error('[Reward] Load error:', error);
       openStatusModal(
@@ -664,9 +671,44 @@ const RewardPage: React.FC = () => {
         error?.message || 'Reward data could not be loaded right now. Please refresh and try again.',
         'error'
       );
+      return null;
     } finally {
       setLoading(false);
     }
+  };
+
+  const refreshRewardInfoOnly = async () => {
+    if (!address) return null;
+    try {
+      const infoRes = await getRewardInfo(address);
+      setRewardInfo(infoRes);
+      return infoRes;
+    } catch (error) {
+      console.error('[Reward] Refresh info error:', error);
+      return null;
+    }
+  };
+
+  const waitForClaimSignature = async (signature: string): Promise<'success' | 'timeout'> => {
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < CLAIM_STATUS_TIMEOUT_MS) {
+      const res = await connection.getSignatureStatuses([signature]);
+      const status = res?.value?.[0];
+
+      if (status?.err) {
+        throw new Error('Transaction failed on-chain');
+      }
+
+      const confirmationStatus = String(status?.confirmationStatus ?? '').toLowerCase();
+      if (confirmationStatus === 'confirmed' || confirmationStatus === 'finalized') {
+        return 'success';
+      }
+
+      await sleep(CLAIM_STATUS_POLL_MS);
+    }
+
+    return 'timeout';
   };
 
   useEffect(() => {
@@ -781,9 +823,10 @@ const RewardPage: React.FC = () => {
       return;
     }
 
-    try {
-      setClaiming(true);
+    setClaimModal({ open: false });
+    setClaiming(true);
 
+    try {
       const res = await claimReward(address);
 
       if (!res.transaction) {
@@ -795,7 +838,6 @@ const RewardPage: React.FC = () => {
           };
         });
 
-        setClaimModal({ open: false });
         openStatusModal(
           'Nothing To Claim',
           res.message || 'There is no pending SOL available to claim right now.',
@@ -811,24 +853,54 @@ const RewardPage: React.FC = () => {
         preflightCommitment: 'processed',
       });
 
-      await connection.confirmTransaction(signature, 'processed');
+      const waitResult = await waitForClaimSignature(signature);
+      const refreshed = await refreshRewardInfoOnly();
+      const latestClaimable = Number(refreshed?.claimableSol ?? 0);
 
-      setRewardInfo((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          claimableSol: Number(res.claimableSol ?? 0),
-        };
-      });
+      if (waitResult === 'success') {
+        setRewardInfo((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            claimableSol: latestClaimable,
+          };
+        });
 
-      setClaimModal({ open: false });
+        openStatusModal(
+          'Claim Successful',
+          `You have successfully claimed ${fmtSol(Number(res.claimedSol ?? 0))} SOL.`,
+          'success'
+        );
+        return;
+      }
+
+      if (latestClaimable <= 0) {
+        openStatusModal(
+          'Claim Successful',
+          `You have successfully claimed ${fmtSol(Number(res.claimedSol ?? 0))} SOL.`,
+          'success'
+        );
+        return;
+      }
+
       openStatusModal(
-        'Claim Successful',
-        `You have successfully claimed ${fmtSol(Number(res.claimedSol ?? 0))} SOL.`,
-        'success'
+        'Claim Pending',
+        'Your transaction was submitted, but confirmation is taking longer than expected. Please wait a moment and refresh again.',
+        'error'
       );
     } catch (error: any) {
-      if (isWalletRejected(error)) {
+      console.error('[Reward] Claim error:', error);
+
+      const refreshed = await refreshRewardInfoOnly();
+      const latestClaimable = Number(refreshed?.claimableSol ?? claimableSol);
+
+      if (latestClaimable <= 0) {
+        openStatusModal(
+          'Claim Successful',
+          'Your reward appears to have been claimed successfully.',
+          'success'
+        );
+      } else if (isWalletRejected(error)) {
         openStatusModal(
           'Transaction Rejected',
           'You rejected the wallet transaction, so your reward was not claimed.',
