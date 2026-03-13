@@ -9,7 +9,7 @@ import Layout from '@/components/layout/Layout';
 import SEO from '@/components/seo/SEO';
 import LoadingBar from '@/components/ui/LoadingBar';
 
-import { getProfileInfo, getProfileStats, getTokenInfo } from '@/utils/api.index';
+import { getProfileInfo, getProfileStats, getTokenInfo, getTokensByCreator } from '@/utils/api.index';
 import { formatAddressV2 } from '@/utils/blockchainUtils';
 
 import { Check, Copy, Wallet } from 'lucide-react';
@@ -136,10 +136,14 @@ const ProfilePage: React.FC = () => {
   const [holdingTokens, setHoldingTokens] = useState<TokenMini[]>([]);
   const [loadingHolding, setLoadingHolding] = useState(false);
 
+  const [createdTokens, setCreatedTokens] = useState<TokenMini[]>([]);
+  const [loadingCreated, setLoadingCreated] = useState(false);
+
   const [historyLoading, setHistoryLoading] = useState(false);
   const [tokenMetaMap, setTokenMetaMap] = useState<Record<string, TokenMini>>({});
 
   const [visibleHoldingCount, setVisibleHoldingCount] = useState(LIST_STEP);
+  const [visibleCreatedCount, setVisibleCreatedCount] = useState(LIST_STEP);
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(LIST_STEP);
 
   const avatarSrc = useMemo(() => {
@@ -237,6 +241,27 @@ const ProfilePage: React.FC = () => {
     }
   }, []);
 
+  const fetchCreated = useCallback(async (walletAddress: string) => {
+    if (!walletAddress) return;
+    setLoadingCreated(true);
+    try {
+      const res = await getTokensByCreator(walletAddress, 1, 100);
+      const list: TokenMini[] = (res.tokens || []).map((t: any) => ({
+        address: String(t.address ?? ''),
+        name: String(t.name ?? 'Unknown'),
+        symbol: String(t.symbol ?? '—'),
+        logo: normalizeImageUrl(t.logo),
+        marketCap: typeof t.marketCap === 'number' ? t.marketCap : undefined,
+      }));
+      setCreatedTokens(list);
+    } catch (e) {
+      console.error('created tokens fetch failed', e);
+      setCreatedTokens([]);
+    } finally {
+      setLoadingCreated(false);
+    }
+  }, []);
+
   const fetchHistoryMeta = useCallback(async (stats: any) => {
     const acts: any[] = Array.isArray(stats?.recentActivities) ? stats.recentActivities : [];
     const addrs = acts.map((a) => String(a?.tokenAddress ?? '').trim()).filter(Boolean);
@@ -278,7 +303,8 @@ const ProfilePage: React.FC = () => {
   useEffect(() => {
     if (!addressToUse) return;
     fetchHeaderData(addressToUse);
-  }, [addressToUse, fetchHeaderData]);
+    fetchCreated(addressToUse);
+  }, [addressToUse, fetchHeaderData, fetchCreated]);
 
   useEffect(() => {
     if (!profileStats) return;
@@ -289,6 +315,7 @@ const ProfilePage: React.FC = () => {
   useEffect(() => {
     setTab('profile');
     setVisibleHoldingCount(LIST_STEP);
+    setVisibleCreatedCount(LIST_STEP);
     setVisibleHistoryCount(LIST_STEP);
   }, [addressToUse]);
 
@@ -307,7 +334,13 @@ const ProfilePage: React.FC = () => {
     [recentActivities, visibleHistoryCount]
   );
 
+  const visibleCreatedTokens = useMemo(
+    () => createdTokens.slice(0, visibleCreatedCount),
+    [createdTokens, visibleCreatedCount]
+  );
+
   const hasMoreHolding = visibleHoldingCount < holdingTokens.length;
+  const hasMoreCreated = visibleCreatedCount < createdTokens.length;
   const hasMoreHistory = visibleHistoryCount < recentActivities.length;
 
   return (
@@ -498,13 +531,13 @@ const ProfilePage: React.FC = () => {
                     </div>
 
                     {hasMoreHolding ? (
-                      <div className="pt-5 flex justify-center">
+                      <div className="flex justify-center mt-8">
                         <button
                           type="button"
                           onClick={() => setVisibleHoldingCount((prev) => Math.min(prev + LIST_STEP, holdingTokens.length))}
-                          className="btn btn-primary min-w-[160px] font-semibold flex items-center justify-center"
+                          className="px-5 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] hover:shadow disabled:opacity-50"
                         >
-                          More
+                          Load more
                         </button>
                       </div>
                     ) : null}
@@ -515,7 +548,62 @@ const ProfilePage: React.FC = () => {
 
             {tab === 'created' && (
               <SectionCard title="Created Tokens">
-                <div className="text-sm opacity-70 text-center py-4">—</div>
+                {loadingCreated ? (
+                  <div className="flex justify-center py-6">
+                    <LoadingBar size="medium" />
+                  </div>
+                ) : createdTokens.length === 0 ? (
+                  <div className="text-sm opacity-70 text-center py-4">No created tokens.</div>
+                ) : (
+                  <>
+                    <div className="space-y-3">
+                      {visibleCreatedTokens.map((t) => (
+                        <button
+                          key={t.address}
+                          onClick={() => router.push(`/token/${t.address}`)}
+                          className="w-full text-left rounded-2xl border border-[var(--card-border)] bg-[var(--card2)] hover:bg-[var(--card-hover)] transition-colors p-4 flex items-center gap-4"
+                        >
+                          <div className="relative w-12 h-12 rounded-2xl overflow-hidden bg-[var(--card)] border border-[var(--card-border)] shrink-0">
+                            {t.logo ? (
+                              <Image
+                                src={t.logo}
+                                alt={t.symbol}
+                                fill
+                                sizes="48px"
+                                className="object-cover"
+                                unoptimized
+                              />
+                            ) : null}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="font-extrabold truncate">{t.name}</div>
+                            <div className="text-xs opacity-70 truncate">{t.symbol}</div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <div className="text-xs opacity-70">Market Cap</div>
+                            <div className="font-extrabold">
+                              {typeof t.marketCap === 'number' ? `$${t.marketCap.toLocaleString()}` : '—'}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+
+                    {hasMoreCreated ? (
+                      <div className="flex justify-center mt-8">
+                        <button
+                          type="button"
+                          onClick={() => setVisibleCreatedCount((prev) => Math.min(prev + LIST_STEP, createdTokens.length))}
+                          className="px-5 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] hover:shadow disabled:opacity-50"
+                        >
+                          Load more
+                        </button>
+                      </div>
+                    ) : null}
+                  </>
+                )}
               </SectionCard>
             )}
 
@@ -587,15 +675,15 @@ const ProfilePage: React.FC = () => {
                     </div>
 
                     {hasMoreHistory ? (
-                      <div className="pt-5 flex justify-center">
+                      <div className="flex justify-center mt-8">
                         <button
                           type="button"
                           onClick={() =>
                             setVisibleHistoryCount((prev) => Math.min(prev + LIST_STEP, recentActivities.length))
                           }
-                          className="btn btn-primary min-w-[160px] font-semibold flex items-center justify-center"
+                          className="px-5 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] hover:shadow disabled:opacity-50"
                         >
-                          More
+                          Load more
                         </button>
                       </div>
                     ) : null}

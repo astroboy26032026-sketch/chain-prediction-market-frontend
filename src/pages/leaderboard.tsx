@@ -325,13 +325,13 @@ const LeaderboardPage: React.FC = () => {
             </div>
 
             {items.length > 0 && hasMore ? (
-              <div className="px-4 sm:px-6 py-5 flex justify-center border-t border-[var(--card-border)]">
+              <div className="flex justify-center py-5 border-t border-[var(--card-border)]">
                 <button
                   type="button"
                   onClick={() => setVisibleCount((prev) => Math.min(prev + LIST_STEP, items.length))}
-                  className="btn btn-primary min-w-[160px] font-semibold flex items-center justify-center"
+                  className="px-5 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] hover:shadow disabled:opacity-50"
                 >
-                  More
+                  Load more
                 </button>
               </div>
             ) : null}

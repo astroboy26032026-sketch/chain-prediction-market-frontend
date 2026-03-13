@@ -44,6 +44,12 @@ const ReferralsPage: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [generating, setGenerating] = useState(false);
 
+  const LIST_STEP = 10;
+  const [visibleCount, setVisibleCount] = useState(LIST_STEP);
+
+  const visibleRows = useMemo(() => rows.slice(0, visibleCount), [rows, visibleCount]);
+  const hasMore = visibleCount < rows.length;
+
   useEffect(() => {
     (async () => {
       try {
@@ -240,7 +246,7 @@ const ReferralsPage: React.FC = () => {
                           </td>
                         </tr>
                       ) : (
-                        rows.map((r, i) => (
+                        visibleRows.map((r, i) => (
                           <tr key={i} className="hover:bg-[var(--card-hover)]">
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-2">
@@ -262,6 +268,18 @@ const ReferralsPage: React.FC = () => {
                     </tbody>
                   </table>
                 </div>
+
+                {hasMore ? (
+                  <div className="flex justify-center py-5 border-t border-[var(--card-border)]">
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCount((prev) => Math.min(prev + LIST_STEP, rows.length))}
+                      className="px-5 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] hover:shadow disabled:opacity-50"
+                    >
+                      Load more
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
 
