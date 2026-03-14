@@ -76,14 +76,14 @@ const TokenHolders: React.FC<TokenHoldersProps> = ({
   // };
 
   return (
-    <div className="w-full">
-      <table className="w-full text-left">
+    <div className="w-full overflow-x-auto">
+      <table className="w-full text-left min-w-[420px]">
         <thead>
           <tr className="bg-[var(--card2)] border-thin">
-            <th className="px-4 py-2 text-sm text-gray-400">Holder</th>
-            <th className="px-4 py-2 text-sm text-gray-400">Balance</th>
-            <th className="px-4 py-2 text-sm text-gray-400">Percent</th>
-            <th className="px-4 py-2 text-sm text-gray-400">Last Tx</th>
+            <th className="px-3 sm:px-4 py-2 text-xs sm:text-sm text-gray-400">Holder</th>
+            <th className="px-3 sm:px-4 py-2 text-xs sm:text-sm text-gray-400">Balance</th>
+            <th className="px-3 sm:px-4 py-2 text-xs sm:text-sm text-gray-400">Percent</th>
+            <th className="px-3 sm:px-4 py-2 text-xs sm:text-sm text-gray-400 hidden sm:table-cell">Last Tx</th>
           </tr>
         </thead>
 
@@ -94,7 +94,7 @@ const TokenHolders: React.FC<TokenHoldersProps> = ({
             const isCreator = !!addrLower && addrLower === creatorAddrLower;
 
             const balance = Number((holder as any).balance ?? 0);
-            const pct = holder.percentShare; // ✅ API already provides %
+            const pct = holder.percentShare;
             const lastTx = holder.lastTransaction ? new Date(holder.lastTransaction) : null;
             const lastTxText = lastTx && !Number.isNaN(lastTx.getTime()) ? lastTx.toLocaleString() : '—';
 
@@ -103,26 +103,25 @@ const TokenHolders: React.FC<TokenHoldersProps> = ({
                 key={`${addr}-${index}`}
                 className="border-b border-[var(--card-hover)] hover:bg-[var(--card-hover)] transition-colors"
               >
-                <td className="px-4 py-2">
+                <td className="px-3 sm:px-4 py-2">
                   <a
-                    // ✅ Solscan address page
                     href={`${solscanBase}/account/${addr}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-gray-400 hover:text-[var(--primary)] text-sm flex items-center gap-1 transition-colors"
+                    className="text-gray-400 hover:text-[var(--primary)] text-xs sm:text-sm flex items-center gap-1 transition-colors"
                     title={addr}
                   >
                     {isCreator ? 'Creator' : shortenAddress(addr)} <ExternalLinkIcon size={14} />
                   </a>
                 </td>
 
-                <td className="px-4 py-2 text-gray-400 text-sm">
+                <td className="px-3 sm:px-4 py-2 text-gray-400 text-xs sm:text-sm">
                   {Number.isFinite(balance) ? balance.toLocaleString() : '—'}
                 </td>
 
-                <td className="px-4 py-2 text-gray-400 text-sm">{pct} % </td>
+                <td className="px-3 sm:px-4 py-2 text-gray-400 text-xs sm:text-sm">{pct} %</td>
 
-                <td className="px-4 py-2 text-gray-400 text-sm">{lastTxText}</td>
+                <td className="px-3 sm:px-4 py-2 text-gray-400 text-xs sm:text-sm hidden sm:table-cell">{lastTxText}</td>
               </tr>
             );
           })}

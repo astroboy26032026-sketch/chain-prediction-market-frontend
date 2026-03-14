@@ -304,12 +304,12 @@ const PointsPage: React.FC = () => {
 
               <div className="border-t border-[var(--card-border)]">
                 <div className="w-full overflow-auto">
-                  <table className="min-w-full text-sm">
+                  <table className="min-w-full text-xs sm:text-sm">
                     <thead className="bg-[var(--card)]">
-                      <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:text-center [&>th]:font-extrabold [&>th]:text-xs">
-                        <th className="min-w-[140px]">DATE</th>
-                        <th className="min-w-[220px]">TYPE</th>
-                        <th className="min-w-[160px]">POINTS</th>
+                      <tr className="[&>th]:px-2 [&>th]:sm:px-4 [&>th]:py-3 [&>th]:text-center [&>th]:font-extrabold [&>th]:text-xs">
+                        <th className="min-w-[90px] sm:min-w-[140px]">DATE</th>
+                        <th className="min-w-[120px] sm:min-w-[220px]">TYPE</th>
+                        <th className="min-w-[80px] sm:min-w-[160px]">POINTS</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--card-border)]">
@@ -328,8 +328,8 @@ const PointsPage: React.FC = () => {
                       ) : (
                         visibleRows.map((r, idx) => (
                           <tr key={`${r.dateISO}-${idx}`} className="hover:bg-[var(--card-hover)]">
-                            <td className="px-4 py-3 text-center">{fmtDate(r.dateISO)}</td>
-                            <td className="px-4 py-3 text-center">{r.type || '—'}</td>
+                            <td className="px-2 sm:px-4 py-3 text-center">{fmtDate(r.dateISO)}</td>
+                            <td className="px-2 sm:px-4 py-3 text-center">{r.type || '—'}</td>
                             <td className="px-4 py-3 text-center font-extrabold text-[var(--primary)]">
                               {fmtNum(r.points)}
                             </td>

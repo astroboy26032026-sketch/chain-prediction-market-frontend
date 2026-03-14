@@ -224,13 +224,13 @@ const ReferralsPage: React.FC = () => {
 
               <div className="border-t border-[var(--card-border)]">
                 <div className="w-full overflow-auto">
-                  <table className="min-w-full text-sm">
+                  <table className="min-w-full text-xs sm:text-sm">
                     <thead className="bg-[var(--card2)] text-[var(--foreground)]">
-                      <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:text-left [&>th]:font-extrabold [&>th]:text-xs">
-                        <th className="min-w-[140px]">DATE JOINED</th>
-                        <th className="min-w-[220px]">WALLET</th>
-                        <th className="min-w-[160px]">TRADING VOLUME</th>
-                        <th className="min-w-[160px]">YOUR REWARDS</th>
+                      <tr className="[&>th]:px-2 [&>th]:sm:px-4 [&>th]:py-3 [&>th]:text-left [&>th]:font-extrabold [&>th]:text-xs">
+                        <th className="min-w-[100px] sm:min-w-[140px]">DATE JOINED</th>
+                        <th className="min-w-[120px] sm:min-w-[220px]">WALLET</th>
+                        <th className="min-w-[100px] sm:min-w-[160px]">TRADING VOLUME</th>
+                        <th className="min-w-[100px] sm:min-w-[160px]">YOUR REWARDS</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--card-border)]">
@@ -249,20 +249,20 @@ const ReferralsPage: React.FC = () => {
                       ) : (
                         visibleRows.map((r, i) => (
                           <tr key={i} className="hover:bg-[var(--card-hover)]">
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                <CalendarDays className="w-4 h-4 opacity-70" />
-                                {new Date(r.joinedAt).toLocaleDateString()}
+                            <td className="px-2 sm:px-4 py-3">
+                              <div className="flex items-center gap-1 sm:gap-2">
+                                <CalendarDays className="w-3 h-3 sm:w-4 sm:h-4 opacity-70 shrink-0" />
+                                <span className="truncate">{new Date(r.joinedAt).toLocaleDateString()}</span>
                               </div>
                             </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                <Wallet className="w-4 h-4 opacity-70" />
-                                <span className="font-mono">{shorten(r.walletAddress, 6, 6)}</span>
+                            <td className="px-2 sm:px-4 py-3">
+                              <div className="flex items-center gap-1 sm:gap-2">
+                                <Wallet className="w-3 h-3 sm:w-4 sm:h-4 opacity-70 shrink-0" />
+                                <span className="font-mono truncate">{shorten(r.walletAddress, 4, 4)}</span>
                               </div>
                             </td>
-                            <td className="px-4 py-3">{fmtSOL(r.tradingVolumeSol)}</td>
-                            <td className="px-4 py-3">{fmtSOL(r.rewardSol)}</td>
+                            <td className="px-2 sm:px-4 py-3">{fmtSOL(r.tradingVolumeSol)}</td>
+                            <td className="px-2 sm:px-4 py-3">{fmtSOL(r.rewardSol)}</td>
                           </tr>
                         ))
                       )}

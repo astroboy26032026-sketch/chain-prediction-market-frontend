@@ -413,7 +413,7 @@ const ProfilePage: React.FC = () => {
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 sm:gap-5 mt-5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-5 mt-5">
             <StatTile label={PROFILE.PORTFOLIO_VALUE} value={portfolioValue} />
             <StatTile label={PROFILE.TOKENS_CREATED} value={loadingHeader ? '—' : tokensCreatedTile} />
             <StatTile label={PROFILE.TOTAL_TRADES} value={loadingHeader ? '—' : String(totalTrades)} />

@@ -107,16 +107,15 @@ const TransactionHistory: React.FC<Props> = ({ tokenAddress }) => {
 
       {trades.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            {/* ✅ header giống Holders */}
+          <table className="w-full text-left min-w-[540px]">
             <thead>
               <tr className="bg-[var(--card2)] border-thin">
-                <th className="px-4 py-2 text-sm text-gray-400">Type</th>
-                <th className="px-4 py-2 text-sm text-gray-400">Price (USD)</th>
-                <th className="px-4 py-2 text-sm text-gray-400">Amount</th>
-                <th className="px-4 py-2 text-sm text-gray-400">SOL</th>
-                <th className="px-4 py-2 text-sm text-gray-400">Total (USD)</th>
-                <th className="px-4 py-2 text-sm text-gray-400">Time</th>
+                <th className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-gray-400">Type</th>
+                <th className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-gray-400">Price (USD)</th>
+                <th className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-gray-400">Amount</th>
+                <th className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-gray-400">SOL</th>
+                <th className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-gray-400 hidden sm:table-cell">Total (USD)</th>
+                <th className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-gray-400">Time</th>
               </tr>
             </thead>
 
@@ -135,19 +134,19 @@ const TransactionHistory: React.FC<Props> = ({ tokenAddress }) => {
                     key={key}
                     className="border-b border-[var(--card-hover)] hover:bg-[var(--card-hover)] transition-colors"
                   >
-                    <td className={`px-4 py-2 text-sm font-medium ${t.isBuy ? 'text-green-400' : 'text-red-400'}`}>
+                    <td className={`px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium ${t.isBuy ? 'text-green-400' : 'text-red-400'}`}>
                       {t.isBuy ? 'BUY' : 'SELL'}
                     </td>
 
-                    <td className="px-4 py-2 text-gray-400 text-sm">{fmtUsd(t.price, 6)}</td>
+                    <td className="px-2 sm:px-4 py-2 text-gray-400 text-xs sm:text-sm">{fmtUsd(t.price, 6)}</td>
 
-                    <td className="px-4 py-2 text-gray-400 text-sm">{fmtNumber(t.amount)}</td>
+                    <td className="px-2 sm:px-4 py-2 text-gray-400 text-xs sm:text-sm">{fmtNumber(t.amount)}</td>
 
-                    <td className="px-4 py-2 text-gray-400 text-sm">{fmtNumber(t.solAmount, 4)}</td>
+                    <td className="px-2 sm:px-4 py-2 text-gray-400 text-xs sm:text-sm">{fmtNumber(t.solAmount, 4)}</td>
 
-                    <td className="px-4 py-2 text-gray-400 text-sm">{totalUsdText}</td>
+                    <td className="px-2 sm:px-4 py-2 text-gray-400 text-xs sm:text-sm hidden sm:table-cell">{totalUsdText}</td>
 
-                    <td className="px-4 py-2 text-gray-400 text-sm">{fmtTime(t.time)}</td>
+                    <td className="px-2 sm:px-4 py-2 text-gray-400 text-xs sm:text-sm">{fmtTime(t.time)}</td>
                   </tr>
                 );
               })}

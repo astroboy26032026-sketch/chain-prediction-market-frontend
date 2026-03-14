@@ -843,11 +843,11 @@ const CreateToken: React.FC = () => {
             </div>
 
             <div className="rounded-3xl bg-[var(--card)] border-thin p-6 shadow-lg">
-              <div className="text-center text-6xl font-extrabold tracking-wide select-none text-[var(--foreground)]/25">
+              <div className="text-center text-4xl sm:text-6xl font-extrabold tracking-wide select-none text-[var(--foreground)]/25">
                 {buyAmount.toFixed(2)}
               </div>
 
-              <div className="mt-5 grid grid-cols-4 gap-3">
+              <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[0.1, 0.5, 1].map((v) => (
                   <button
                     key={v}

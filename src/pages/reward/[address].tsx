@@ -60,12 +60,25 @@ const SYMBOL_UI_MAP: Record<string, string> = {
 };
 
 const SYMBOL_PX = 84;
+const SYMBOL_PX_MOBILE = 56;
 const STRIP_REPEAT = 80;
 const BASE_CYCLES = 8;
 const STOP_GAP_MS = 220;
 const STOP_DURATION_MS = 900;
 const CLAIM_STATUS_TIMEOUT_MS = 20000;
 const CLAIM_STATUS_POLL_MS = 1500;
+
+/** Returns reel size: 56px on mobile (<640px), 84px on desktop */
+function useReelSize(): number {
+  const [size, setSize] = useState(SYMBOL_PX);
+  useEffect(() => {
+    const update = () => setSize(window.innerWidth < 640 ? SYMBOL_PX_MOBILE : SYMBOL_PX);
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+  return size;
+}
 
 /* =========================
    UTILS
@@ -307,11 +320,13 @@ function Reel({
   finalSymbol,
   spinning,
   symbols,
+  sizePx = SYMBOL_PX,
 }: {
   index: number;
   finalSymbol: string | null;
   spinning: boolean;
   symbols: string[];
+  sizePx?: number;
 }) {
   const stripRef = useRef<HTMLDivElement>(null);
   const [looping, setLooping] = useState(false);
@@ -338,7 +353,7 @@ function Reel({
     if (finalSymbol) {
       const currentTy = getTranslateY(strip);
       const currentOffset = Math.max(0, -currentTy);
-      const currentIndex = Math.floor(currentOffset / SYMBOL_PX);
+      const currentIndex = Math.floor(currentOffset / sizePx);
 
       const targetIdx = safeSymbols.indexOf(finalSymbol);
       if (targetIdx < 0) return;
@@ -349,9 +364,9 @@ function Reel({
         ((targetIdx - (currentIndex % safeSymbols.length) + safeSymbols.length) % safeSymbols.length);
 
       const totalSymbols = STRIP_REPEAT * safeSymbols.length;
-      const totalHeight = totalSymbols * SYMBOL_PX;
+      const totalHeight = totalSymbols * sizePx;
 
-      let targetPx = (currentIndex + deltaSteps) * SYMBOL_PX;
+      let targetPx = (currentIndex + deltaSteps) * sizePx;
 
       while (targetPx <= currentOffset) targetPx += totalHeight;
       targetPx = ((targetPx % totalHeight) + totalHeight) % totalHeight;
@@ -376,7 +391,7 @@ function Reel({
   return (
     <div
       className="reel-window shrink-0 bg-[var(--card2)] border border-[var(--card-border)] rounded-2xl shadow-inner overflow-hidden"
-      style={{ width: SYMBOL_PX, height: SYMBOL_PX }}
+      style={{ width: sizePx, height: sizePx }}
     >
       <div
         ref={stripRef}
@@ -384,7 +399,7 @@ function Reel({
         style={{ transform: stopOffset != null ? `translateY(-${stopOffset}px)` : undefined }}
       >
         {repeated.map((s, i) => (
-          <div key={`${s}_${i}`} className="grid place-items-center text-[54px]" style={{ height: SYMBOL_PX }}>
+          <div key={`${s}_${i}`} className="grid place-items-center" style={{ height: sizePx, fontSize: sizePx * 0.64 }}>
             {symbolToUi(s)}
           </div>
         ))}
@@ -405,7 +420,7 @@ function Reel({
             transform: translateY(0);
           }
           to {
-            transform: translateY(-${safeSymbols.length * SYMBOL_PX}px);
+            transform: translateY(-${safeSymbols.length * sizePx}px);
           }
         }
       `}</style>
@@ -597,6 +612,7 @@ const RewardPage: React.FC = () => {
   const [spinning, setSpinning] = useState(false);
   const [cooldownNow, setCooldownNow] = useState<number>(Date.now());
 
+  const reelSize = useReelSize();
   const symbols = spinConfig?.symbols?.length ? spinConfig.symbols : FALLBACK_SYMBOLS;
   const reels = Number(spinConfig?.reels ?? FALLBACK_REELS) || FALLBACK_REELS;
   const multiplier = spinConfig?.multiplier ?? FALLBACK_MULTIPLIER;
@@ -1022,9 +1038,9 @@ const RewardPage: React.FC = () => {
 
         <div className="card py-10 flex flex-col items-center justify-center">
           <div className="w-full md:w-auto overflow-x-auto md:overflow-visible">
-            <div className="inline-flex flex-nowrap items-center justify-center gap-4 sm:gap-6 px-1">
+            <div className="inline-flex flex-nowrap items-center justify-center gap-2 sm:gap-6 px-1">
               {Array.from({ length: reels }).map((_, i) => (
-                <Reel key={i} index={i} spinning={spinning} finalSymbol={finals[i]} symbols={symbols} />
+                <Reel key={i} index={i} spinning={spinning} finalSymbol={finals[i]} symbols={symbols} sizePx={reelSize} />
               ))}
             </div>
           </div>
@@ -1074,23 +1090,23 @@ const RewardPage: React.FC = () => {
         <div className="card mt-6">
           <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">{REWARD.HISTORY}</h3>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs sm:text-sm min-w-[360px]">
               <thead>
                 <tr className="text-left text-gray-400">
-                  <th className="py-2 pr-4">Time</th>
-                  <th className="py-2 pr-4">Bet</th>
-                  <th className="py-2 pr-4">Result</th>
-                  <th className="py-2 pr-4">Payout</th>
+                  <th className="py-2 pr-2 sm:pr-4">Time</th>
+                  <th className="py-2 pr-2 sm:pr-4">Bet</th>
+                  <th className="py-2 pr-2 sm:pr-4">Result</th>
+                  <th className="py-2 pr-2 sm:pr-4">Payout</th>
                 </tr>
               </thead>
               <tbody>
                 {history.length ? (
                   history.map((h) => (
                     <tr key={h.id} className="border-t border-[var(--card-border)]">
-                      <td className="py-2 pr-4">{h.time}</td>
-                      <td className="py-2 pr-4">{h.bet}</td>
-                      <td className="py-2 pr-4 font-semibold">{h.result}</td>
-                      <td className="py-2 pr-4">{fmtSol(h.payoutSol)} SOL</td>
+                      <td className="py-2 pr-2 sm:pr-4">{h.time}</td>
+                      <td className="py-2 pr-2 sm:pr-4">{h.bet}</td>
+                      <td className="py-2 pr-2 sm:pr-4 font-semibold">{h.result}</td>
+                      <td className="py-2 pr-2 sm:pr-4">{fmtSol(h.payoutSol)} SOL</td>
                     </tr>
                   ))
                 ) : (

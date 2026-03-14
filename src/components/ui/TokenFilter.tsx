@@ -81,10 +81,10 @@ const TokenFilter: React.FC<TokenFilterProps> = ({
       {/* Popover */}
       {isOpen && (
         <div
-          className="absolute top-10 right-0 z-40 w-[420px] rounded-2xl
+          className="absolute top-10 right-0 z-40 w-[calc(100vw-2rem)] sm:w-[420px] rounded-2xl
                      border border-[var(--card-border)]
                      bg-[var(--background)] text-[var(--foreground)]
-                     p-5 shadow-[0_8px_32px_rgba(0,0,0,0.4)]"
+                     p-4 sm:p-5 shadow-[0_8px_32px_rgba(0,0,0,0.4)]"
         >
           {/* ===== Mcap ===== */}
           <div className="mb-6">
