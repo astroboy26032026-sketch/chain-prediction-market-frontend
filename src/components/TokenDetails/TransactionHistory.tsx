@@ -161,7 +161,7 @@ const TransactionHistory: React.FC<Props> = ({ tokenAddress }) => {
           <button
             disabled={!canLoadMore}
             onClick={() => loadTrades(true)}
-            className="btn-secondary px-4 py-2 rounded disabled:opacity-50"
+            className="px-5 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] hover:shadow disabled:opacity-50"
           >
             {loading ? COMMON.LOADING : COMMON.LOAD_MORE}
           </button>

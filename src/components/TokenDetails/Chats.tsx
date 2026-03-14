@@ -231,7 +231,7 @@ const Chats: React.FC<ChatsProps> = ({ tokenAddress, tokenInfo }) => {
             type="button"
             onClick={() => fetchMessages(true)}
             disabled={loadingMore}
-            className="w-full px-3 py-2 rounded-md bg-gray-800 hover:bg-gray-700 text-sm disabled:opacity-50"
+            className="w-full px-5 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] hover:shadow text-sm disabled:opacity-50"
           >
             {loadingMore ? COMMON.LOADING : COMMON.LOAD_MORE}
           </button>

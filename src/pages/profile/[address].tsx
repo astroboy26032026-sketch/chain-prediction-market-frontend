@@ -414,18 +414,18 @@ const ProfilePage: React.FC = () => {
 
           {/* Stats */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 sm:gap-5 mt-5">
-            <StatTile label="Portfolio Value" value={portfolioValue} />
-            <StatTile label="Tokens Created" value={loadingHeader ? '—' : tokensCreatedTile} />
-            <StatTile label="Total Trades" value={loadingHeader ? '—' : String(totalTrades)} />
-            <StatTile label="Member Since" value={loadingHeader ? '—' : memberSince} />
+            <StatTile label={PROFILE.PORTFOLIO_VALUE} value={portfolioValue} />
+            <StatTile label={PROFILE.TOKENS_CREATED} value={loadingHeader ? '—' : tokensCreatedTile} />
+            <StatTile label={PROFILE.TOTAL_TRADES} value={loadingHeader ? '—' : String(totalTrades)} />
+            <StatTile label={PROFILE.MEMBER_SINCE} value={loadingHeader ? '—' : memberSince} />
           </div>
 
           {/* Tabs */}
           <div className="mt-5 flex flex-wrap gap-2">
-            <TabButton active={tab === 'profile'} title="Profile Info" onClick={() => setTab('profile')} />
-            <TabButton active={tab === 'holding'} title="Holding Tokens" onClick={() => setTab('holding')} />
-            <TabButton active={tab === 'created'} title="Created Tokens" onClick={() => setTab('created')} />
-            <TabButton active={tab === 'history'} title="Transaction History" onClick={() => setTab('history')} />
+            <TabButton active={tab === 'profile'} title={PROFILE.TAB_PROFILE} onClick={() => setTab('profile')} />
+            <TabButton active={tab === 'holding'} title={PROFILE.TAB_HOLDING} onClick={() => setTab('holding')} />
+            <TabButton active={tab === 'created'} title={PROFILE.TAB_CREATED} onClick={() => setTab('created')} />
+            <TabButton active={tab === 'history'} title={PROFILE.TAB_HISTORY} onClick={() => setTab('history')} />
           </div>
 
           {/* Content */}
@@ -488,13 +488,13 @@ const ProfilePage: React.FC = () => {
             )}
 
             {tab === 'holding' && (
-              <SectionCard title="Holding Tokens">
+              <SectionCard title={PROFILE.TAB_HOLDING}>
                 {loadingHolding ? (
                   <div className="flex justify-center py-6">
                     <LoadingBar size="medium" />
                   </div>
                 ) : holdingTokens.length === 0 ? (
-                  <div className="text-sm opacity-70 text-center py-4">No holding tokens.</div>
+                  <div className="text-sm opacity-70 text-center py-4">{PROFILE.NO_HOLDING}</div>
                 ) : (
                   <>
                     <div className="space-y-3">
@@ -549,13 +549,13 @@ const ProfilePage: React.FC = () => {
             )}
 
             {tab === 'created' && (
-              <SectionCard title="Created Tokens">
+              <SectionCard title={PROFILE.TAB_CREATED}>
                 {loadingCreated ? (
                   <div className="flex justify-center py-6">
                     <LoadingBar size="medium" />
                   </div>
                 ) : createdTokens.length === 0 ? (
-                  <div className="text-sm opacity-70 text-center py-4">No created tokens.</div>
+                  <div className="text-sm opacity-70 text-center py-4">{PROFILE.NO_CREATED}</div>
                 ) : (
                   <>
                     <div className="space-y-3">
@@ -610,13 +610,13 @@ const ProfilePage: React.FC = () => {
             )}
 
             {tab === 'history' && (
-              <SectionCard title="Transaction History">
+              <SectionCard title={PROFILE.TAB_HISTORY}>
                 {historyLoading ? (
                   <div className="flex justify-center py-6">
                     <LoadingBar size="medium" />
                   </div>
                 ) : recentActivities.length === 0 ? (
-                  <div className="text-sm opacity-70 text-center py-4">No recent activities.</div>
+                  <div className="text-sm opacity-70 text-center py-4">{PROFILE.NO_HISTORY}</div>
                 ) : (
                   <>
                     <div className="space-y-3">

@@ -355,7 +355,7 @@ const PointsPage: React.FC = () => {
 
               {!loading && rows.length === 0 ? (
                 <div className="px-4 sm:px-6 py-6 text-center opacity-80">
-                  Nothing yet? Switch wallets or trade to earn Seed Points.
+                  {POINTS.EMPTY_ENCOURAGE}
                 </div>
               ) : null}
             </div>
