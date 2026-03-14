@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
+const isDev = process.env.NODE_ENV !== 'production';
+
 const nextConfig = {
   reactStrictMode: true,
   async headers() {
@@ -11,14 +13,25 @@ const nextConfig = {
           { key: 'X-XSS-Protection', value: '1; mode=block' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=63072000; includeSubDomains; preload',
+          },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(), microphone=(), geolocation=()',
+          },
+          {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+              // Dev needs unsafe-eval for hot-reload; production is strict
+              isDev
+                ? "script-src 'self' 'unsafe-eval' 'unsafe-inline'"
+                : "script-src 'self'",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com",
               "img-src 'self' data: blob: https:",
-              "connect-src 'self' https://dev.pumpfunclone2025.win wss://dev.pumpfunclone2025.win https://ipfs-chainsafe.dev",
+              "connect-src 'self' https://dev.pumpfunclone2025.win wss://dev.pumpfunclone2025.win https://pumpfunclone2025.win https://ipfs-chainsafe.dev",
               "frame-ancestors 'none'",
             ].join('; '),
           },

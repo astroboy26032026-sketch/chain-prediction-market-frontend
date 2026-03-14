@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
 import { Token } from '@/interface/types';
+import { checkRateLimit, isValidSolanaAddress } from '@/utils/apiSecurity';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -12,9 +13,11 @@ export default async function handler(
     return res.status(405).end();
   }
 
+  if (!checkRateLimit(req, res, { max: 60, keyPrefix: 'getHistoricalPrice' })) return;
+
   try {
     const { address } = req.query;
-    if (!address || typeof address !== 'string') {
+    if (!address || typeof address !== 'string' || !isValidSolanaAddress(address)) {
       return res.status(400).json({ error: 'Address is required' } as any);
     }
 

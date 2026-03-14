@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
 import { Token, PaginatedResponse } from '@/interface/types';
+import { clampPagination, checkRateLimit } from '@/utils/apiSecurity';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -12,14 +13,13 @@ export default async function handler(
     return res.status(405).end();
   }
 
+  if (!checkRateLimit(req, res, { max: 60, keyPrefix: 'getRecentTokens' })) return;
+
   try {
-    const { page = 1, pageSize = 20, hours = 24 } = req.query;
+    const { page, pageSize } = clampPagination(req.query);
+    const hours = Math.max(1, Math.min(Number(req.query.hours) || 24, 168));
     const response = await axios.get(`${API_BASE_URL}/api/tokens/recent`, {
-      params: { 
-        page: Number(page), 
-        pageSize: Number(pageSize),
-        hours: Number(hours)
-      }
+      params: { page, pageSize, hours }
     });
     
     // If we get an empty array of tokens, return 404

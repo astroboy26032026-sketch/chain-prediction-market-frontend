@@ -201,7 +201,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ message: "Method not allowed" });
   }
 
-  const form = formidable();
+  // Security: rate limit uploads (10 per minute per IP)
+  const { checkRateLimit, isAllowedImageType, sanitizeFilename } = await import('@/utils/apiSecurity');
+  if (!checkRateLimit(req, res, { max: 10, keyPrefix: 'upload' })) return;
+
+  const form = formidable({
+    maxFileSize: 10 * 1024 * 1024, // 10MB max
+    maxFiles: 1,
+  });
 
   try {
     const [, files] = await form.parse(req);
@@ -212,7 +219,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const mime = file.mimetype || "application/octet-stream";
-    const fileName = file.originalFilename || "unnamed_file";
+
+    // Security: validate file type
+    if (!isAllowedImageType(mime)) {
+      return res.status(400).json({ error: "Only image files are allowed (JPEG, PNG, GIF, WebP, SVG)" });
+    }
+
+    // Security: sanitize filename
+    const fileName = sanitizeFilename(file.originalFilename || "unnamed_file");
 
     const fileContent = await fs.promises.readFile(file.filepath);
 

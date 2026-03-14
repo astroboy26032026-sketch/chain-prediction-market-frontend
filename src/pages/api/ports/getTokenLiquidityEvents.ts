@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
 import { LiquidityEvent, PaginatedResponse } from '@/interface/types';
+import { clampPagination, checkRateLimit } from '@/utils/apiSecurity';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -12,10 +13,12 @@ export default async function handler(
     return res.status(405).end();
   }
 
+  if (!checkRateLimit(req, res, { max: 60, keyPrefix: 'getLiquidityEvents' })) return;
+
   try {
-    const { tokenId, page = 1, pageSize = 20 } = req.query;
+    const { tokenId } = req.query;
     if (!tokenId || typeof tokenId !== 'string') {
-      return res.status(400).json({ 
+      return res.status(400).json({
         tokens: [],
         data: [],
         totalCount: 0,
@@ -24,11 +27,10 @@ export default async function handler(
       });
     }
 
+    const { page, pageSize } = clampPagination(req.query);
+
     const response = await axios.get(`${API_BASE_URL}/api/liquidity/token/${tokenId}`, {
-      params: { 
-        page: Number(page), 
-        pageSize: Number(pageSize) 
-      }
+      params: { page, pageSize }
     });
     res.status(200).json(response.data);
   } catch (error) {

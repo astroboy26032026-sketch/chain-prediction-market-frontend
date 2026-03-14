@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
 import { Token, PaginatedResponse } from '@/interface/types';
+import { clampPagination, checkRateLimit, isValidSolanaAddress } from '@/utils/apiSecurity';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -12,26 +13,25 @@ export default async function handler(
     return res.status(405).end();
   }
 
+  if (!checkRateLimit(req, res, { max: 60, keyPrefix: 'getTokensByCreator' })) return;
+
   try {
-    const { creatorAddress, page = 1, pageSize = 20 } = req.query;
-    if (!creatorAddress || typeof creatorAddress !== 'string') {
-      return res.status(400).json({ 
-        tokens: [], 
-        data: [], 
-        totalCount: 0, 
-        currentPage: 1, 
-        totalPages: 1 
+    const { creatorAddress } = req.query;
+    if (!creatorAddress || typeof creatorAddress !== 'string' || !isValidSolanaAddress(creatorAddress)) {
+      return res.status(400).json({
+        tokens: [],
+        data: [],
+        totalCount: 0,
+        currentPage: 1,
+        totalPages: 1
       });
     }
 
+    const { page, pageSize } = clampPagination(req.query);
+
     const response = await axios.get(
       `${API_BASE_URL}/api/tokens/creator/${creatorAddress}`,
-      {
-        params: { 
-          page: Number(page), 
-          pageSize: Number(pageSize) 
-        }
-      }
+      { params: { page, pageSize } }
     );
     res.status(200).json(response.data);
   } catch (error) {

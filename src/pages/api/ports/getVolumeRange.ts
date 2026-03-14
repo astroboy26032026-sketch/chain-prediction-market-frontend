@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
+import { checkRateLimit } from '@/utils/apiSecurity';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -10,6 +11,8 @@ export default async function handler(
   if (req.method !== 'GET') {
     return res.status(405).end();
   }
+
+  if (!checkRateLimit(req, res, { max: 60, keyPrefix: 'getVolumeRange' })) return;
 
   try {
     const { hours = 24 } = req.query;

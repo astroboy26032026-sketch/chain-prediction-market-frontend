@@ -25,10 +25,13 @@ interface ChatsProps {
 
 const PAGE_LIMIT = 30;
 
+/** Strip HTML tags to prevent XSS from API responses */
+const stripHtml = (str: string) => str.replace(/<[^>]*>/g, '');
+
 const toUiMessage = (m: BeChatMessage): UiChatMessage => ({
   messageId: m.messageId,
   walletAddress: m.walletAddress,
-  message: m.message,
+  message: stripHtml(m.message),
   timestamp: m.timestamp,
 });
 

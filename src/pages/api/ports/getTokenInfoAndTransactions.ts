@@ -39,9 +39,17 @@ export default async function handler(
     return res.status(405).end();
   }
 
+  // Rate limit
+  const { checkRateLimit, isValidSolanaAddress, clampPagination } = await import('@/utils/apiSecurity');
+  if (!checkRateLimit(req, res, { max: 60, keyPrefix: 'getTokenInfo' })) return;
+
   try {
-    const { address, transactionPage = 1, transactionPageSize = 10 } = req.query;
-    if (!address || typeof address !== 'string') {
+    const { address } = req.query;
+    const { page: transactionPage, pageSize: transactionPageSize } = clampPagination({
+      page: req.query.transactionPage,
+      pageSize: req.query.transactionPageSize,
+    });
+    if (!address || typeof address !== 'string' || !isValidSolanaAddress(address)) {
       return res.status(400).json({ 
         ...emptyToken,
         transactions: { 
@@ -59,9 +67,9 @@ export default async function handler(
     const response = await axios.get(
       `${API_BASE_URL}/api/tokens/address/${address}/info-and-transactions`,
       {
-        params: { 
-          transactionPage: Number(transactionPage), 
-          transactionPageSize: Number(transactionPageSize) 
+        params: {
+          transactionPage,
+          transactionPageSize
         }
       }
     );

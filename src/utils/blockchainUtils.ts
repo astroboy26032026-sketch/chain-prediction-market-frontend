@@ -261,9 +261,17 @@ export function useCreateTokenSolana() {
         // 1) call BE: prepare mint (unsigned tx base64)
         const prepared = await prepareMint(payload);
 
-        // 2) decode base64 -> VersionedTransaction
+        // 2) decode base64 -> VersionedTransaction (with validation)
         const txBytes = Buffer.from(prepared.txBase64, 'base64');
+        if (txBytes.length === 0 || txBytes.length > 1232) {
+          throw new Error('Invalid transaction: unexpected size');
+        }
         const tx = VersionedTransaction.deserialize(txBytes);
+
+        // Security: basic sanity checks on the transaction
+        if (tx.message.staticAccountKeys.length === 0) {
+          throw new Error('Invalid transaction: no account keys');
+        }
 
         // 3) send tx (wallet signs + sends)
         const signature = await sendTransaction(tx, connection);
