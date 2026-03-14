@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '@/components/layout/Layout';
 import SEO from '@/components/seo/SEO';
+import { COMMON, SEO as SEO_TEXT, POINTS } from '@/constants/ui-text';
 
 import { getPointsOverview, getPointsHistory } from '@/utils/api.index';
 import type { PointsHistoryItem, PointsOverviewResponse } from '@/interface/types';
@@ -218,14 +219,14 @@ const PointsPage: React.FC = () => {
 
   return (
     <Layout>
-      <SEO title="Points" description="Earn points for doing stuff: trade, create, stake have fun!" />
+      <SEO title={SEO_TEXT.POINTS_TITLE} description={SEO_TEXT.POINTS_DESC} />
 
       <div className="min-h-screen flex flex-col items-center py-8 sm:py-10">
         <div className="w-full max-w-6xl px-4 sm:px-6 lg:px-10 xl:px-16">
           {/* Header */}
           <div className="flex items-start justify-between gap-4 mb-2">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Points</h1>
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">{SEO_TEXT.POINTS_TITLE}</h1>
               <p className="mt-2 text-sm opacity-80">Get points for doing stuff : trade, create, stake have fun!</p>
               {walletAddress ? <div className="mt-2 text-xs opacity-60 break-all">Wallet: {walletAddress}</div> : null}
             </div>
@@ -234,7 +235,7 @@ const PointsPage: React.FC = () => {
             <div className="text-right">
               <div className="flex items-center justify-end gap-6">
                 <div>
-                  <div className="text-sm opacity-80">Points</div>
+                  <div className="text-sm opacity-80">{SEO_TEXT.POINTS_TITLE}</div>
                   <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[var(--primary)]">
                     {tierProg ? fmtNum(tierProg.points) : '—'}
                   </div>
@@ -298,7 +299,7 @@ const PointsPage: React.FC = () => {
           <div className="mt-6">
             <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card2)] p-0 overflow-hidden">
               <div className="px-4 sm:px-6 py-6">
-                <div className="text-sm font-extrabold tracking-wide mb-1">POINT HISTORY</div>
+                <div className="text-sm font-extrabold tracking-wide mb-1">{POINTS.POINT_HISTORY}</div>
               </div>
 
               <div className="border-t border-[var(--card-border)]">

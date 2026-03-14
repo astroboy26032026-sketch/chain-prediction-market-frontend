@@ -14,6 +14,8 @@ import { formatAddressV2 } from '@/utils/blockchainUtils';
 
 import { Check, Copy, Wallet } from 'lucide-react';
 
+import { COMMON, SEO as SEO_TEXT, PROFILE } from '@/constants/ui-text';
+
 /* =========================
    Helpers
 ========================= */
@@ -346,8 +348,8 @@ const ProfilePage: React.FC = () => {
   return (
     <Layout>
       <SEO
-        title={`${addressToUse ? `User Profile: ${formatAddressV2(addressToUse)}` : 'User Profile'} - Bondle`}
-        description="User profile dashboard"
+        title={`${addressToUse ? `${SEO_TEXT.PROFILE_TITLE}: ${formatAddressV2(addressToUse)}` : SEO_TEXT.PROFILE_TITLE} - Bondle`}
+        description={SEO_TEXT.PROFILE_DESC}
         image="seo/profile.jpg"
       />
 
@@ -355,7 +357,7 @@ const ProfilePage: React.FC = () => {
         <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-10 xl:px-16">
           <div className="w-full mb-6">
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-left text-[var(--primary)]">
-              User Profile
+              {SEO_TEXT.PROFILE_TITLE}
             </h1>
           </div>
 

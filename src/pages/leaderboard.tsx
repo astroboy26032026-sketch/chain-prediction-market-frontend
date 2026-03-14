@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useRouter } from "next/router";
 import LoadingBar from "@/components/ui/LoadingBar";
 import { getLeaderboardTop, getLeaderboardList } from "@/utils/api.index";
+import { COMMON, SEO as SEO_TEXT, LEADERBOARD } from '@/constants/ui-text';
 
 /* =========================
    Types (GIỮ UI)
@@ -187,7 +188,7 @@ const LeaderboardPage: React.FC = () => {
 
   return (
     <Layout>
-      <SEO title="Leaderboard" description="Top 15 trending tokens leaderboard" />
+      <SEO title={SEO_TEXT.LEADERBOARD_TITLE} description={SEO_TEXT.LEADERBOARD_DESC} />
 
       {isPageLoading && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -199,7 +200,7 @@ const LeaderboardPage: React.FC = () => {
         <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-10 xl:px-16">
           <div className="w-full mb-6">
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-left">
-              Leaderboard
+              {SEO_TEXT.LEADERBOARD_TITLE}
             </h1>
           </div>
 
@@ -248,7 +249,7 @@ const LeaderboardPage: React.FC = () => {
 
                     <div className="ml-auto">
                       <button onClick={() => handleBuyClick(href)} className="btn btn-primary">
-                        buy
+                        {COMMON.BUY.toLowerCase()}
                       </button>
                     </div>
                   </div>
@@ -268,7 +269,7 @@ const LeaderboardPage: React.FC = () => {
           {/* ===== Table ===== */}
           <div className="card p-0 overflow-hidden">
             <div className="px-6 pt-5 pb-3 text-sm uppercase tracking-widest opacity-70">
-              token
+              {LEADERBOARD.TOKEN_HEADER}
             </div>
 
             <div className="divide-y divide-[var(--card-border)]">
@@ -312,7 +313,7 @@ const LeaderboardPage: React.FC = () => {
                     {/* buy */}
                     <div className="col-span-1 mt-3 md:mt-0 md:justify-self-end">
                       <button className="btn btn-primary" onClick={() => handleBuyClick(href)}>
-                        buy
+                        {COMMON.BUY.toLowerCase()}
                       </button>
                     </div>
                   </div>
@@ -320,7 +321,7 @@ const LeaderboardPage: React.FC = () => {
               })}
 
               {items.length === 0 && (
-                <div className="px-6 py-10 text-center opacity-70">No data</div>
+                <div className="px-6 py-10 text-center opacity-70">{COMMON.NO_DATA}</div>
               )}
             </div>
 

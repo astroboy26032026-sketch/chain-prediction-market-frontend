@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(grep -l \"ui-text\" src/pages/leaderboard.tsx src/pages/referrals.tsx src/pages/point/[address].tsx src/pages/profile/[address].tsx src/pages/reward/[address].tsx src/components/TokenDetails/TokenHolders.tsx src/components/TokenDetails/Chats.tsx src/pages/token/[address].tsx)",
+      "Bash(grep -n \"ui-text\" src/pages/leaderboard.tsx src/pages/referrals.tsx src/pages/point/[address].tsx src/pages/profile/[address].tsx)"
     ]
   }
 }

@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getTokenTrades } from '@/utils/api.index';
 import type { TokenTrade } from '@/interface/types';
 import LoadingBar from '@/components/ui/LoadingBar';
+import { COMMON } from '@/constants/ui-text';
 
 type Props = {
   tokenAddress: string;
@@ -162,7 +163,7 @@ const TransactionHistory: React.FC<Props> = ({ tokenAddress }) => {
             onClick={() => loadTrades(true)}
             className="btn-secondary px-4 py-2 rounded disabled:opacity-50"
           >
-            {loading ? 'Loading…' : 'Load more'}
+            {loading ? COMMON.LOADING : COMMON.LOAD_MORE}
           </button>
         </div>
       )}

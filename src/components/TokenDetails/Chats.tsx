@@ -9,6 +9,7 @@ import type { TokenWithTransactions, ChatMessage as BeChatMessage } from '@/inte
 import { Reply, X } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { COMMON, CHAT } from '@/constants/ui-text';
 
 type UiChatMessage = {
   messageId: string;
@@ -232,7 +233,7 @@ const Chats: React.FC<ChatsProps> = ({ tokenAddress, tokenInfo }) => {
             disabled={loadingMore}
             className="w-full px-3 py-2 rounded-md bg-gray-800 hover:bg-gray-700 text-sm disabled:opacity-50"
           >
-            {loadingMore ? 'Loading…' : 'Load more'}
+            {loadingMore ? COMMON.LOADING : COMMON.LOAD_MORE}
           </button>
         </div>
       )}
@@ -254,7 +255,7 @@ const Chats: React.FC<ChatsProps> = ({ tokenAddress, tokenInfo }) => {
             type="text"
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Type a message..."
+            placeholder={CHAT.PLACEHOLDER}
             className="flex-grow bg-[var(--card2)] text-white rounded-lg px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-[var(--primary)] border-thin"
           />
           <button type="submit" disabled={!newMessage.trim() || loading} className="btn btn-primary text-xs sm:text-sm disabled:opacity-50">

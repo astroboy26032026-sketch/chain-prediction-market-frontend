@@ -7,6 +7,7 @@ import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 
 import Layout from '@/components/layout/Layout';
 import SEO from '@/components/seo/SEO';
+import { COMMON, SEO as SEO_TEXT, REWARD } from '@/constants/ui-text';
 import {
   claimReward,
   convertRewardPoints,
@@ -141,13 +142,13 @@ function getSpinMessageFromError(error: any): { title: string; text: string; ton
   if (status === 400) {
     if (code.includes('insufficient_tickets')) {
       return {
-        title: 'Not Enough Tickets',
-        text: 'You do not have enough tickets to spin right now. Convert more points into tickets and try again.',
+        title: REWARD.NOT_ENOUGH_TICKETS_TITLE,
+        text: REWARD.NOT_ENOUGH_TICKETS_TEXT,
         tone: 'error',
       };
     }
     return {
-      title: 'Spin Request Invalid',
+      title: REWARD.SPIN_INVALID_TITLE,
       text: 'Your spin request could not be processed. Please refresh the page and try again.',
       tone: 'error',
     };
@@ -547,7 +548,7 @@ const ClaimModal: React.FC<ClaimModalProps> = ({ open, amountText, onCancel, onC
               disabled={loading}
               className="btn btn-primary w-[180px] h-10 text-[14px] font-semibold tracking-wide text-white disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {loading ? 'PROCESSING…' : 'Confirm'}
+              {loading ? REWARD.PROCESSING : COMMON.CONFIRM}
             </button>
             <button
               onClick={onCancel}
@@ -556,7 +557,7 @@ const ClaimModal: React.FC<ClaimModalProps> = ({ open, amountText, onCancel, onC
                          border border-[var(--primary)]/50
                          text-[var(--primary)] hover:bg-[var(--card2)]/60 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Cancel
+              {COMMON.CANCEL}
             </button>
           </div>
         </div>
@@ -667,7 +668,7 @@ const RewardPage: React.FC = () => {
     } catch (error: any) {
       console.error('[Reward] Load error:', error);
       openStatusModal(
-        'Load Failed',
+        REWARD.LOAD_FAILED_TITLE,
         error?.message || 'Reward data could not be loaded right now. Please refresh and try again.',
         'error'
       );
@@ -730,7 +731,7 @@ const RewardPage: React.FC = () => {
   }, [cooldownUntil, cooldownNow]);
 
   const cooldownActive = remainingCooldownMs > 0;
-  const spinLabel = spinning ? 'SPINNING…' : cooldownActive ? `COOLDOWN ${formatCountdown(remainingCooldownMs)}` : 'SPIN';
+  const spinLabel = spinning ? REWARD.SPINNING : cooldownActive ? `COOLDOWN ${formatCountdown(remainingCooldownMs)}` : REWARD.SPIN;
 
   const canSpin = !loading && !spinning && tickets > 0 && !cooldownActive;
   const canClaim = !loading && !spinning && !claiming && claimableSol > 0;
@@ -784,14 +785,14 @@ const RewardPage: React.FC = () => {
 
         if (Number(res.payoutSol ?? 0) > 0) {
           openStatusModal(
-            'Spin Successful',
+            REWARD.SPIN_SUCCESS_TITLE,
             `🎉 Congratulations! You won +${fmtSol(Number(res.payoutSol ?? 0))} SOL.`,
             'success'
           );
         } else {
           openStatusModal(
-            'Spin Completed',
-            'Your spin completed successfully, but this time there was no reward. Try again with your next ticket.',
+            REWARD.SPIN_NO_REWARD_TITLE,
+            REWARD.SPIN_NO_REWARD_TEXT,
             'success'
           );
         }
@@ -814,12 +815,12 @@ const RewardPage: React.FC = () => {
     if (!address || claiming || claimableSol <= 0) return;
 
     if (!wallet?.connected || !wallet.publicKey) {
-      openStatusModal('Wallet Not Connected', 'Please connect your wallet before claiming SOL.', 'error');
+      openStatusModal(REWARD.WALLET_NOT_CONNECTED_TITLE, REWARD.WALLET_NOT_CONNECTED_TEXT, 'error');
       return;
     }
 
     if (!wallet.sendTransaction) {
-      openStatusModal('Wallet Unsupported', 'Your wallet does not support sending transactions.', 'error');
+      openStatusModal(REWARD.WALLET_UNSUPPORTED_TITLE, REWARD.WALLET_UNSUPPORTED_TEXT, 'error');
       return;
     }
 
@@ -839,8 +840,8 @@ const RewardPage: React.FC = () => {
         });
 
         openStatusModal(
-          'Nothing To Claim',
-          res.message || 'There is no pending SOL available to claim right now.',
+          REWARD.NOTHING_TO_CLAIM_TITLE,
+          res.message || REWARD.NOTHING_TO_CLAIM_TEXT,
           'success'
         );
         return;
@@ -867,7 +868,7 @@ const RewardPage: React.FC = () => {
         });
 
         openStatusModal(
-          'Claim Successful',
+          REWARD.CLAIM_SUCCESS_TITLE,
           `You have successfully claimed ${fmtSol(Number(res.claimedSol ?? 0))} SOL.`,
           'success'
         );
@@ -876,7 +877,7 @@ const RewardPage: React.FC = () => {
 
       if (latestClaimable <= 0) {
         openStatusModal(
-          'Claim Successful',
+          REWARD.CLAIM_SUCCESS_TITLE,
           `You have successfully claimed ${fmtSol(Number(res.claimedSol ?? 0))} SOL.`,
           'success'
         );
@@ -896,14 +897,14 @@ const RewardPage: React.FC = () => {
 
       if (latestClaimable <= 0) {
         openStatusModal(
-          'Claim Successful',
+          REWARD.CLAIM_SUCCESS_TITLE,
           'Your reward appears to have been claimed successfully.',
           'success'
         );
       } else if (isWalletRejected(error)) {
         openStatusModal(
-          'Transaction Rejected',
-          'You rejected the wallet transaction, so your reward was not claimed.',
+          REWARD.TX_REJECTED_TITLE,
+          REWARD.TX_REJECTED_TEXT,
           'error'
         );
       } else {
@@ -932,7 +933,7 @@ const RewardPage: React.FC = () => {
       });
 
       openStatusModal(
-        'Convert Successful',
+        REWARD.CONVERT_SUCCESS_TITLE,
         `Your points were converted successfully. You received +${Number(res.ticketsAdded ?? 0)} ticket(s).`,
         'success'
       );
@@ -947,7 +948,7 @@ const RewardPage: React.FC = () => {
 
   return (
     <Layout>
-      <SEO title="Rewards" />
+      <SEO title={SEO_TEXT.REWARDS_TITLE} />
 
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 pt-6">
         <div className="relative overflow-hidden rounded-2xl border border-[var(--navbar-border)] bg-[var(--navbar-bg)]">
@@ -985,7 +986,7 @@ const RewardPage: React.FC = () => {
       </div>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 pb-12 pt-6">
-        <h1 className="text-2xl sm:text-3xl font-extrabold my-6 text-[var(--primary)]">Rewards</h1>
+        <h1 className="text-2xl sm:text-3xl font-extrabold my-6 text-[var(--primary)]">{SEO_TEXT.REWARDS_TITLE}</h1>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
           <div className="card text-center">
@@ -998,13 +999,13 @@ const RewardPage: React.FC = () => {
                 disabled={!canClaim}
                 className={`${actionBtnClass} ${!canClaim ? 'opacity-60 cursor-not-allowed' : ''}`}
               >
-                {claiming ? 'CLAIMING…' : 'CLAIM'}
+                {claiming ? REWARD.CLAIMING : REWARD.CLAIM}
               </button>
             </div>
           </div>
 
           <div className="card text-center">
-            <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">Your Tickets</p>
+            <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">{REWARD.YOUR_TICKETS}</p>
             <div className="text-3xl font-extrabold text-[var(--primary)] mb-4">{tickets}</div>
 
             <div className="mt-6 flex justify-center">
@@ -1034,8 +1035,8 @@ const RewardPage: React.FC = () => {
             <div className="card">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                  <h3 className="text-lg font-bold text-[var(--primary)]">Convert Points</h3>
-                  <p className="text-sm text-gray-400 mt-1">Current points: {points}</p>
+                  <h3 className="text-lg font-bold text-[var(--primary)]">{REWARD.CONVERT_POINTS}</h3>
+                  <p className="text-sm text-gray-400 mt-1">{REWARD.CURRENT_POINTS}: {points}</p>
                 </div>
 
                 <button
@@ -1043,13 +1044,13 @@ const RewardPage: React.FC = () => {
                   disabled={!canConvert}
                   className={`${actionBtnClass} ${!canConvert ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
-                  {converting ? 'CONVERTING…' : 'CONVERT'}
+                  {converting ? REWARD.CONVERTING : REWARD.CONVERT}
                 </button>
               </div>
             </div>
 
             <div className="card flex-1">
-              <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">Multipliers</h3>
+              <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">{REWARD.MULTIPLIERS}</h3>
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 text-center max-w-[420px]">
                 {symbols.map((key) => (
                   <div key={key} className="bg-[var(--card2)] rounded-lg p-2 border border-[var(--card-border)]">
@@ -1063,7 +1064,7 @@ const RewardPage: React.FC = () => {
           </div>
 
           <div className="card h-full">
-            <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">Rules</h3>
+            <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">{REWARD.RULES}</h3>
             <div className="text-xs leading-relaxed text-gray-400 whitespace-pre-wrap break-words">
               {normalizeRuleText(rulesText)}
             </div>
@@ -1071,7 +1072,7 @@ const RewardPage: React.FC = () => {
         </div>
 
         <div className="card mt-6">
-          <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">History</h3>
+          <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">{REWARD.HISTORY}</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -1095,7 +1096,7 @@ const RewardPage: React.FC = () => {
                 ) : (
                   <tr className="border-t border-[var(--card-border)]">
                     <td className="py-4 text-gray-400" colSpan={4}>
-                      No spins yet.
+                      {REWARD.NO_SPINS}
                     </td>
                   </tr>
                 )}

@@ -17,6 +17,7 @@ import Chats from '@/components/TokenDetails/Chats';
 import SwapPanel from '@/components/token/SwapPanel';
 
 import { useTokenDetail } from '@/hooks/useTokenDetail';
+import { COMMON } from '@/constants/ui-text';
 import { useSwapTrading } from '@/hooks/useSwapTrading';
 
 import { getTokenInfo } from '@/utils/api.index';
@@ -173,9 +174,9 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                           type="button"
                           onClick={() => fetchHolders({ reset: false })}
                           disabled={holdersLoading}
-                          className="btn-secondary px-4 py-2 rounded disabled:opacity-50"
+                          className="px-5 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] hover:shadow disabled:opacity-50"
                         >
-                          {holdersLoading ? 'Loading...' : 'Load more'}
+                          {holdersLoading ? COMMON.LOADING : COMMON.LOAD_MORE}
                         </button>
                       )}
                       {!holdersNextCursor && holdersAll.length > 0 && (

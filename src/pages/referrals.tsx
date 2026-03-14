@@ -11,6 +11,7 @@ import {
 } from '@/utils/api.index';
 
 import type { ReferralSummary, ReferralLinkInfo, ReferralListItem } from '@/interface/types';
+import { COMMON, SEO as SEO_TEXT, REFERRAL } from '@/constants/ui-text';
 
 const fmtSOL = (n: number) =>
   `${(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL`;
@@ -127,13 +128,13 @@ const ReferralsPage: React.FC = () => {
 
   return (
     <Layout>
-      <SEO title="Referrals" description="Your referral dashboard" />
+      <SEO title={SEO_TEXT.REFERRALS_TITLE} description={SEO_TEXT.REFERRALS_DESC} />
 
       <div className="min-h-screen flex flex-col items-center justify-start py-10">
         <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-10 xl:px-16">
           <div className="w-full mb-6">
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-left">
-              Referrals
+              {SEO_TEXT.REFERRALS_TITLE}
             </h1>
           </div>
 
@@ -142,17 +143,17 @@ const ReferralsPage: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 flex-1">
                 <StatTile
                   icon={<UsersDotIcon />}
-                  label="Total Referrals"
+                  label={REFERRAL.TOTAL_REFERRALS}
                   value={loading ? '—' : String(summary?.totalReferrals ?? 0)}
                 />
                 <StatTile
                   icon={<Coins className="w-5 h-5" />}
-                  label="Total Volume"
+                  label={REFERRAL.TOTAL_VOLUME}
                   value={loading ? '—' : fmtSOL(summary?.totalVolumeSol ?? 0)}
                 />
                 <StatTile
                   icon={<Coins className="w-5 h-5" />}
-                  label="Unclaimed Rewards"
+                  label={REFERRAL.UNCLAIMED_REWARDS}
                   value={loading ? '—' : fmtSOL(summary?.unclaimedRewardsSol ?? 0)}
                 />
               </div>
@@ -162,7 +163,7 @@ const ReferralsPage: React.FC = () => {
                 disabled={!canClaim}
                 className="btn-primary w-full sm:w-auto px-6 py-3 rounded-2xl text-base font-extrabold shadow-md disabled:opacity-60"
               >
-                {claiming ? 'Claiming…' : 'CLAIM REWARD'}
+                {claiming ? 'Claiming…' : REFERRAL.CLAIM_REWARD}
               </button>
             </div>
 
@@ -215,7 +216,7 @@ const ReferralsPage: React.FC = () => {
                       className="btn-secondary px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 disabled:opacity-60"
                     >
                       <Link2 className="w-4 h-4" />
-                      {generating ? 'GENERATING…' : 'GENERATE LINK'}
+                      {generating ? REFERRAL.GENERATING : REFERRAL.GENERATE_LINK}
                     </button>
                   )}
                 </div>

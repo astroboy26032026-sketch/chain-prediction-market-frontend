@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon, ExternalLinkIcon } from 'lucide-react';
 import { TokenHolder } from '@/interface/types';
 import { shortenAddress } from '@/utils/blockchainUtils';
+import { TOKEN } from '@/constants/ui-text';
 
 interface TokenHoldersProps {
   tokenHolders: TokenHolder[];
@@ -129,7 +130,7 @@ const TokenHolders: React.FC<TokenHoldersProps> = ({
       </table>
 
       {sortedHolders.length === 0 && (
-        <div className="text-center py-8 text-gray-400">No token holder data available</div>
+        <div className="text-center py-8 text-gray-400">{TOKEN.NO_HOLDER_DATA}</div>
       )}
 
       {actualTotalPages > 1 && (
