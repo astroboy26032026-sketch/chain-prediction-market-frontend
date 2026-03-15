@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Buffer } from 'buffer';
 import { VersionedTransaction } from '@solana/web3.js';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { toast } from 'react-toastify';
 import Layout from '@/components/layout/Layout';
 import SEO from '@/components/seo/SEO';
 import { Check, Copy, Link2, Wallet, CalendarDays, Coins } from 'lucide-react';
@@ -14,7 +15,7 @@ import {
 } from '@/utils/api.index';
 
 import type { ReferralSummary, ReferralLinkInfo, ReferralListItem } from '@/interface/types';
-import { COMMON, SEO as SEO_TEXT, REFERRAL } from '@/constants/ui-text';
+import { SEO as SEO_TEXT, REFERRAL } from '@/constants/ui-text';
 
 const fmtSOL = (n: number) =>
   `${(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL`;
@@ -150,8 +151,22 @@ const ReferralsPage: React.FC = () => {
       const [s2, r2] = await Promise.all([getReferralSummary(), getReferralList()]);
       setSummary(s2);
       setRows(r2?.items ?? []);
-    } catch (e) {
+
+      toast.success(`Claimed ${res.claimedRewardsSol} SOL successfully!`);
+    } catch (e: any) {
       console.error('[Referral] Claim failed:', e);
+      const raw = e?.response?.data?.message || e?.message || '';
+      let msg = 'Claim failed. Please try again.';
+      if (/blockhash|Failed to fetch/i.test(raw)) {
+        msg = 'Network error. Please check your connection and try again.';
+      } else if (/unauthorized/i.test(raw)) {
+        msg = 'Session expired. Please reconnect your wallet.';
+      } else if (/User rejected/i.test(raw)) {
+        msg = 'Transaction was cancelled.';
+      } else if (raw) {
+        msg = raw;
+      }
+      toast.error(msg);
     } finally {
       setClaiming(false);
     }
