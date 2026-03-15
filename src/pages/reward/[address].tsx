@@ -751,6 +751,7 @@ const RewardPage: React.FC = () => {
 
   const canSpin = !loading && !spinning && tickets > 0 && !cooldownActive;
   const canClaim = !loading && !spinning && !claiming && claimableSol > 0;
+  const convertConfig = rewardInfo?.convertConfig;
   const canConvert = !loading && !spinning && !converting && points > 0;
 
   const actionBtnClass = 'btn btn-primary w-[160px] h-10 text-[14px] font-semibold tracking-wide text-white';
@@ -932,12 +933,12 @@ const RewardPage: React.FC = () => {
     }
   };
 
-  const handleConvert = async () => {
+  const handleConvert = async (ticketCount: number, mode: 'exact' | 'all') => {
     if (!address || !canConvert) return;
 
     try {
       setConverting(true);
-      const res = await convertRewardPoints(address, points);
+      const res = await convertRewardPoints(address, ticketCount, mode);
 
       setRewardInfo((prev) => {
         if (!prev) return prev;
@@ -1049,19 +1050,37 @@ const RewardPage: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-10 items-stretch">
           <div className="flex flex-col gap-6">
             <div className="card">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex flex-col gap-4">
                 <div>
                   <h3 className="text-lg font-bold text-[var(--primary)]">{REWARD.CONVERT_POINTS}</h3>
                   <p className="text-sm text-gray-400 mt-1">{REWARD.CURRENT_POINTS}: {points}</p>
                 </div>
 
-                <button
-                  onClick={handleConvert}
-                  disabled={!canConvert}
-                  className={`${actionBtnClass} ${!canConvert ? 'opacity-60 cursor-not-allowed' : ''}`}
-                >
-                  {converting ? REWARD.CONVERTING : REWARD.CONVERT}
-                </button>
+                {(convertConfig?.options?.length || convertConfig?.allowAll) ? (
+                  <div className="grid grid-cols-3 gap-2">
+                    {(convertConfig?.options ?? []).map((opt) => (
+                      <button
+                        key={opt}
+                        onClick={() => handleConvert(opt, 'exact')}
+                        disabled={!canConvert || points < opt}
+                        className={`btn btn-primary h-9 text-[13px] font-semibold text-white ${!canConvert || points < opt ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      >
+                        {converting ? '...' : `${opt} Ticket${opt > 1 ? 's' : ''}`}
+                      </button>
+                    ))}
+                    {convertConfig?.allowAll && (
+                      <button
+                        onClick={() => handleConvert(convertConfig.maxTicketsConvertible || points, 'all')}
+                        disabled={!canConvert}
+                        className={`btn btn-primary h-9 text-[13px] font-semibold text-white ${!canConvert ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      >
+                        {converting ? '...' : (convertConfig.labelAll || 'All Tickets')}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400">Not enough points to convert tickets.</p>
+                )}
               </div>
             </div>
 

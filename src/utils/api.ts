@@ -1215,6 +1215,13 @@ export type RewardSpinHistoryItem = {
   payoutSol: number;
 };
 
+export type ConvertConfig = {
+  options: number[];
+  allowAll: boolean;
+  maxTicketsConvertible: number;
+  labelAll: string;
+};
+
 export type RewardInfoResponse = {
   walletAddress: string;
   tickets: number;
@@ -1223,6 +1230,7 @@ export type RewardInfoResponse = {
   unclaimedSol: number;
   cooldownUntil: string;
   recentSpins: RewardSpinHistoryItem[];
+  convertConfig: ConvertConfig;
 };
 
 export type RewardClaimRequest = {
@@ -1239,7 +1247,8 @@ export type RewardClaimResponse = {
 
 export type RewardConvertRequest = {
   walletAddress: string;
-  points: number;
+  tickets: number;
+  mode: 'exact' | 'all';
 };
 
 export type RewardConvertResponse = {
@@ -1285,6 +1294,15 @@ function normalizeRewardSpinHistoryItem(input: any): RewardSpinHistoryItem {
   };
 }
 
+function normalizeConvertConfig(input: any): ConvertConfig {
+  return {
+    options: Array.isArray(input?.options) ? input.options.map(Number) : [],
+    allowAll: Boolean(input?.allowAll ?? false),
+    maxTicketsConvertible: Number(input?.maxTicketsConvertible ?? 0),
+    labelAll: String(input?.labelAll ?? 'All'),
+  };
+}
+
 function normalizeRewardInfo(input: any, walletAddress: string): RewardInfoResponse {
   return {
     walletAddress: String(input?.walletAddress ?? walletAddress ?? '').trim(),
@@ -1296,6 +1314,7 @@ function normalizeRewardInfo(input: any, walletAddress: string): RewardInfoRespo
     recentSpins: Array.isArray(input?.recentSpins)
       ? input.recentSpins.map(normalizeRewardSpinHistoryItem)
       : [],
+    convertConfig: normalizeConvertConfig(input?.convertConfig),
   };
 }
 
@@ -1379,19 +1398,23 @@ export async function claimReward(walletAddress: string): Promise<RewardClaimRes
   return normalizeRewardClaimResponse(data);
 }
 
-export async function convertRewardPoints(walletAddress: string, points: number): Promise<RewardConvertResponse> {
+export async function convertRewardPoints(
+  walletAddress: string,
+  tickets: number,
+  mode: 'exact' | 'all'
+): Promise<RewardConvertResponse> {
   const addr = String(walletAddress ?? '').trim();
   if (!addr) throw new Error('Missing walletAddress');
 
-  const safePoints = Number(points);
-  if (!Number.isFinite(safePoints) || safePoints < 0) {
-    throw new Error('points must be a number >= 0');
+  const safeTickets = Number(tickets);
+  if (!Number.isFinite(safeTickets) || safeTickets < 0) {
+    throw new Error('tickets must be a number >= 0');
   }
 
   const headers = getAuthHeaders();
   const { data } = await postViaProxy<RewardConvertResponse>(
     '/reward/convert',
-    { walletAddress: addr, points: safePoints },
+    { walletAddress: addr, tickets: safeTickets, mode },
     headers
   );
   return normalizeRewardConvertResponse(data);
