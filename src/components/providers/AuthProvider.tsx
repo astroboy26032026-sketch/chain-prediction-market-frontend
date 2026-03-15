@@ -105,7 +105,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [loadMe]);
 
   // ✅ AUTO SIGN-IN AFTER CONNECT + REFERRAL TRACKING
+  // Wait until loadMe() finishes (loading=false) so we don't re-prompt nonce
+  // when the existing token is still valid after F5 reload.
   useEffect(() => {
+    if (loading) return;
+
     const pk = publicKey?.toBase58();
     if (!connected || !pk) return;
 
@@ -137,11 +141,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // user reject signature -> log but don't loop
         console.warn('[AuthProvider] Auto sign-in failed:', err?.message || err);
       });
-  }, [connected, publicKey, authenticated, signInWithSolana]);
+  }, [loading, connected, publicKey, authenticated, signInWithSolana]);
 
   // If wallet disconnected manually -> clear FE auth state/token (no /auth/logout)
+  // Only clear when wallet transitions from connected→disconnected, not on initial render.
+  const prevConnectedRef = useRef(false);
   useEffect(() => {
-    if (!connected || !publicKey) {
+    if (connected && publicKey) {
+      prevConnectedRef.current = true;
+    } else if (prevConnectedRef.current) {
+      prevConnectedRef.current = false;
       setMe(null);
       setToken(undefined);
     }
