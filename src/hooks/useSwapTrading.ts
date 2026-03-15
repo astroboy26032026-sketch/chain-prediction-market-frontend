@@ -214,9 +214,10 @@ export function useSwapTrading({
       let txId: string;
 
       if (!isSwapped) {
+        // Preview to get estimated token amount (human-readable)
         const pv = await estimateTokensFromSol({ tokenAddr, solIn: inNum });
-        const humanStr = pv.tokenOutHuman.toFixed(clamp(decimals, 0, 18));
-        const amountInToken = toBaseUnitsString(humanStr, decimals);
+        // BE expects integer token amount as numeric string (e.g. "1000")
+        const amountInToken = Math.floor(pv.tokenOutHuman).toFixed(0);
         if (!amountInToken || amountInToken === '0') throw new Error('Amount too small');
 
         quote = (await buyToken(
@@ -224,8 +225,8 @@ export function useSwapTrading({
           { idempotencyKey: idk }
         )) as TradingBuyResponse;
       } else {
-        const humanStr = inNum.toFixed(clamp(decimals, 0, 18));
-        const amountInToken = toBaseUnitsString(humanStr, decimals);
+        // BE expects integer token amount as numeric string (e.g. "1000")
+        const amountInToken = Math.floor(inNum).toFixed(0);
         if (!amountInToken || amountInToken === '0') throw new Error('Amount too small');
 
         quote = await sellToken(
@@ -283,7 +284,20 @@ export function useSwapTrading({
       }
     } catch (e: any) {
       console.error('Trade flow error:', e);
-      toast.error(e?.message || 'Trade failed');
+      const apiMsg =
+        e?.response?.data?.message ||
+        e?.response?.data?.error ||
+        e?.message ||
+        '';
+      const status = e?.response?.status;
+
+      if (status === 400 || /insufficient|not enough|balance/i.test(apiMsg)) {
+        toast.error(apiMsg || 'Insufficient balance to complete this trade.');
+      } else if (status === 500) {
+        toast.error(apiMsg || 'Server error. Please try again later.');
+      } else {
+        toast.error(apiMsg || 'Trade failed');
+      }
     } finally {
       setIsTransacting(false);
     }
