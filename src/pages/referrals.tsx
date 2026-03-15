@@ -1,4 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { Buffer } from 'buffer';
+import { VersionedTransaction } from '@solana/web3.js';
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import Layout from '@/components/layout/Layout';
 import SEO from '@/components/seo/SEO';
 import { Check, Copy, Link2, Wallet, CalendarDays, Coins } from 'lucide-react';
@@ -36,6 +39,8 @@ const StatTile: React.FC<{ icon: React.ReactNode; label: string; value: string }
 );
 
 const ReferralsPage: React.FC = () => {
+  const wallet = useWallet();
+  const { connection } = useConnection();
   const [summary, setSummary] = useState<ReferralSummary | null>(null);
   const [linkInfo, setLinkInfo] = useState<ReferralLinkInfo | null>(null);
   const [rows, setRows] = useState<ReferralListItem[]>([]);
@@ -111,16 +116,42 @@ const ReferralsPage: React.FC = () => {
 
   const onClaim = async () => {
     if (!summary || summary.unclaimedRewardsSol <= 0 || claiming) return;
+    if (!wallet.publicKey || !wallet.sendTransaction) {
+      console.error('[Referral] Wallet not connected');
+      return;
+    }
 
     try {
       setClaiming(true);
-      await claimReferralRewards(summary.unclaimedRewardsSol);
 
+      // 1. Get transaction from BE (no params)
+      const res = await claimReferralRewards();
+      if (!res.txHash) throw new Error('No transaction returned from server');
+
+      // 2. Deserialize & sign
+      const txBuf = Buffer.from(res.txHash, 'base64');
+      const tx = VersionedTransaction.deserialize(txBuf);
+
+      // 3. Send & confirm with blockhash timeout
+      const { blockhash, lastValidBlockHeight } =
+        await connection.getLatestBlockhash('processed');
+      const signature = await wallet.sendTransaction(tx, connection, {
+        preflightCommitment: 'processed',
+      });
+      const confirmResult = await connection.confirmTransaction(
+        { signature, blockhash, lastValidBlockHeight },
+        'processed'
+      );
+      if (confirmResult.value.err) {
+        throw new Error('Transaction failed on-chain');
+      }
+
+      // 4. Refresh data
       const [s2, r2] = await Promise.all([getReferralSummary(), getReferralList()]);
       setSummary(s2);
       setRows(r2?.items ?? []);
     } catch (e) {
-      console.error('Claim failed', e);
+      console.error('[Referral] Claim failed:', e);
     } finally {
       setClaiming(false);
     }

@@ -437,14 +437,10 @@ export type ReferralListResponse = {
   items: ReferralListItem[];
 };
 
-export type ClaimReferralRequest = {
-  amountSol: number;
-};
-
 export type ClaimReferralResponse = {
-  claimedAmountSol: number;
-  txId: string;
-  message: string;
+  claimedRewardsSol: number;
+  remainingUnclaimedRewardsSol: number;
+  txHash: string; // base64 transaction to sign
 };
 
 /* =========================================================
