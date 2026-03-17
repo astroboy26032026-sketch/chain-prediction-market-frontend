@@ -117,8 +117,8 @@ const ReferralsPage: React.FC = () => {
 
   const onClaim = async () => {
     if (!summary || summary.unclaimedRewardsSol <= 0 || claiming) return;
-    if (!wallet.publicKey || !wallet.sendTransaction) {
-      console.error('[Referral] Wallet not connected');
+    if (!wallet.publicKey || !wallet.signTransaction) {
+      toast.error('Please connect your wallet first.');
       return;
     }
 
@@ -129,14 +129,15 @@ const ReferralsPage: React.FC = () => {
       const res = await claimReferralRewards();
       if (!res.txHash) throw new Error('No transaction returned from server');
 
-      // 2. Deserialize & sign
+      // 2. Deserialize & user signs the transaction
       const txBuf = Buffer.from(res.txHash, 'base64');
       const tx = VersionedTransaction.deserialize(txBuf);
+      const signedTx = await wallet.signTransaction(tx);
 
-      // 3. Send & confirm with blockhash timeout
+      // 3. Send signed tx & confirm with blockhash timeout
       const { blockhash, lastValidBlockHeight } =
         await connection.getLatestBlockhash('processed');
-      const signature = await wallet.sendTransaction(tx, connection, {
+      const signature = await connection.sendRawTransaction(signedTx.serialize(), {
         preflightCommitment: 'processed',
       });
       const confirmResult = await connection.confirmTransaction(

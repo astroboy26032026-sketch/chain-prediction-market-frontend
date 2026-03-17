@@ -867,7 +867,9 @@ const RewardPage: React.FC = () => {
       const rawTx = Buffer.from(String(res.transaction), 'base64');
       const tx = VersionedTransaction.deserialize(rawTx);
 
-      const signature = await wallet.sendTransaction(tx, connection, {
+      if (!wallet.signTransaction) throw new Error('Wallet does not support signTransaction');
+      const signedTx = await wallet.signTransaction(tx);
+      const signature = await connection.sendRawTransaction(signedTx.serialize(), {
         preflightCommitment: 'processed',
       });
 
