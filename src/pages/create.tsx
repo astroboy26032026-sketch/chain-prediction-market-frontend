@@ -511,7 +511,7 @@ const CreateToken: React.FC = () => {
   return (
     <Layout>
       <SEO
-        title="Create Your Own Token - Bondle"
+        title="Create Your Own Token - PumpFun Clone"
         description="Launch a coin that is instantly tradable — fair launch"
         image="/seo/create.jpg"
       />

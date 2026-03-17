@@ -18,8 +18,8 @@ const SEO: React.FC<SEOProps> = ({ title, description, image, token }) => {
   const domain = process.env.NEXT_PUBLIC_DOMAIN || 'https://pumpfunclone2025.win';
 
   const seo = {
-    title: token ? `${token.name} (${token.symbol}) - Bondle` : title || 'Bondle - Explore and Trade Tokens',
-    description: token?.description || description || 'Explore, create, and trade tokens on the Bondle platform',
+    title: token ? `${token.name} (${token.symbol}) - PumpFun Clone` : title || 'PumpFun Clone - Explore and Trade Tokens',
+    description: token?.description || description || 'Explore, create, and trade tokens on the PumpFun Clone platform',
     image: token?.logo || image || `${domain}/default-og-image.jpg`,
     url: `${domain}${router.asPath}`,
   };
@@ -36,7 +36,7 @@ const SEO: React.FC<SEOProps> = ({ title, description, image, token }) => {
     : {
         '@context': 'https://schema.org',
         '@type': 'WebApplication',
-        name: 'Bondle',
+        name: 'PumpFun Clone',
         description: seo.description,
         url: domain,
       };
@@ -51,7 +51,7 @@ const SEO: React.FC<SEOProps> = ({ title, description, image, token }) => {
       <meta property="og:image" content={seo.image} />
       <meta property="og:url" content={seo.url} />
       <meta property="og:type" content="website" />
-      <meta property="og:site_name" content="Bondle" />
+      <meta property="og:site_name" content="PumpFun Clone" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content={seo.title} />
       <meta name="twitter:description" content={seo.description} />

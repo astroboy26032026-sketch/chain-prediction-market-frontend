@@ -348,7 +348,7 @@ const ProfilePage: React.FC = () => {
   return (
     <Layout>
       <SEO
-        title={`${addressToUse ? `${SEO_TEXT.PROFILE_TITLE}: ${formatAddressV2(addressToUse)}` : SEO_TEXT.PROFILE_TITLE} - Bondle`}
+        title={`${addressToUse ? `${SEO_TEXT.PROFILE_TITLE}: ${formatAddressV2(addressToUse)}` : SEO_TEXT.PROFILE_TITLE} - PumpFun Clone`}
         description={SEO_TEXT.PROFILE_DESC}
         image="seo/profile.jpg"
       />

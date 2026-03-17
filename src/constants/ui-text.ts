@@ -45,9 +45,9 @@ export const NAV = {
    SEO
 ========================= */
 export const SEO = {
-  HOME_TITLE: 'Bondle - Create and Trade Tokens with Bonding Curves',
-  HOME_DESC: 'Launch and trade tokens effortlessly using innovative bonding curve technology. Experience fair, dynamic, and continuous liquidity on Bondle.',
-  CREATE_TITLE: 'Create Your Own Token - Bondle',
+  HOME_TITLE: 'PumpFun Clone - Create and Trade Tokens with Bonding Curves',
+  HOME_DESC: 'Launch and trade tokens effortlessly using innovative bonding curve technology. Experience fair, dynamic, and continuous liquidity on PumpFun Clone.',
+  CREATE_TITLE: 'Create Your Own Token - PumpFun Clone',
   CREATE_DESC: 'Create and Trade Memecoins Easily',
   LEADERBOARD_TITLE: 'Leaderboard',
   LEADERBOARD_DESC: 'Top 15 trending tokens leaderboard',
