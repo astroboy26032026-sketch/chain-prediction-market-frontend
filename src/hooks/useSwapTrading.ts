@@ -77,7 +77,9 @@ export function useSwapTrading({
       }
     };
     fetchBalances();
-    balanceTimerRef.current = setInterval(fetchBalances, 15_000);
+    balanceTimerRef.current = setInterval(() => {
+      if (!document.hidden) fetchBalances();
+    }, 15_000);
     return () => clearInterval(balanceTimerRef.current);
   }, [wallet?.publicKey, connection, tokenAddr]);
 

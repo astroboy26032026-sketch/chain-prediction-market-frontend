@@ -261,7 +261,9 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ tokenInfo }) => {
   useEffect(() => { fetchChart(); }, [fetchChart]);
   useEffect(() => {
     if (!autoRefresh || !tokenAddress) return;
-    const id = setInterval(() => fetchChart(true), AUTO_REFRESH_MS);
+    const id = setInterval(() => {
+      if (!document.hidden) fetchChart(true);
+    }, AUTO_REFRESH_MS);
     return () => clearInterval(id);
   }, [autoRefresh, fetchChart, tokenAddress]);
 

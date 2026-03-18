@@ -104,7 +104,9 @@ const Chats: React.FC<ChatsProps> = ({ tokenAddress, tokenInfo }) => {
 
     fetchMessages(false);
 
-    const interval = setInterval(() => fetchMessages(false), 30000);
+    const interval = setInterval(() => {
+      if (!document.hidden) fetchMessages(false);
+    }, 30000);
     return () => clearInterval(interval);
   }, [tokenAddress, fetchMessages]);
 
