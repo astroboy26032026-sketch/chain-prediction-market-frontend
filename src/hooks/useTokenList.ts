@@ -140,11 +140,14 @@ export function useTokenList({
     setHasMore(true);
   }, []);
 
-  // refetch when dependencies change
+  // refetch when user-facing dependencies change
+  // NOTE: do NOT include fetchFirst/resetCursor in deps — they are stable-by-intent
+  // but their useCallback deps overlap with these primitives, causing double-fires.
   useEffect(() => {
     resetCursor();
     fetchFirst();
-  }, [sort, searchQuery, includeNsfw, activeFilter, fetchFirst, resetCursor]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sort, searchQuery, includeNsfw, activeFilter]);
 
   return {
     tokens,
