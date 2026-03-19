@@ -71,8 +71,19 @@ export function useTokenList({
       setHasMore(Boolean(nc));
     } catch (e) {
       console.error('fetchFirst error:', e);
-      setError('Failed to fetch tokens. Please try again later.');
-      setTokens({ data: [], tokens: [], totalCount: 0, currentPage: 1, totalPages: 1, nextCursor: null });
+      // Only show error + clear data if there's no existing data to display
+      setTokens((prev) => {
+        if (prev && (prev.data?.length ?? 0) > 0) {
+          // Keep existing data visible — just show a subtle error
+          return prev;
+        }
+        return { data: [], tokens: [], totalCount: 0, currentPage: 1, totalPages: 1, nextCursor: null };
+      });
+      setError(
+        tokens?.data?.length
+          ? 'Connection lost. Showing cached data.'
+          : 'Failed to fetch tokens. Please try again later.'
+      );
       setNextCursor(null);
       setHasMore(false);
     } finally {
@@ -128,7 +139,8 @@ export function useTokenList({
       setHasMore(true);
     } catch (e) {
       console.error('fetchMore error:', e);
-      setError('Failed to load more tokens.');
+      // Allow retry: reset cursor lock so user can click Load More again
+      lastCursorRef.current = null;
     } finally {
       setIsLoadingMore(false);
     }

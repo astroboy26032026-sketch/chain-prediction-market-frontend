@@ -187,19 +187,35 @@ const SITE_URL = computeSiteUrl();
 
 const absProxy = (path: string) => (isServer ? `${SITE_URL}${PROXY_BASE}${path}` : `${PROXY_BASE}${path}`);
 
+const API_TIMEOUT = 15_000; // 15s timeout
+const MAX_RETRIES = 2;
+
 const getViaProxy = async <T = any>(path: string, params?: any, headers?: Record<string, string>) => {
   const url = absProxy(path);
-  return axios.get<T>(url, { params, headers });
+  let lastErr: any;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await axios.get<T>(url, { params, headers, timeout: API_TIMEOUT });
+    } catch (e: any) {
+      lastErr = e;
+      // Only retry on network/timeout errors, not 4xx
+      const status = e?.response?.status;
+      if (status && status >= 400 && status < 500) throw e;
+      // Wait before retry (300ms, 800ms)
+      if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
 };
 
 const postViaProxy = async <T = any>(path: string, body?: any, headers?: Record<string, string>) => {
   const url = absProxy(path);
-  return axios.post<T>(url, body ?? {}, { headers });
+  return axios.post<T>(url, body ?? {}, { headers, timeout: API_TIMEOUT });
 };
 
 const patchViaProxy = async <T = any>(path: string, body?: any, headers?: Record<string, string>) => {
   const url = absProxy(path);
-  return axios.patch<T>(url, body ?? {}, { headers });
+  return axios.patch<T>(url, body ?? {}, { headers, timeout: API_TIMEOUT });
 };
 
 const clampLimit = (n: number, min = 1, max = 50) => Math.min(Math.max(n, min), max);
