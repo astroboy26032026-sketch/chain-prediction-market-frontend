@@ -5,7 +5,7 @@ import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { toast } from 'react-toastify';
 import Layout from '@/components/layout/Layout';
 import SEO from '@/components/seo/SEO';
-import { Check, Copy, Link2, Wallet, CalendarDays, Coins } from 'lucide-react';
+import { Check, Copy, Link2, Wallet, CalendarDays, Coins, Twitter, Send } from 'lucide-react';
 
 import {
   getReferralSummary,
@@ -255,6 +255,28 @@ const ReferralsPage: React.FC = () => {
                           )}
                         </button>
                       </div>
+
+                      {/* Share to Twitter */}
+                      <a
+                        href={`https://twitter.com/intent/tweet?text=${encodeURIComponent('Join me on PumpFun Clone and start trading memecoins! Use my referral link to get started:\n\n')}&url=${encodeURIComponent(linkInfo.referralLink)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center w-11 rounded-xl border border-[var(--card-border)] bg-[#1DA1F2] hover:opacity-90 transition-opacity"
+                        title="Share on Twitter"
+                      >
+                        <Twitter className="w-4 h-4 text-white" />
+                      </a>
+
+                      {/* Share to Telegram */}
+                      <a
+                        href={`https://t.me/share/url?url=${encodeURIComponent(linkInfo.referralLink)}&text=${encodeURIComponent('Join me on PumpFun Clone and start trading memecoins! Use my referral link:')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center w-11 rounded-xl border border-[var(--card-border)] bg-[#0088cc] hover:opacity-90 transition-opacity"
+                        title="Share on Telegram"
+                      >
+                        <Send className="w-4 h-4 text-white" />
+                      </a>
                     </div>
                   ) : (
                     <button
