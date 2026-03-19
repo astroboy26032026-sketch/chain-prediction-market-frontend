@@ -4,15 +4,21 @@ import { formatAmount, formatAmountV2 } from '@/utils/blockchainUtils';
 
 interface PriceLiquidityProps {
   address: `0x${string}`;
+  progressDex?: number;
 }
 
-const PriceLiquidity: React.FC<PriceLiquidityProps> = ({ address }) => {
+const PriceLiquidity: React.FC<PriceLiquidityProps> = ({ address, progressDex }) => {
   const { data: currentPrice } = useCurrentTokenPrice(address);
   const { data: liquidityData } = useTokenLiquidity(address);
 
   const calculateProgress = (currentLiquidity: bigint): number => {
+    // Prioritize progressDex from API
+    if (progressDex !== undefined && Number.isFinite(progressDex) && progressDex > 0) {
+      return Math.min(progressDex, 100);
+    }
     const liquidityInEth = parseFloat(formatAmountV2(currentLiquidity.toString()));
     const target = Number(process.env.NEXT_PUBLIC_DEX_TARGET);
+    if (!target) return 0;
     const progress = (liquidityInEth / target) * 100;
     return Math.min(progress, 100);
   };
@@ -40,7 +46,7 @@ const PriceLiquidity: React.FC<PriceLiquidityProps> = ({ address }) => {
               <div 
                 className="absolute top-0 left-0 w-full h-full flex items-center justify-center text-xs font-semibold text-white"
               >
-                {calculateProgress(liquidityData[2]).toFixed(2)}%
+                {(() => { const v = calculateProgress(liquidityData[2]); return v % 1 === 0 ? v : v.toFixed(2); })()}%
               </div>
             </div>
           </>

@@ -528,6 +528,7 @@ export async function getPointsHistory(walletAddress: string): Promise<PointsHis
 
 // =====================
 // Core helper: /token/search
+// BE should include `progressDex` (number 0-100, 2 decimals) in each Token item
 // =====================
 async function tokenSearch(params: TokenSearchParams): Promise<CursorPaginatedResponse<Token>> {
   const safe: TokenSearchParams = {
@@ -550,6 +551,7 @@ async function tokenSearch(params: TokenSearchParams): Promise<CursorPaginatedRe
 // =====================
 // ✅ NEW BE API (Solana): Token info / price / liquidity / trades / holders
 // =====================
+// BE should include `progressDex` (number 0-100, 2 decimals) in response
 export async function getTokenInfo(address: string): Promise<TokenInfoResponse> {
   const addr = (address || '').trim();
   if (!addr) throw new Error('Missing token address');

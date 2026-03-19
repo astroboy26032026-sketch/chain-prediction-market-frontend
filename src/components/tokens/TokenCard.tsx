@@ -180,7 +180,7 @@ const TokenCard: React.FC<TokenCardProps> = ({
    */
   const volume = getVolume(token);
   const marketCap = getMarketCap(token);
-  const maxCap = resolveNumber((token as any).maxCap);
+  const maxCap = resolveNumber(token.maxCap);
 
   // ===========================================================================
   // LIQUIDITY SYNC (future-proof for on-chain graduation)
@@ -243,10 +243,13 @@ const TokenCard: React.FC<TokenCardProps> = ({
   /**
    * progress:
    * -------------------------------------------------------------------------
-   * - Giá trị % để render progress bar.
-   * - Dùng cho component <Progress percent={progress} />
+   * - Ưu tiên progressDex từ API (0-100).
+   * - Fallback: tính từ marketCap/maxCap.
+   * - Nếu không có cả hai → mặc định 50%.
    */
-  const progress = calculateProgressByCap(marketCap, maxCap);
+  const apiProgress = resolveNumber(token.progressDex);
+  const capProgress = calculateProgressByCap(marketCap, maxCap);
+  const progress = apiProgress !== null ? apiProgress : capProgress;
 
   /**
    * isCompleted:
@@ -257,7 +260,8 @@ const TokenCard: React.FC<TokenCardProps> = ({
    *   + Nếu isEnded cũng true => render layout Graduated (có nút Trade/View)
    */
   const isCompleted =
-    marketCap !== null && maxCap !== null && marketCap >= maxCap;
+    (apiProgress !== null && apiProgress >= 100) ||
+    (marketCap !== null && maxCap !== null && marketCap >= maxCap);
 
   /**
    * handleClick:
@@ -447,7 +451,7 @@ const Progress = ({
     <div className="flex justify-between text-sm">
       <span className="text-gray-400">Progress to DEX</span>
       <span className={completed ? 'text-[var(--primary)]' : 'text-white'}>
-        {completed ? 'Completed' : `${Math.floor(percent)}%`}
+        {completed ? 'Completed' : `${percent % 1 === 0 ? percent : percent.toFixed(2)}%`}
       </span>
     </div>
 

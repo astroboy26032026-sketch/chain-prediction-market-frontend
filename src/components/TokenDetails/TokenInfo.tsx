@@ -134,10 +134,16 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
 
   const progressPct = useMemo(() => {
     if (isCompleted) return 100;
-    if (!targetBase) return 0;
-    const pct = (currentBase / targetBase) * 100;
-    return Math.min(Math.max(pct, 0), 100);
-  }, [currentBase, targetBase, isCompleted]);
+    // Prioritize progressDex from API
+    const apiProg = Number((tokenInfo as any)?.progressDex);
+    if (Number.isFinite(apiProg) && apiProg > 0) return Math.min(apiProg, 100);
+    // Fallback: calculate from liquidity
+    if (targetBase > 0) {
+      const pct = (currentBase / targetBase) * 100;
+      return Math.min(Math.max(pct, 0), 100);
+    }
+    return 0;
+  }, [currentBase, targetBase, isCompleted, tokenInfo]);
 
   const truncateDescription = (description: string, maxLength: number = 120) => {
     if (!description) return '';
@@ -316,7 +322,7 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
             />
           </div>
           <div className="mt-1 text-right text-xs text-gray-400">
-            {isCompleted ? '100%' : `${(progressPct || 0).toFixed(2)}%`}
+            {isCompleted ? '100%' : `${progressPct % 1 === 0 ? progressPct : progressPct.toFixed(2)}%`}
           </div>
         </div>
 

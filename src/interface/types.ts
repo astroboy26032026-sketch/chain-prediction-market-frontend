@@ -68,6 +68,10 @@ export interface Token {
   tokenAddress?: string;
   ca?: string;
   external_url?: string;
+
+  /** Progress to DEX (0-100) from API. Fallback 50% if absent. */
+  progressDex?: number;
+  maxCap?: number;
 }
 
 export interface TokenWithLiquidityEvents extends Token {
@@ -474,6 +478,9 @@ export interface TokenInfoResponse {
 
   createdAt: string; // ISO datetime
   bondingCurveStatus: BondingCurveStatus;
+
+  /** Progress to DEX listing (0-100), BE calculates */
+  progressDex?: number;
 }
 
 /**
