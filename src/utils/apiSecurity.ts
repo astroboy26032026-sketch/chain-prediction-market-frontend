@@ -203,7 +203,9 @@ const ALLOWED_PROXY_PREFIXES = [
   '/points/',
   '/trading/',
   '/user/',
+  '/profile/',
   '/staking/',
+  '/leaderboard/',
 ];
 
 /** Validate that a proxy path is in the allowed list */

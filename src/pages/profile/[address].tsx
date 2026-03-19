@@ -149,7 +149,7 @@ const ProfilePage: React.FC = () => {
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(LIST_STEP);
 
   const avatarSrc = useMemo(() => {
-    const raw = (profileInfo as any)?.avatarUrl ?? (profileInfo as any)?.avatar ?? '';
+    const raw = (profileInfo as any)?.avatarUrl || (profileInfo as any)?.avatar || '';
     return normalizeImageUrl(raw);
   }, [profileInfo]);
 
@@ -191,10 +191,13 @@ const ProfilePage: React.FC = () => {
     setLoadingHeader(true);
     try {
       const [info, stats] = await Promise.all([getProfileInfo(walletAddress), getProfileStats(walletAddress)]);
+      console.log('[Profile] info:', JSON.stringify(info));
+      console.log('[Profile] stats:', JSON.stringify(stats));
+      const avatarRaw = (info as any)?.avatar || '';
       setProfileInfo({
         ...info,
-        avatar: normalizeImageUrl((info as any)?.avatar ?? ''),
-        avatarUrl: normalizeImageUrl((info as any)?.avatarUrl ?? ''),
+        avatar: normalizeImageUrl(avatarRaw),
+        avatarUrl: normalizeImageUrl(avatarRaw),
       } as any);
       setProfileStats(stats as any);
     } catch (e) {

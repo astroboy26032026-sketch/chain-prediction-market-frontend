@@ -355,7 +355,7 @@ function normalizeProfileInfo(input: any, walletAddress: string): ProfileInfoRes
   return {
     walletAddress: String(input?.walletAddress ?? walletAddress ?? '').trim(),
     username: String(input?.username ?? ''),
-    avatar: String(input?.avatar ?? ''),
+    avatar: String(input?.avatarUrl ?? input?.avatar ?? ''),
     bio: String(input?.bio ?? ''),
     joinedAt: String(input?.joinedAt ?? ''),
     totalTokensCreated: Number(input?.totalTokensCreated ?? 0),
