@@ -1,6 +1,7 @@
 // pages/index.tsx — Home page (refactored: hooks + components extracted)
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
+import Link from 'next/link';
 
 import Layout from '@/components/layout/Layout';
 import TokenList from '@/components/tokens/TokenList';
@@ -15,6 +16,8 @@ import HomeToolbar from '@/components/home/HomeToolbar';
 import { useTokenList } from '@/hooks/useTokenList';
 import { useMarqueeTokens } from '@/hooks/useMarqueeTokens';
 import { useNewTokensStream } from '@/hooks/useNewTokensStream';
+import ArenaCard from '@/components/arena/ArenaCard';
+import { getMockArenas } from '@/constants/arena-mock';
 
 import { ActiveFilter, getMcap, getVol24h } from '@/utils/filterHelpers';
 import type { SortOption } from '@/components/ui/SortOptions';
@@ -39,6 +42,9 @@ const Home: React.FC = () => {
 
   const { marqueeTokens, marqueeLogoError, onLogoError } = useMarqueeTokens(includeNsfw);
   const { showNewTokens, setShowNewTokens, newTokensBuffer } = useNewTokensStream(setTokens);
+
+  // Arena: show top 4 trending on homepage
+  const arenaItems = useMemo(() => getMockArenas('Trending').slice(0, 4), []);
 
   // Handle marquee loading overlay on route change
   useEffect(() => {
@@ -135,8 +141,22 @@ const Home: React.FC = () => {
             onClearFilter={handleClearFilter}
           />
 
-          {/* Token List or States */}
-          {isLoading ? (
+          {/* Content: Arena or Token List based on sort tab */}
+          {sort === 'arena' ? (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+                {arenaItems.map(a => <ArenaCard key={a.id} arena={a} />)}
+              </div>
+              <div className="flex justify-center mt-8">
+                <Link
+                  href="/arena"
+                  className="inline-block px-5 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] hover:shadow text-sm text-[var(--foreground)]"
+                >
+                  Load more
+                </Link>
+              </div>
+            </>
+          ) : isLoading ? (
             <div className="flex justify-center items-center mt-10">
               <Spinner size="medium" />
             </div>

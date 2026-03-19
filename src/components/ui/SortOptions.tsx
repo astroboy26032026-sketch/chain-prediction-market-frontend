@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 
-export type SortOption = 'trending' | 'marketcap' | 'new' | 'finalized';
+export type SortOption = 'trending' | 'marketcap' | 'new' | 'finalized' | 'arena';
 
 interface SortOptionsProps {
   onSort: (option: SortOption) => void;
@@ -25,6 +25,7 @@ const SortOptions: React.FC<SortOptionsProps> = ({ onSort, currentSort }) => {
     () =>
       [
         { key: 'trending', label: 'Trending', onClick: () => onSort('trending') },
+        { key: 'arena', label: '🔥 Trending Arena', onClick: () => onSort('arena') },
         { key: 'marketcap', label: 'Market Cap', onClick: () => onSort('marketcap') },
         { key: 'new', label: 'New', onClick: () => onSort('new') },
         { key: 'finalized', label: 'Finalized', onClick: () => onSort('finalized') },
@@ -93,6 +94,7 @@ const SortOptions: React.FC<SortOptionsProps> = ({ onSort, currentSort }) => {
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/70',
                 'text-sm md:text-[15px]',
                 isActive ? 'text-white' : 'text-[rgba(243,239,234,0.82)] hover:text-[var(--primary)]',
+                item.key === 'arena' ? 'arena-sort-tab' : '',
               ].join(' ')}
             >
               {item.label}
@@ -104,6 +106,24 @@ const SortOptions: React.FC<SortOptionsProps> = ({ onSort, currentSort }) => {
       <style jsx>{`
         div[role='tablist']:hover {
           box-shadow: 0 10px 28px rgba(201, 142, 107, 0.12), 0 8px 24px rgba(0, 0, 0, 0.35);
+        }
+      `}</style>
+      <style jsx global>{`
+        .arena-sort-tab {
+          animation: arenaTabPulse 1.8s ease-in-out infinite;
+          color: #ff8c42 !important;
+        }
+        @keyframes arenaTabPulse {
+          0%, 100% {
+            text-shadow: 0 0 4px rgba(255,100,0,0.4);
+            transform: scale(1);
+            filter: brightness(1);
+          }
+          50% {
+            text-shadow: 0 0 14px rgba(255,70,0,0.8), 0 0 28px rgba(255,100,0,0.4);
+            transform: scale(1.05);
+            filter: brightness(1.2);
+          }
         }
       `}</style>
     </div>

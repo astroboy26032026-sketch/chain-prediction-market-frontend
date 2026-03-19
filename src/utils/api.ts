@@ -37,6 +37,16 @@ import {
   TradingPreviewSellResponse,
   SubmitSignatureResponse,
   TradingTxStatusResponse,
+
+  // ✅ Arena types
+  Arena,
+  ArenaDetail,
+  ArenaListResponse,
+  ArenaMyBetsResponse,
+  ArenaBetRequest,
+  ArenaBetResponse,
+  ArenaStatus,
+  ArenaType,
 } from '@/interface/types';
 
 // =====================
@@ -1441,4 +1451,49 @@ export async function spinReward(walletAddress: string): Promise<RewardSpinRespo
   const headers = getAuthHeaders();
   const { data } = await postViaProxy<RewardSpinResponse>('/reward/spin', { walletAddress: addr }, headers);
   return normalizeRewardSpinResponse(data);
+}
+
+// =====================
+// ✅ Arena / Prediction Market
+// =====================
+
+export async function getArenaList(params?: {
+  status?: ArenaStatus;
+  type?: ArenaType;
+  limit?: number;
+  cursor?: string;
+}): Promise<ArenaListResponse> {
+  const headers = getAuthHeaders();
+  const { data } = await getViaProxy<ArenaListResponse>('/arena/list', params ?? {}, headers);
+  return {
+    items: data.items ?? [],
+    nextCursor: data.nextCursor ?? null,
+  };
+}
+
+export async function getArenaDetail(id: string): Promise<ArenaDetail> {
+  if (!id) throw new Error('Missing arena id');
+  const headers = getAuthHeaders();
+  const { data } = await getViaProxy<ArenaDetail>(`/arena/${id}`, {}, headers);
+  return data;
+}
+
+export async function placeBet(req: ArenaBetRequest): Promise<ArenaBetResponse> {
+  if (!req.arenaId || !req.optionId || !req.amount) throw new Error('Invalid bet request');
+  const headers = getAuthHeaders();
+  const { data } = await postViaProxy<ArenaBetResponse>('/arena/bet', req, headers);
+  return data;
+}
+
+export async function getMyBets(params?: {
+  status?: 'active' | 'completed';
+  limit?: number;
+  cursor?: string;
+}): Promise<ArenaMyBetsResponse> {
+  const headers = getAuthHeaders();
+  const { data } = await getViaProxy<ArenaMyBetsResponse>('/arena/my-bets', params ?? {}, headers);
+  return {
+    items: data.items ?? [],
+    nextCursor: data.nextCursor ?? null,
+  };
 }

@@ -6,7 +6,7 @@ import { useRouter } from 'next/router';
 import { toast } from 'react-toastify';
 import HowItWorksPopup from '@/components/notifications/HowItWorksPopup';
 import { Switch } from '@/components/ui/switch';
-import { Sun, Moon, User2, UsersRound, Gift, Trophy, Gem, Coins, Menu, X } from 'lucide-react';
+import { Sun, Moon, User2, UsersRound, Gift, Trophy, Gem, Coins, Menu, X, Zap } from 'lucide-react';
 
 import { useWallet } from '@solana/wallet-adapter-react';
 import dynamic from 'next/dynamic';
@@ -118,6 +118,11 @@ const SidebarContent: React.FC<{
           <User2 className="sidebar-icon" />
           <span className="sidebar-label">My Profile</span>
         </button>
+
+        <NavLink href="/arena" onClick={onNavClick}>
+          <span className="arena-nav-fire">🔥</span>
+          <span className="sidebar-label arena-nav-label">Arena</span>
+        </NavLink>
 
         <NavLink href="/leaderboard" onClick={onNavClick}>
           <Trophy className="sidebar-icon" />

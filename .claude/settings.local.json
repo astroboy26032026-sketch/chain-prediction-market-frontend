@@ -5,7 +5,8 @@
       "Bash(grep -l \"ui-text\" src/pages/leaderboard.tsx src/pages/referrals.tsx src/pages/point/[address].tsx src/pages/profile/[address].tsx src/pages/reward/[address].tsx src/components/TokenDetails/TokenHolders.tsx src/components/TokenDetails/Chats.tsx src/pages/token/[address].tsx)",
       "Bash(grep -n \"ui-text\" src/pages/leaderboard.tsx src/pages/referrals.tsx src/pages/point/[address].tsx src/pages/profile/[address].tsx)",
       "Bash(grep -r \"remove\\\\.getAllTokensTrends\\\\|api.index\\\\|api.ts\" /c/Users/Administrator/Desktop/Project/Pump_fun_clone/src --include=*.tsx --include=*.ts)",
-      "WebFetch(domain:pump.fun)"
+      "WebFetch(domain:pump.fun)",
+      "Bash(npx next:*)"
     ]
   }
 }

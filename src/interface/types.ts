@@ -728,3 +728,91 @@ export type TradingTxStatusResponse = {
   error?: string | null;
   updatedAt?: string; // ISO
 };
+
+/* =========================================================
+   Arena / Prediction Market
+   ========================================================= */
+
+export type ArenaType = 'token_battle' | 'event';
+export type ArenaStatus = 'upcoming' | 'active' | 'completed' | 'cancelled';
+export type ArenaCurrency = 'SOL' | 'POINTS';
+export type ArenaBetStatus = 'active' | 'won' | 'lost' | 'refunded';
+
+export interface ArenaOptionMetadata {
+  tokenAddress?: string;
+  startPrice?: number;
+  currentPrice?: number;
+  priceChange?: number;
+  /** For event type: team logo, event info, etc. */
+  teamName?: string;
+  league?: string;
+  [key: string]: any;
+}
+
+export interface ArenaOption {
+  id: string;
+  label: string;
+  image?: string;
+  totalBet: number;
+  betCount: number;
+  odds: number;
+  metadata?: ArenaOptionMetadata;
+}
+
+export interface Arena {
+  id: string;
+  type: ArenaType;
+  title: string;
+  description: string;
+  status: ArenaStatus;
+  startTime: string;
+  endTime: string;
+  totalPool: number;
+  currency: ArenaCurrency;
+  minBet: number;
+  maxBet: number;
+  options: ArenaOption[];
+  winner?: string | null;
+  createdAt: string;
+  image?: string;
+  category?: string;
+}
+
+export interface ArenaDetail extends Arena {
+  myBets: ArenaBetItem[] | null;
+}
+
+export interface ArenaBetItem {
+  betId: string;
+  arenaId: string;
+  arenaTitle: string;
+  optionId: string;
+  optionLabel: string;
+  amount: number;
+  currency: ArenaCurrency;
+  status: ArenaBetStatus;
+  payout: number | null;
+  placedAt: string;
+}
+
+export interface ArenaBetRequest {
+  arenaId: string;
+  optionId: string;
+  amount: number;
+}
+
+export interface ArenaBetResponse {
+  betId: string;
+  txHash?: string;
+  remainingPoints?: number;
+}
+
+export interface ArenaListResponse {
+  items: Arena[];
+  nextCursor: string | null;
+}
+
+export interface ArenaMyBetsResponse {
+  items: ArenaBetItem[];
+  nextCursor: string | null;
+}
