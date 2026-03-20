@@ -106,7 +106,7 @@ const TokenHolders: React.FC<TokenHoldersProps> = ({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
         <div className="bg-[var(--card2)] rounded-lg p-3 border border-[var(--card-border)]">
           <div className="text-[11px] text-gray-500 mb-1">Total Holders</div>
-          <div className="text-sm font-semibold text-white">{totalHolders > 0 ? totalHolders.toLocaleString() : '—'}</div>
+          <div className="text-sm font-semibold text-[var(--primary)]">{totalHolders > 0 ? totalHolders.toLocaleString() : '—'}</div>
         </div>
         <div className="bg-[var(--card2)] rounded-lg p-3 border border-[var(--card-border)]">
           <div className="text-[11px] text-gray-500 mb-1">Top 10 Conc.</div>
@@ -114,11 +114,11 @@ const TokenHolders: React.FC<TokenHoldersProps> = ({
         </div>
         <div className="bg-[var(--card2)] rounded-lg p-3 border border-[var(--card-border)]">
           <div className="text-[11px] text-gray-500 mb-1">Avg Holding</div>
-          <div className="text-sm font-semibold text-white">{avgHolding > 0 ? fmtCompact(avgHolding) : '—'}</div>
+          <div className="text-sm font-semibold text-[var(--primary)]">{avgHolding > 0 ? fmtCompact(avgHolding) : '—'}</div>
         </div>
         <div className="bg-[var(--card2)] rounded-lg p-3 border border-[var(--card-border)]">
           <div className="text-[11px] text-gray-500 mb-1">New (24h)</div>
-          <div className="text-sm font-semibold text-[var(--accent)]">—</div>
+          <div className="text-sm font-semibold text-[var(--primary)]">—</div>
         </div>
       </div>
 
