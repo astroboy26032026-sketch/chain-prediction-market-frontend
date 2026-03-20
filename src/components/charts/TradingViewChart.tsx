@@ -52,6 +52,26 @@ const TF_MIN: Record<Timeframe, number> = {
 const UP = '#26a69a';
 const DN = '#ef5350';
 
+/** Read a CSS custom property from :root (returns hex string for lightweight-charts) */
+function cssVar(name: string, fallback: string): string {
+  if (typeof document === 'undefined') return fallback;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
+/** Lazily resolved theme colours — call inside useEffect / render so DOM is ready */
+function getThemeColors() {
+  return {
+    bg:         cssVar('--card', '#222521'),
+    bgAlt:      cssVar('--card2', '#2A2E29'),
+    border:     cssVar('--card-border', '#3C322C'),
+    text:       cssVar('--foreground', '#F3EFEA'),
+    textMuted:  cssVar('--foreground', '#F3EFEA') + '99', // 60 % alpha fallback
+    gridLine:   cssVar('--card2', '#2A2E29'),
+    crosshair:  cssVar('--card-border', '#3C322C'),
+  };
+}
+
 /* ═══════════════════ MATH HELPERS ═══════════════════ */
 
 function fmtPrice(p: number): string {
@@ -291,13 +311,14 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ tokenInfo }) => {
     const raf = requestAnimationFrame(() => {
       if (!containerRef.current) return;
       const w = containerRef.current.clientWidth || 600;
+      const tc = getThemeColors();
       const chart = createChart(containerRef.current, {
         width: w, height: chartH,
-        layout: { background: { color: '#131722' }, textColor: '#787b86' },
-        grid: { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
-        rightPriceScale: { borderColor: '#2a2e39', visible: true, borderVisible: true, alignLabels: true, entireTextOnly: true, scaleMargins: { top: 0.08, bottom: 0.2 } },
-        timeScale: { borderColor: '#2a2e39', timeVisible: true, secondsVisible: false },
-        crosshair: { mode: CrosshairMode.Normal, vertLine: { labelVisible: true, style: LineStyle.Solid, width: 1, color: '#363a45' }, horzLine: { labelVisible: true, style: LineStyle.Solid, width: 1, color: '#363a45' } },
+        layout: { background: { color: tc.bg }, textColor: tc.textMuted },
+        grid: { vertLines: { color: tc.gridLine }, horzLines: { color: tc.gridLine } },
+        rightPriceScale: { borderColor: tc.border, visible: true, borderVisible: true, alignLabels: true, entireTextOnly: true, scaleMargins: { top: 0.08, bottom: 0.2 } },
+        timeScale: { borderColor: tc.border, timeVisible: true, secondsVisible: false },
+        crosshair: { mode: CrosshairMode.Normal, vertLine: { labelVisible: true, style: LineStyle.Solid, width: 1, color: tc.crosshair }, horzLine: { labelVisible: true, style: LineStyle.Solid, width: 1, color: tc.crosshair } },
       });
 
       const pf = { type: 'custom' as const, formatter: fmtPrice, minMove: 1e-9 };
@@ -481,10 +502,10 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ tokenInfo }) => {
 
   /* ═════ RENDER ═════ */
   return (
-    <div ref={wrapperRef} className={`w-full rounded-lg overflow-hidden ${isFS ? 'fixed inset-0 z-50 bg-[#131722]' : ''}`}>
+    <div ref={wrapperRef} className={`w-full rounded-lg overflow-hidden ${isFS ? 'fixed inset-0 z-50 bg-[var(--card)]' : ''}`}>
 
       {/* ══ TOP HEADER BAR ══ */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[#1e222d] border-b border-[#2a2e39] text-xs">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--card2)] border-b border-[var(--card-border)] text-xs">
         <div className="flex items-center gap-3">
           {/* Timeframe selector */}
           <span className="text-white font-semibold">{tf}</span>
@@ -503,7 +524,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ tokenInfo }) => {
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" opacity="0.3"><polygon points="1,12 5,6 9,9 15,3 15,14 1,14"/><polyline points="1,12 5,6 9,9 15,3" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="1"/></svg>
           </button>
 
-          <span className="text-[#363a45]">|</span>
+          <span className="text-[var(--card-border)]">|</span>
 
           {/* Price / MarketCap toggle */}
           <button type="button" onClick={() => setPriceMode('price')}
@@ -526,7 +547,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ tokenInfo }) => {
             </button>
           ))}
 
-          <span className="text-[#363a45]">|</span>
+          <span className="text-[var(--card-border)]">|</span>
 
           {/* Auto refresh */}
           <button type="button" onClick={() => setAutoRefresh(!autoRefresh)} title={autoRefresh ? 'Live (15s)' : 'Paused'}
@@ -567,26 +588,26 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ tokenInfo }) => {
         {/* ══ MAIN AREA: Sidebar + Chart ══ */}
         <div className="flex">
           {/* LEFT SIDEBAR */}
-          <div className="flex flex-col items-center py-2 gap-1 bg-[#1e222d] border-r border-[#2a2e39] shrink-0 hidden sm:flex" style={{ width: SIDEBAR_W }}>
+          <div className="flex flex-col items-center py-2 gap-1 bg-[var(--card2)] border-r border-[var(--card-border)] shrink-0 hidden sm:flex" style={{ width: SIDEBAR_W }}>
             {/* Cursor */}
             <button type="button" onClick={() => { setDrawTool('none'); trendClickRef.current = null; }}
-              title="Cursor" className={`w-7 h-7 flex items-center justify-center rounded text-sm ${drawTool === 'none' ? 'bg-[#2a2e39] text-white' : 'text-gray-500 hover:text-gray-300'}`}>
+              title="Cursor" className={`w-7 h-7 flex items-center justify-center rounded text-sm ${drawTool === 'none' ? 'bg-[var(--card-hover)] text-white' : 'text-gray-500 hover:text-gray-300'}`}>
               <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M2,1 L2,11 L5,8 L8,13 L10,12 L7,7 L11,7 Z"/></svg>
             </button>
 
             {/* Trendline */}
             <button type="button" onClick={() => setDrawTool(drawTool === 'trendline' ? 'none' : 'trendline')}
-              title="Trend Line" className={`w-7 h-7 flex items-center justify-center rounded text-sm ${drawTool === 'trendline' ? 'bg-[#2a2e39] text-blue-400' : 'text-gray-500 hover:text-gray-300'}`}>
+              title="Trend Line" className={`w-7 h-7 flex items-center justify-center rounded text-sm ${drawTool === 'trendline' ? 'bg-[var(--card-hover)] text-blue-400' : 'text-gray-500 hover:text-gray-300'}`}>
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="2" y1="12" x2="12" y2="2"/></svg>
             </button>
 
             {/* Horizontal line */}
             <button type="button" onClick={() => setDrawTool(drawTool === 'hline' ? 'none' : 'hline')}
-              title="Horizontal Line" className={`w-7 h-7 flex items-center justify-center rounded text-sm ${drawTool === 'hline' ? 'bg-[#2a2e39] text-yellow-400' : 'text-gray-500 hover:text-gray-300'}`}>
+              title="Horizontal Line" className={`w-7 h-7 flex items-center justify-center rounded text-sm ${drawTool === 'hline' ? 'bg-[var(--card-hover)] text-yellow-400' : 'text-gray-500 hover:text-gray-300'}`}>
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="1" y1="7" x2="13" y2="7"/></svg>
             </button>
 
-            <div className="w-5 border-t border-[#2a2e39] my-1" />
+            <div className="w-5 border-t border-[var(--card-border)] my-1" />
 
             {/* Eraser */}
             <button type="button" onClick={clearDrawings}
@@ -610,7 +631,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ tokenInfo }) => {
             <div className="relative" style={{ height: chartH }}>
               <div ref={containerRef} className="w-full h-full" style={{ cursor: drawTool !== 'none' ? 'crosshair' : undefined }} />
               {(loading || data.length < 2) && (
-                <div className="absolute inset-0 flex items-center justify-center bg-[#131722]">
+                <div className="absolute inset-0 flex items-center justify-center bg-[var(--card)]">
                   {loading ? <Spinner size="medium" /> : (
                     <div className="flex flex-col items-center">
                       <p className="text-gray-400 text-sm">Not enough data to display chart</p>
@@ -623,16 +644,16 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ tokenInfo }) => {
 
             {/* RSI */}
             {indicators.has('RSI') && (
-              <div className="border-t border-[#2a2e39]">
-                <div className="text-[10px] text-gray-600 px-2 py-0.5 bg-[#131722]">RSI 14</div>
+              <div className="border-t border-[var(--card-border)]">
+                <div className="text-[10px] text-gray-600 px-2 py-0.5 bg-[var(--card)]">RSI 14</div>
                 <div ref={rsiContainerRef} className="w-full" style={{ height: RSI_H }} />
               </div>
             )}
 
             {/* MACD */}
             {indicators.has('MACD') && (
-              <div className="border-t border-[#2a2e39]">
-                <div className="text-[10px] text-gray-600 px-2 py-0.5 bg-[#131722]">MACD 12, 26, 9</div>
+              <div className="border-t border-[var(--card-border)]">
+                <div className="text-[10px] text-gray-600 px-2 py-0.5 bg-[var(--card)]">MACD 12, 26, 9</div>
                 <div ref={macdContainerRef} className="w-full" style={{ height: MACD_H }} />
               </div>
             )}
@@ -641,11 +662,11 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ tokenInfo }) => {
       </div>
 
       {/* ══ BOTTOM BAR ══ */}
-      <div className="flex items-center justify-between px-3 py-1 bg-[#1e222d] border-t border-[#2a2e39] text-[11px]">
+      <div className="flex items-center justify-between px-3 py-1 bg-[var(--card2)] border-t border-[var(--card-border)] text-[11px]">
         <div className="flex items-center gap-1">
           {TIMEFRAMES.map((t) => (
             <button key={t} type="button" onClick={() => setTf(t)}
-              className={`px-2 py-0.5 rounded transition-colors ${t === tf ? 'text-white bg-[#2a2e39]' : 'text-gray-500 hover:text-gray-300'}`}>
+              className={`px-2 py-0.5 rounded transition-colors ${t === tf ? 'text-white bg-[var(--card-hover)]' : 'text-gray-500 hover:text-gray-300'}`}>
               {t}
             </button>
           ))}

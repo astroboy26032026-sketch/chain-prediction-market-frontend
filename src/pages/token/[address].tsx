@@ -15,6 +15,7 @@ import TokenInfo from '@/components/TokenDetails/TokenInfo';
 import Chats from '@/components/TokenDetails/Chats';
 
 import SwapPanel from '@/components/token/SwapPanel';
+import TrustLevel from '@/components/token/TrustLevel';
 
 import { useTokenDetail } from '@/hooks/useTokenDetail';
 import { COMMON } from '@/constants/ui-text';
@@ -96,13 +97,14 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
       <SEO token={tokenInfo as any} />
 
       {/* Mobile TokenInfo */}
-      <div className="lg:hidden mb-6">
+      <div className="lg:hidden mb-6 space-y-4">
         <TokenInfo
           tokenInfo={tokenInfo as any}
           showHeader={true}
           refreshTrigger={refreshCounter}
           liquidityEvents={liquidityEvents}
         />
+        <TrustLevel />
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -126,30 +128,37 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
             {/* Trades / Chat / Holders */}
             <div className="card gradient-border p-4">
               <Tab.Group>
-                <Tab.List className="flex space-x-1 rounded-lg bg-[var(--card2)] p-1 mb-4 border-thin">
+                <Tab.List className="flex bg-[var(--card)] rounded-xl p-1 mb-4">
                   {['Trades', 'Chat', 'Holders'].map((t) => (
-                    <Tab
-                      key={t}
-                      className={({ selected }) =>
-                        `w-full rounded-md py-2.5 text-sm font-medium leading-5 transition-colors ${
-                          selected
-                            ? 'bg-[var(--card-boarder)] text-white'
-                            : 'text-gray-400 hover:bg-[var(--card-hover)] hover:text-white'
-                        }`
-                      }
-                    >
-                      {t}
+                    <Tab key={t} as={React.Fragment}>
+                      {({ selected }) => (
+                        <button
+                          type="button"
+                          className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
+                            selected
+                              ? 'text-white shadow-sm'
+                              : 'text-gray-400 hover:text-gray-200'
+                          }`}
+                          style={selected ? { backgroundImage: 'linear-gradient(135deg, var(--primary), var(--accent))' } : undefined}
+                        >
+                          {t}
+                        </button>
+                      )}
                     </Tab>
                   ))}
                 </Tab.List>
 
                 <Tab.Panels>
                   <Tab.Panel>
-                    <TransactionHistory tokenAddress={tokenAddr as string} />
+                    <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
+                      <TransactionHistory tokenAddress={tokenAddr as string} />
+                    </div>
                   </Tab.Panel>
 
                   <Tab.Panel>
-                    <Chats tokenAddress={tokenAddr as string} tokenInfo={tokenInfo as any} />
+                    <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
+                      <Chats tokenAddress={tokenAddr as string} tokenInfo={tokenInfo as any} />
+                    </div>
                   </Tab.Panel>
 
                   <Tab.Panel>
@@ -202,6 +211,10 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
                 refreshTrigger={refreshCounter}
                 liquidityEvents={liquidityEvents}
               />
+            </div>
+
+            <div className="hidden lg:block">
+              <TrustLevel />
             </div>
           </div>
         </div>

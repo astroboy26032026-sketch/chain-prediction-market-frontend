@@ -41,6 +41,23 @@ interface TokenInfoProps {
     // optional: nếu BE có trả current price (base coin)
     price?: number | string;
     currentPrice?: number | string;
+    priceUsd?: number | string;
+
+    // extra stats
+    marketCap?: number;
+    mcapUsd?: number;
+    marketcapUsd?: number;
+    marketCapUsd?: number;
+    volume24h?: number;
+    vol24h?: number;
+    vol24hUsd?: number;
+    volume24hUsd?: number;
+    holders?: number;
+    holderCount?: number;
+    liquidity?: number;
+    totalSupply?: number | string;
+    supply?: number | string;
+    progressDex?: number;
   };
   showHeader?: boolean;
   refreshTrigger?: number;
@@ -56,19 +73,6 @@ const fmtNum = (n: number, digits = 4) => {
   });
 };
 
-function normalizeLiquidityList(liquidityEvents: any): any[] {
-  if (!liquidityEvents) return [];
-  if (Array.isArray(liquidityEvents)) return liquidityEvents;
-
-  const le = (liquidityEvents as any).liquidityEvents;
-  if (Array.isArray(le)) return le;
-
-  const ev = (liquidityEvents as any).events;
-  if (Array.isArray(ev)) return ev;
-
-  return [];
-}
-
 const ensureHttp = (url?: string) => {
   const s = String(url ?? '').trim();
   if (!s) return '';
@@ -80,8 +84,6 @@ const ensureHttp = (url?: string) => {
 const getTokenAddressAny = (t: any) =>
   String(t?.address ?? t?.tokenAddress ?? t?.mint ?? t?.token ?? '').trim();
 
-const BASE_SYMBOL = (process.env.NEXT_PUBLIC_BASE_SYMBOL || 'SOL').toUpperCase();
-
 // Bạn có thể đổi sang explorer khác nếu muốn
 const explorerAddressUrl = (addr: string) => `https://solscan.io/account/${addr}`;
 
@@ -89,61 +91,18 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
   tokenInfo,
   showHeader = false,
   refreshTrigger = 0,
-  liquidityEvents,
 }) => {
-  const liqList = useMemo(() => normalizeLiquidityList(liquidityEvents), [liquidityEvents]);
-
   // giữ state để UI/UX không đổi (nếu nơi khác đang set refreshTrigger)
   useEffect(() => {
     // nothing required — liquidityEvents / tokenInfo sẽ tự update từ parent
   }, [refreshTrigger]);
 
-  const isCompleted = liqList.length > 0;
-
-  // target base coin (SOL) từ env
-  const targetBase = useMemo(() => {
-    const t = Number(process.env.NEXT_PUBLIC_DEX_TARGET);
-    return Number.isFinite(t) && t > 0 ? t : 0;
-  }, []);
-
-  // current base coin: đọc từ liquidity events
-  // Hỗ trợ nhiều field name khác nhau: solAmount / baseAmount / amount / quoteAmount
-  const currentBase = useMemo(() => {
-    if (!liqList.length) return 0;
-
-    const e0 = liqList[0] || {};
-    const candidates = [e0?.solAmount, e0?.baseAmount, e0?.amount, e0?.quoteAmount];
-
-    for (const v of candidates) {
-      const n = Number(v ?? 0);
-      if (Number.isFinite(n) && n > 0) return n;
-    }
-
-    // fallback: sum all events
-    const sum = liqList.reduce((acc, e) => {
-      const n =
-        Number(e?.solAmount ?? 0) ||
-        Number(e?.baseAmount ?? 0) ||
-        Number(e?.amount ?? 0) ||
-        0;
-      return acc + (Number.isFinite(n) ? n : 0);
-    }, 0);
-
-    return sum;
-  }, [liqList]);
-
   const progressPct = useMemo(() => {
-    if (isCompleted) return 100;
-    // Prioritize progressDex from API
-    const apiProg = Number((tokenInfo as any)?.progressDex);
+    // Only use progressDex from API — no guessing
+    const apiProg = Number(tokenInfo?.progressDex ?? 0);
     if (Number.isFinite(apiProg) && apiProg > 0) return Math.min(apiProg, 100);
-    // Fallback: calculate from liquidity
-    if (targetBase > 0) {
-      const pct = (currentBase / targetBase) * 100;
-      return Math.min(Math.max(pct, 0), 100);
-    }
     return 0;
-  }, [currentBase, targetBase, isCompleted, tokenInfo]);
+  }, [tokenInfo?.progressDex]);
 
   const truncateDescription = (description: string, maxLength: number = 120) => {
     if (!description) return '';
@@ -151,8 +110,15 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
     return `${description.slice(0, maxLength)}...`;
   };
 
-  // current price label (nếu BE có trả)
-  const currentPriceValue = tokenInfo?.price ?? tokenInfo?.currentPrice ?? null;
+  // current price: try multiple field names
+  const currentPriceValue = tokenInfo?.price ?? tokenInfo?.currentPrice ?? tokenInfo?.priceUsd ?? null;
+
+  // market stats — try multiple field names
+  const marketCapValue = Number(tokenInfo?.marketCap ?? tokenInfo?.mcapUsd ?? tokenInfo?.marketcapUsd ?? tokenInfo?.marketCapUsd ?? 0) || 0;
+  const volume24hValue = Number(tokenInfo?.volume24h ?? tokenInfo?.vol24h ?? tokenInfo?.vol24hUsd ?? tokenInfo?.volume24hUsd ?? 0) || 0;
+  const holdersValue = Number(tokenInfo?.holders ?? tokenInfo?.holderCount ?? 0) || 0;
+  const liquidityValue = Number(tokenInfo?.liquidity ?? 0) || 0;
+  const totalSupplyValue = Number(tokenInfo?.totalSupply ?? tokenInfo?.supply ?? 0) || 0;
 
   const addr = useMemo(() => getTokenAddressAny(tokenInfo), [tokenInfo]);
   const logo = tokenInfo?.logo || '/chats/noimg.svg';
@@ -196,14 +162,34 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
         <InfoItem
           label="Current Price"
           value={
-            currentPriceValue != null && String(currentPriceValue).trim() !== ''
-              ? `${formatAmount(String(currentPriceValue))} ${BASE_SYMBOL}`
+            currentPriceValue != null && String(currentPriceValue).trim() !== '' && Number(currentPriceValue) > 0
+              ? `$${formatAmount(String(currentPriceValue))}`
               : '—'
           }
         />
       </div>
 
-      {/* ⛔ Market Cap đã xóa theo yêu cầu */}
+      <div className="grid grid-cols-2 gap-4">
+        <InfoItem
+          label="Market Cap"
+          value={marketCapValue > 0 ? `$${fmtNum(marketCapValue, 2)}` : '—'}
+        />
+        <InfoItem
+          label="24h Volume"
+          value={volume24hValue > 0 ? `$${fmtNum(volume24hValue, 2)}` : '—'}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <InfoItem
+          label="Liquidity"
+          value={liquidityValue > 0 ? `$${fmtNum(liquidityValue, 2)}` : '—'}
+        />
+        <InfoItem
+          label="Total Supply"
+          value={totalSupplyValue > 0 ? fmtNum(totalSupplyValue, 0) : '—'}
+        />
+      </div>
     </div>
   );
 
@@ -304,26 +290,22 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
           </div>
         </div>
 
-        {/* Progress to DEX — hiển thị theo BASE (SOL), không dùng USD=0 nữa */}
+        {/* Progress to DEX — always show, 0% if no data, progress bar only when > 0 */}
         <div className="bg-[var(--card2)] p-4 rounded-lg border-thin">
           <div className="flex justify-between text-sm mb-2">
             <span className="text-gray-300 font-medium">Progress to DEX</span>
             <span className="text-white">
-              {fmtNum(currentBase, 4)} {BASE_SYMBOL}{' '}
-              <span className="text-gray-400">
-                / {fmtNum(targetBase, 4)} {BASE_SYMBOL}
-              </span>
+              {progressPct % 1 === 0 ? `${progressPct}%` : `${progressPct.toFixed(2)}%`}
             </span>
           </div>
-          <div className="w-full bg-[var(--card-boarder)] rounded-full h-2.5 overflow-hidden">
-            <div
-              className="bg-[var(--primary)] h-2.5 rounded-full transition-all duration-500"
-              style={{ width: isCompleted ? '100%' : `${progressPct || 0}%` }}
-            />
-          </div>
-          <div className="mt-1 text-right text-xs text-gray-400">
-            {isCompleted ? '100%' : `${progressPct % 1 === 0 ? progressPct : progressPct.toFixed(2)}%`}
-          </div>
+          {progressPct > 0 && (
+            <div className="w-full bg-[var(--card-boarder)] rounded-full h-2.5 overflow-hidden">
+              <div
+                className="bg-[var(--primary)] h-2.5 rounded-full transition-all duration-500"
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+          )}
         </div>
 
         <TokenDetails />
