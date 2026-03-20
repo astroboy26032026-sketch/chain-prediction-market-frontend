@@ -4,7 +4,9 @@ import { checkRateLimit, isAllowedProxyPath } from '@/utils/apiSecurity';
 
 export const config = {
   api: {
-    bodyParser: true,
+    bodyParser: {
+      sizeLimit: '5mb', // base64 image upload can be ~1.33MB for a 1MB file
+    },
   },
 };
 
@@ -33,7 +35,7 @@ function setCors(req: NextApiRequest, res: NextApiResponse) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Idempotency-Key');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
 }
@@ -90,6 +92,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     };
 
     if (req.headers.authorization) headers.authorization = String(req.headers.authorization);
+
+    // Forward Idempotency-Key if present (required by BE for POST/PUT operations)
+    if (req.headers['idempotency-key']) headers['idempotency-key'] = String(req.headers['idempotency-key']);
 
     // Security: do NOT forward cookies blindly - only forward auth header
     // if (req.headers.cookie) headers.cookie = String(req.headers.cookie);

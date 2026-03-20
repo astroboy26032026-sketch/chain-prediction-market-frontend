@@ -9,11 +9,12 @@ import SEO from '@/components/seo/SEO';
 import {
   uploadTokenImage,
   createTokenDraft,
-  previewInitialBuy,
   finalizeTokenCreation,
+  buyToken,
+  submitSignature,
+  getTradingStatus,
   newIdempotencyKey,
   type CreateTokenDraftResponse,
-  type PreviewInitialBuyResponse,
 } from '@/utils/api';
 
 import {
@@ -24,16 +25,21 @@ import {
   Cog6ToothIcon,
 } from '@heroicons/react/24/outline';
 
-import PurchaseConfirmationPopup from '@/components/notifications/PurchaseConfirmationPopup';
+// PurchaseConfirmationPopup removed — BUY now directly calls runFinalize
 import Modal from '@/components/notifications/Modal';
 
-// wallet adapter kept (no banner)
+// wallet adapter
 import { useWallet } from '@solana/wallet-adapter-react';
+import { useConnection } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { VersionedTransaction } from '@solana/web3.js';
+import { Buffer } from 'buffer';
+import { normalizeTrackingEndpoint, estimateTokensFromSol } from '@/utils/tradingHelpers';
 
 type Step = 1 | 2 | 3;
 
-const MAX_FILE_SIZE = 1024 * 1024; // 1MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB — raw file limit (will compress before upload)
+const COMPRESSED_TARGET = 800 * 1024; // compress to ~800KB for BE
 
 // =====================
 // ✅ Symbol rules (SAFE: BE(2-16) ∩ On-chain(1-10) = 2-10)
@@ -72,6 +78,47 @@ function readFileAsDataURL(file: File): Promise<string> {
   });
 }
 
+/**
+ * Compress image client-side using canvas.
+ * Returns a File ≤ targetSize (best effort).
+ */
+async function compressImage(file: File, targetSize = COMPRESSED_TARGET): Promise<File> {
+  if (file.size <= targetSize) return file;
+
+  const bmp = await createImageBitmap(file);
+  let { width, height } = bmp;
+
+  // Scale down large images
+  const MAX_DIM = 1500;
+  if (width > MAX_DIM || height > MAX_DIM) {
+    const ratio = Math.min(MAX_DIM / width, MAX_DIM / height);
+    width = Math.round(width * ratio);
+    height = Math.round(height * ratio);
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return file;
+  ctx.drawImage(bmp, 0, 0, width, height);
+
+  const toBlob = (q: number): Promise<Blob | null> =>
+    new Promise((res) => canvas.toBlob(res, 'image/jpeg', q));
+
+  // Try decreasing quality until under target
+  for (const q of [0.85, 0.7, 0.55, 0.4]) {
+    const blob = await toBlob(q);
+    if (blob && (blob.size <= targetSize || q === 0.4)) {
+      const compressed = new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' });
+      console.log(`[CreateToken] Compressed ${(file.size / 1024).toFixed(0)}KB → ${(compressed.size / 1024).toFixed(0)}KB (q=${q})`);
+      return compressed;
+    }
+  }
+
+  return file;
+}
+
 function safeErrMsg(e: any, fallback: string) {
   return e?.response?.data?.message || e?.response?.data?.error || e?.message || fallback;
 }
@@ -83,11 +130,84 @@ function isExpiredDraftStatus(status?: number) {
 const isNonNegInt = (v: any) => Number.isFinite(Number(v)) && Number(v) >= 0;
 const isNumericString = (v: any) => /^\d+$/.test(String(v ?? '').trim());
 
+// =====================
+// Step Progress Indicator
+// =====================
+const STEP_LABELS = ['Basic Info', 'Advance Info', 'Buy'] as const;
+
+const StepIndicator: React.FC<{ current: Step }> = ({ current }) => (
+  <div className="w-full max-w-xl mx-auto mb-8">
+    {/* Row: circles + connecting lines — lines centered vertically with circles */}
+    <div className="flex items-center justify-center">
+      {STEP_LABELS.map((_, i) => {
+        const num = (i + 1) as Step;
+        const isDone = num < current;
+        const isActive = num === current;
+
+        return (
+          <React.Fragment key={num}>
+            {/* Connecting line before (except first) — same height as circle center */}
+            {i > 0 && (
+              <div
+                className={`flex-1 h-[3px] ${
+                  isDone || isActive ? 'bg-[var(--accent)]' : 'bg-gray-600'
+                }`}
+              />
+            )}
+
+            {/* Circle only */}
+            <div
+              className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm border-2 transition-all shrink-0 ${
+                isDone
+                  ? 'bg-[var(--accent)] border-[var(--accent)] text-white'
+                  : isActive
+                  ? 'bg-[var(--accent)] border-[var(--accent)] text-white shadow-lg shadow-[var(--accent)]/30'
+                  : 'bg-[var(--card2)] border-gray-600 text-gray-400'
+              }`}
+            >
+              {isDone ? (
+                <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              ) : (
+                num
+              )}
+            </div>
+          </React.Fragment>
+        );
+      })}
+    </div>
+
+    {/* Row: labels below — aligned under each circle */}
+    <div className="flex justify-between mt-2 px-0">
+      {STEP_LABELS.map((label, i) => {
+        const num = (i + 1) as Step;
+        const isDone = num < current;
+        const isActive = num === current;
+
+        return (
+          <span
+            key={num}
+            className={`text-xs font-semibold whitespace-nowrap ${
+              i === 0 ? 'text-left' : i === STEP_LABELS.length - 1 ? 'text-right' : 'text-center'
+            } ${isDone || isActive ? 'text-white' : 'text-gray-500'}`}
+            style={{ width: `${100 / STEP_LABELS.length}%` }}
+          >
+            {label}
+          </span>
+        );
+      })}
+    </div>
+  </div>
+);
+
 const CreateToken: React.FC = () => {
   const router = useRouter();
 
-  // wallet optional
-  const { connected } = useWallet();
+  // wallet
+  const wallet = useWallet();
+  const { connected } = wallet;
+  const { connection } = useConnection();
 
   // ===== Step control =====
   const [step, setStep] = useState<Step>(1);
@@ -114,14 +234,15 @@ const CreateToken: React.FC = () => {
   // Upload input
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ===== Step 2: Curve params =====
-  const [decimals, setDecimals] = useState<number>(6);
+  // ===== Step 2: Curve params (UI hidden — BE auto-configures) =====
+  // >>> DELETE these when BE removes curve params from finalize API <<<
+  const [decimals] = useState<number>(6);
   const curveType = 0;
 
-  const [basePriceLamports, setBasePriceLamports] = useState<number>(1000);
-  const [slopeLamports, setSlopeLamports] = useState<number>(1);
-  const [bondingCurveSupply, setBondingCurveSupply] = useState<string>('1000000000000000');
-  const [graduateTargetLamports, setGraduateTargetLamports] = useState<string>('69000000000');
+  const [basePriceLamports] = useState<number>(1000);
+  const [slopeLamports] = useState<number>(1);
+  const [bondingCurveSupply] = useState<string>('1000000000000000');
+  const [graduateTargetLamports] = useState<string>('69000000000');
 
   // ===== Step 3: Finalize / Buy =====
   const [creationStep, setCreationStep] = useState<
@@ -131,9 +252,9 @@ const CreateToken: React.FC = () => {
   const [buyAmount, setBuyAmount] = useState<number>(0);
   const walletBalance = 0;
 
-  const [preview, setPreview] = useState<PreviewInitialBuyResponse | null>(null);
+  // preview state removed — Preview Buy button removed
+  // showPurchasePopup removed — BUY directly calls runFinalize
 
-  const [showPurchasePopup, setShowPurchasePopup] = useState(false);
   const [showPreventNavigationModal, setShowPreventNavigationModal] = useState(false);
 
   // ===== Liquidity Settings (gear) =====
@@ -182,7 +303,6 @@ const CreateToken: React.FC = () => {
   const resetDraftAndGoStep1 = useCallback(
     (msg?: string) => {
       setDraft(null);
-      setPreview(null);
       setStep(1);
       resetCreateFlowIdempotency();
       if (msg) toast.error(msg);
@@ -199,13 +319,15 @@ const CreateToken: React.FC = () => {
     }
   }, [requireWalletOrShowModal]);
 
-  // ===== Upload to BE: /token/upload-image =====
+  // ===== Upload image =====
+  // Strategy: try BE /token/upload-image first (base64 without prefix).
+  //           If BE fails, fallback to local /api/upload-to-ipfs (multipart FormData).
   const uploadImageToBE = useCallback(
     async (file: File) => {
       if (!requireWalletOrShowModal()) return null;
 
       if (file.size > MAX_FILE_SIZE) {
-        toast.error('File size exceeds 1MB limit. Please choose a smaller file.');
+        toast.error('File size exceeds 5MB limit. Please choose a smaller file.');
         return null;
       }
 
@@ -213,29 +335,115 @@ const CreateToken: React.FC = () => {
       setCreationStep('uploading');
 
       try {
-        const dataUrl = await readFileAsDataURL(file);
-
-        // If caller didn't pre-set a key, make one now.
-        if (!uploadKeyRef.current) uploadKeyRef.current = newIdempotencyKey('upload-image');
-
-        const res = await uploadTokenImage({ image: dataUrl },{ idempotencyKey: uploadKeyRef.current ?? undefined });
-
-        if (res?.imageUrl) {
-          setTokenImageUrl(res.imageUrl);
-          toast.success('Image uploaded successfully!');
-          return res.imageUrl;
+        // Compress if needed (> 800KB → JPEG at lower quality)
+        const compressed = await compressImage(file);
+        if (compressed !== file) {
+          toast(`Image compressed: ${(file.size / 1024).toFixed(0)}KB → ${(compressed.size / 1024).toFixed(0)}KB`);
         }
 
-        throw new Error('No imageUrl returned');
+        let imageUrl: string | null = null;
+        const dataUrl = await readFileAsDataURL(compressed);
+        // raw base64 (no data:... prefix)
+        const base64Only = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+
+        // --- Attempt 1: BE /token/upload-image with full data URL ---
+        try {
+          if (!uploadKeyRef.current) uploadKeyRef.current = newIdempotencyKey('upload-image');
+          const res = await uploadTokenImage(
+            { image: dataUrl },
+            { idempotencyKey: uploadKeyRef.current ?? undefined }
+          );
+          if (res?.imageUrl) imageUrl = res.imageUrl;
+        } catch (err1: any) {
+          const s1 = err1?.response?.status;
+          const d1 = err1?.response?.data;
+          console.warn('[CreateToken] BE upload (dataUrl) failed:', s1, d1);
+          toast(`[DEBUG] BE dataUrl: ${s1 || 'no-status'} — ${d1?.error || d1?.message || err1?.message || 'unknown'}`, { duration: 8000 });
+          uploadKeyRef.current = null;
+        }
+
+        // --- Attempt 2: BE with raw base64 (no prefix) ---
+        if (!imageUrl) {
+          try {
+            uploadKeyRef.current = newIdempotencyKey('upload-image');
+            const res = await uploadTokenImage(
+              { image: base64Only },
+              { idempotencyKey: uploadKeyRef.current ?? undefined }
+            );
+            if (res?.imageUrl) imageUrl = res.imageUrl;
+          } catch (err2: any) {
+            const s2 = err2?.response?.status;
+            const d2 = err2?.response?.data;
+            console.warn('[CreateToken] BE upload (base64) failed:', s2, d2);
+            toast(`[DEBUG] BE base64: ${s2 || 'no-status'} — ${d2?.error || d2?.message || err2?.message || 'unknown'}`, { duration: 8000 });
+            uploadKeyRef.current = null;
+          }
+        }
+
+        // --- Attempt 3: local /api/upload-to-ipfs (FormData) ---
+        if (!imageUrl) {
+          try {
+            const formData = new FormData();
+            formData.append('file', compressed);
+
+            const localRes = await fetch('/api/upload-to-ipfs', {
+              method: 'POST',
+              body: formData,
+            });
+
+            if (!localRes.ok) {
+              const errData = await localRes.json().catch(() => ({}));
+              console.warn('[CreateToken] Local upload failed:', localRes.status, errData);
+              toast(`[DEBUG] Local: ${localRes.status} — ${errData?.error || 'unknown'}`, { duration: 8000 });
+            } else {
+              const localData = await localRes.json();
+              imageUrl = localData?.url || null;
+            }
+          } catch (err3: any) {
+            console.warn('[CreateToken] Local upload error:', err3?.message);
+          }
+        }
+
+        if (imageUrl) {
+          setTokenImageUrl(imageUrl);
+          toast.success('Image uploaded successfully!');
+          return imageUrl;
+        }
+
+        throw new Error('No image URL returned');
       } catch (e: any) {
-        toast.error(safeErrMsg(e, 'Failed to upload image.'));
+        console.error('[CreateToken] Upload failed:', e?.response?.status, e?.response?.data, e?.code, e?.message);
+        uploadKeyRef.current = null;
+
+        const status = e?.response?.status;
+        const beMsg = e?.response?.data?.message || e?.response?.data?.error || '';
+
+        let msg = 'Failed to upload image.';
+        if (e?.code === 'ECONNABORTED' || e?.message?.includes('timeout')) {
+          msg = 'Upload timed out. Please try a smaller image or check your connection.';
+        } else if (status === 400) {
+          msg = beMsg || 'Invalid image. Please use PNG, JPG, GIF or WebP under 1MB.';
+        } else if (status === 401) {
+          msg = 'Wallet authentication required. Please reconnect your wallet.';
+          openConnectWalletModal();
+        } else if (status === 500) {
+          msg = beMsg || 'Upload failed on server. Please try again.';
+        } else if (status === 503) {
+          msg = 'Image storage service is temporarily unavailable. Please try again later.';
+        } else if (beMsg) {
+          msg = beMsg;
+        } else if (e?.message) {
+          msg = e.message;
+        }
+
+        toast.error(msg);
         return null;
       } finally {
         setIsUploading(false);
         setCreationStep('idle');
       }
     },
-    [requireWalletOrShowModal]
+    [requireWalletOrShowModal, openConnectWalletModal]
   );
 
   const onImagePicked = useCallback(
@@ -322,10 +530,13 @@ const CreateToken: React.FC = () => {
       );
 
       setDraft(res);
-      setPreview(null);
       toast.success('Draft created!');
       setStep(2);
     } catch (e: any) {
+      console.error('[CreateToken] Draft failed:', e?.response?.status, e?.response?.data, e?.message);
+      // Reset key so user can retry with a fresh idempotency key
+      draftKeyRef.current = null;
+      finalizeKeyRef.current = null;
       const status = e?.response?.status;
       if (status === 401) openConnectWalletModal();
       else toast.error(safeErrMsg(e, 'Create draft failed.'));
@@ -347,37 +558,7 @@ const CreateToken: React.FC = () => {
     openConnectWalletModal,
   ]);
 
-  // ===== Preview buy: /token/create/preview-buy =====
-  const handlePreviewBuy = useCallback(async () => {
-    if (!requireWalletOrShowModal()) return;
-
-    if (!draft?.draftId) {
-      toast.error('Missing draftId. Please go back and create draft again.');
-      return;
-    }
-    if (buyAmount <= 0) {
-      toast.error('Enter buy amount > 0');
-      return;
-    }
-
-    setCreationStep('previewing');
-    try {
-      const res = await previewInitialBuy({
-        draftId: draft.draftId,
-        amountSol: buyAmount,
-      });
-      setPreview(res);
-      toast.success('Preview calculated');
-    } catch (e: any) {
-      const status = e?.response?.status;
-      if (status === 401) openConnectWalletModal();
-      else if (status === 404) toast.error('Draft not found.');
-      else if (isExpiredDraftStatus(status)) resetDraftAndGoStep1('Draft expired. Please create again.');
-      else toast.error(safeErrMsg(e, 'Preview buy failed.'));
-    } finally {
-      setCreationStep('idle');
-    }
-  }, [requireWalletOrShowModal, draft?.draftId, buyAmount, resetDraftAndGoStep1, openConnectWalletModal]);
+  // handlePreviewBuy removed — Preview Buy button removed, BUY directly calls runFinalize
 
   // ===== UI validate before finalize =====
   const validateFinalizeInputs = useCallback((): string | null => {
@@ -392,6 +573,11 @@ const CreateToken: React.FC = () => {
   }, [draft?.draftId, decimals, basePriceLamports, slopeLamports, bondingCurveSupply, graduateTargetLamports]);
 
   // ===== Finalize: /token/create/finalize =====
+  // Flow:
+  //   1) Call finalizeTokenCreation (initialBuySol=0) → creates token on-chain
+  //   2) If user wants to buy → call buyToken() with the new tokenAddress
+  //      → returns txBase64 → wallet signs → submitSignature → poll status
+  //      (same flow as normal trading buy in useSwapTrading)
   const runFinalize = useCallback(
     async (initialBuySol: number) => {
       if (!requireWalletOrShowModal()) return;
@@ -402,6 +588,12 @@ const CreateToken: React.FC = () => {
         return;
       }
 
+      // If buying, ensure wallet can sign
+      if (initialBuySol > 0 && (!wallet.publicKey || !wallet.sendTransaction)) {
+        toast.error('Wallet does not support signing. Please reconnect.');
+        return;
+      }
+
       setCreationStep('finalizing');
       try {
         if (!finalizeKeyRef.current) {
@@ -409,10 +601,11 @@ const CreateToken: React.FC = () => {
           finalizeKeyRef.current = newIdempotencyKey(base);
         }
 
+        // Step 1: Create token (no buy yet)
         const res = await finalizeTokenCreation(
           {
             draftId: draft!.draftId,
-            initialBuySol: Number.isFinite(initialBuySol) ? Math.max(0, initialBuySol) : 0,
+            initialBuySol: 0, // Always 0 — buy separately below
             decimals: Math.trunc(decimals),
             curveType,
             basePriceLamports: Math.trunc(Math.max(0, Number(basePriceLamports) || 0)),
@@ -420,20 +613,109 @@ const CreateToken: React.FC = () => {
             bondingCurveSupply: String(bondingCurveSupply).trim(),
             graduateTargetLamports: String(graduateTargetLamports).trim(),
           },
-          { idempotencyKey: finalizeKeyRef.current ?? undefined, }
+          { idempotencyKey: finalizeKeyRef.current ?? undefined }
         );
 
+        toast.success('Token created!');
+
+        // Step 2: If user wants initial buy → call /trading/buy (like normal swap)
+        if (initialBuySol > 0 && res.tokenAddress) {
+          toast('Preparing buy transaction...');
+
+          // Preview to convert SOL → token amount (BE requires amountInToken)
+          const pv = await estimateTokensFromSol({
+            tokenAddr: res.tokenAddress,
+            solIn: initialBuySol,
+          });
+          const amountInToken = Math.floor(pv.tokenOutHuman).toFixed(0);
+          if (!amountInToken || amountInToken === '0') throw new Error('Amount too small');
+
+          const buyIdk = newIdempotencyKey('initial-buy');
+
+          const buyRes = await buyToken(
+            {
+              tokenAddress: res.tokenAddress,
+              amountInToken,
+              slippageBps: 500, // 5% default slippage for initial buy
+            },
+            { idempotencyKey: buyIdk }
+          );
+
+          if (!buyRes?.txBase64) {
+            throw new Error('No transaction returned from buy API');
+          }
+
+          // Deserialize & user signs
+          const rawTx = Buffer.from(String(buyRes.txBase64), 'base64');
+          const tx = VersionedTransaction.deserialize(rawTx);
+
+          toast('Please sign the transaction in your wallet...');
+          const txSignature = await wallet.sendTransaction!(tx, connection, {
+            preflightCommitment: 'processed',
+          });
+
+          // Extract tracking endpoints
+          const tracking: any = buyRes.tracking || {};
+          const submitEp = normalizeTrackingEndpoint(
+            tracking.submitSignatureEndpoint || tracking.submitSignatureBySignatureEndpoint || ''
+          );
+          const statusEp = normalizeTrackingEndpoint(
+            tracking.statusEndpoint || tracking.statusBySignatureEndpoint || ''
+          );
+
+          // Submit signature to BE
+          const txId = String(buyRes.transactionId ?? '').trim();
+          if (submitEp && txId) {
+            toast('Submitting signature...');
+            await submitSignature(submitEp, { id: txId, txSignature });
+          }
+
+          // Confirm on-chain (fire and forget)
+          connection.confirmTransaction(txSignature, 'processed').catch(() => {});
+
+          // Poll status
+          if (statusEp) {
+            toast('Confirming buy...');
+            let finalStatus = '';
+            for (let i = 0; i < 12; i++) {
+              await new Promise((r) => setTimeout(r, 1000));
+              try {
+                const st = await getTradingStatus(statusEp);
+                finalStatus = String((st as any)?.status ?? '').toUpperCase();
+                if (finalStatus === 'CONFIRMED' || finalStatus === 'FAILED') break;
+              } catch { /* retry */ }
+            }
+
+            if (finalStatus === 'FAILED') {
+              toast.error('Initial buy failed on-chain. Token was created but buy did not complete.');
+            } else {
+              toast.success('Token created & initial buy confirmed!');
+            }
+          } else {
+            toast.success('Token created & buy transaction submitted!');
+          }
+        } else {
+          toast.success('Token created successfully!');
+        }
+
         setCreationStep('completed');
-        toast.success('Token created successfully!');
         resetCreateFlowIdempotency();
+
+        // Small delay to let BE index the new token data (chart, trades)
+        await new Promise((r) => setTimeout(r, 2000));
         router.push(`/token/${res.tokenAddress}`);
       } catch (e: any) {
+        console.error('[CreateToken] Finalize/Buy failed:', e?.response?.status, e?.response?.data, e?.message);
+        // Reset finalize key so user can retry
+        finalizeKeyRef.current = null;
         const status = e?.response?.status;
+        const msg = e?.message || '';
 
         if (status === 401) openConnectWalletModal();
         else if (status === 403) toast.error('Forbidden: you can only finalize your own draft.');
         else if (status === 404) toast.error('Draft not found.');
         else if (isExpiredDraftStatus(status)) resetDraftAndGoStep1('Draft expired. Please create again.');
+        else if (/User rejected/i.test(msg)) toast.error('Transaction was cancelled.');
         else toast.error(safeErrMsg(e, 'Finalize failed.'));
 
         setCreationStep('idle');
@@ -442,6 +724,8 @@ const CreateToken: React.FC = () => {
     [
       requireWalletOrShowModal,
       validateFinalizeInputs,
+      wallet,
+      connection,
       draft,
       decimals,
       curveType,
@@ -456,14 +740,10 @@ const CreateToken: React.FC = () => {
     ]
   );
 
-  const handleBuy = () => {
+  // BUY now directly calls runFinalize — no confirmation popup
+  const handleBuy = async () => {
     if (buyAmount <= 0) return;
     if (!requireWalletOrShowModal()) return;
-    setShowPurchasePopup(true);
-  };
-
-  const handleConfirmBuy = async () => {
-    setShowPurchasePopup(false);
     await runFinalize(buyAmount);
   };
 
@@ -517,11 +797,14 @@ const CreateToken: React.FC = () => {
       />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-xl sm:text-2xl font-bold text-orange mb-3 text-center">
+        <h1 className="text-xl sm:text-2xl font-bold text-orange mb-6 text-center">
           {step === 1 && 'Create New Token'}
-          {step === 2 && 'Curve Settings'}
-          {step === 3 && 'Finalize'}
+          {step === 2 && 'Advance Info'}
+          {step === 3 && 'Buy'}
         </h1>
+
+        {/* Step Progress Indicator */}
+        <StepIndicator current={step} />
 
         {step === 1 && (
           <div className="mb-4 flex items-center justify-between">
@@ -724,98 +1007,33 @@ const CreateToken: React.FC = () => {
           </div>
         )}
 
-        {/* ==================== STEP 2 – CURVE SETTINGS ==================== */}
+        {/* ==================== STEP 2 – ADVANCE INFO ==================== */}
+        {/*
+         * NOTE: Curve Settings UI hidden — BE will auto-configure curve settings.
+         * The curve values (decimals, curveType, basePriceLamports, slopeLamports,
+         * bondingCurveSupply, graduateTargetLamports) are still sent in the finalize
+         * API call with their default values to maintain backward compatibility.
+         *
+         * >>> When BE fully removes curve params from API, delete:
+         *   - State variables: decimals, curveType, basePriceLamports, slopeLamports,
+         *     bondingCurveSupply, graduateTargetLamports (lines ~118-124)
+         *   - validateFinalizeInputs() curve checks
+         *   - Curve fields in runFinalize() payload
+         *   - FinalizeTokenRequest type curve fields in api.ts
+         */}
         {step === 2 && (
           <div className="space-y-6 card gradient-border p-4 sm:p-6">
-            <div className="rounded-lg border-thin p-4 bg-[var(--card2)]">
-              <div className="text-sm font-semibold text-white mb-3">Bonding Curve Settings</div>
+            <div className="rounded-lg border-thin p-6 bg-[var(--card2)] text-center">
+              <div className="text-sm font-semibold text-white mb-2">Advance Info</div>
+              <p className="text-xs text-gray-400">
+                Additional settings will be available here soon. Click Next to continue.
+              </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">Decimals</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={18}
-                    value={decimals}
-                    onChange={(e) => {
-                      setDecimals(Number(e.target.value));
-                      finalizeKeyRef.current = null;
-                    }}
-                    className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white"
-                  />
+              {draft?.expiresAt && (
+                <div className="mt-4 text-xs text-gray-400">
+                  Draft expires at: <span className="text-gray-200">{draft.expiresAt}</span>
                 </div>
-
-                <div>
-                  <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">Curve Type</label>
-                  <input
-                    value="linear"
-                    disabled
-                    className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white opacity-70"
-                  />
-                  <div className="text-[10px] text-gray-500 mt-1">Mapped to BE: curveType = {curveType}</div>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">Base Price (lamports)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={basePriceLamports}
-                    onChange={(e) => {
-                      setBasePriceLamports(Number(e.target.value));
-                      finalizeKeyRef.current = null;
-                    }}
-                    className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">Slope (lamports)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={slopeLamports}
-                    onChange={(e) => {
-                      setSlopeLamports(Number(e.target.value));
-                      finalizeKeyRef.current = null;
-                    }}
-                    className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">Bonding Curve Supply</label>
-                  <input
-                    value={bondingCurveSupply}
-                    onChange={(e) => {
-                      setBondingCurveSupply(e.target.value);
-                      finalizeKeyRef.current = null;
-                    }}
-                    className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white"
-                    placeholder="e.g. 1000000000000000"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-[10px] sm:text-xs text-gray-400 mb-1">Graduate Target (lamports)</label>
-                  <input
-                    value={graduateTargetLamports}
-                    onChange={(e) => {
-                      setGraduateTargetLamports(e.target.value);
-                      finalizeKeyRef.current = null;
-                    }}
-                    className="w-full py-2 px-3 bg-[var(--card)] border-thin rounded-md text-white"
-                    placeholder="e.g. 69000000000"
-                  />
-                </div>
-
-                {draft?.expiresAt && (
-                  <div className="sm:col-span-2 text-xs text-gray-400">
-                    Draft expires at: <span className="text-gray-200">{draft.expiresAt}</span>
-                  </div>
-                )}
-              </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between gap-4">
@@ -834,7 +1052,7 @@ const CreateToken: React.FC = () => {
           </div>
         )}
 
-        {/* ==================== STEP 3 – FINALIZE ==================== */}
+        {/* ==================== STEP 3 – BUY ==================== */}
         {step === 3 && (
           <div className="space-y-6">
             <div className="text-left">
@@ -867,46 +1085,17 @@ const CreateToken: React.FC = () => {
                 </button>
               </div>
 
-              <div className="mt-4 flex gap-3">
-                <button
-                  type="button"
-                  onClick={handlePreviewBuy}
-                  disabled={!draft?.draftId || buyAmount <= 0 || creationStep === 'previewing' || isBusy}
-                  className="btn-secondary w-1/2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {creationStep === 'previewing' ? 'Previewing...' : 'Preview Buy'}
-                </button>
-
+              {/* Preview Buy button removed — BUY directly creates + buys */}
+              <div className="mt-4">
                 <button
                   type="button"
                   onClick={handleBuy}
                   disabled={!draft?.draftId || buyAmount <= 0 || creationStep === 'finalizing' || isBusy}
-                  className="btn btn-secondary w-1/2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="btn btn-primary w-full py-3 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  BUY
+                  {creationStep === 'finalizing' ? 'Creating & Buying...' : 'BUY'}
                 </button>
               </div>
-
-              {preview && (
-                <div className="mt-4 rounded-xl bg-[var(--card2)] border-thin p-4 text-sm text-gray-200">
-                  <div className="font-semibold mb-2">Preview</div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div>
-                      <div className="text-xs text-gray-400">amountSol</div>
-                      <div>{preview.amountSol}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-gray-400">estimatedTokens</div>
-                      <div>{preview.estimatedTokens}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-gray-400">price</div>
-                      <div>{preview.price}</div>
-                    </div>
-                  </div>
-                  {preview.note && <div className="text-xs text-gray-400 mt-2">{preview.note}</div>}
-                </div>
-              )}
             </div>
 
             <div className="flex gap-4 pt-2">
@@ -926,9 +1115,7 @@ const CreateToken: React.FC = () => {
           </div>
         )}
 
-        {showPurchasePopup && (
-          <PurchaseConfirmationPopup onConfirm={handleConfirmBuy} onCancel={() => setShowPurchasePopup(false)} tokenSymbol="SOL" />
-        )}
+        {/* PurchaseConfirmationPopup removed — BUY directly calls runFinalize */}
 
         {/* ✅ CONNECT WALLET MODAL (MATCH STYLE + CENTERED SELECT WALLET) */}
         {showConnectWalletModal && (

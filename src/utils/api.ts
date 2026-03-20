@@ -208,9 +208,11 @@ const getViaProxy = async <T = any>(path: string, params?: any, headers?: Record
   throw lastErr;
 };
 
-const postViaProxy = async <T = any>(path: string, body?: any, headers?: Record<string, string>) => {
+const UPLOAD_TIMEOUT = 60_000; // 60s for file uploads
+
+const postViaProxy = async <T = any>(path: string, body?: any, headers?: Record<string, string>, timeout?: number) => {
   const url = absProxy(path);
-  return axios.post<T>(url, body ?? {}, { headers, timeout: API_TIMEOUT });
+  return axios.post<T>(url, body ?? {}, { headers, timeout: timeout ?? API_TIMEOUT });
 };
 
 const patchViaProxy = async <T = any>(path: string, body?: any, headers?: Record<string, string>) => {
@@ -958,7 +960,8 @@ export async function uploadTokenImage(
   const { data } = await postViaProxy<UploadTokenImageResponse>(
     '/token/upload-image',
     { image: String(payload.image).trim() },
-    headers
+    headers,
+    UPLOAD_TIMEOUT
   );
   return data;
 }
