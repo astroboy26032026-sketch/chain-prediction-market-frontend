@@ -108,9 +108,9 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
           {/* Left column */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 flex flex-col gap-6">
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold text-gray-300 truncate">
@@ -125,8 +125,8 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
               <SwapPanel {...swapPanelProps} />
             </div>
 
-            {/* Trades / Chat / Holders */}
-            <div className="card gradient-border p-4">
+            {/* Trades / Chat / Holders — flex-1 to match right column height */}
+            <div className="card gradient-border p-4 lg:flex-1">
               <Tab.Group>
                 <Tab.List className="flex bg-[var(--card)] rounded-xl p-1 mb-4">
                   {['Trades', 'Chat', 'Holders'].map((t) => (
@@ -150,15 +150,11 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
 
                 <Tab.Panels>
                   <Tab.Panel>
-                    <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
-                      <TransactionHistory tokenAddress={tokenAddr as string} />
-                    </div>
+                    <TransactionHistory tokenAddress={tokenAddr as string} />
                   </Tab.Panel>
 
                   <Tab.Panel>
-                    <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
-                      <Chats tokenAddress={tokenAddr as string} tokenInfo={tokenInfo as any} />
-                    </div>
+                    <Chats tokenAddress={tokenAddr as string} tokenInfo={tokenInfo as any} />
                   </Tab.Panel>
 
                   <Tab.Panel>
@@ -199,12 +195,12 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
           </div>
 
           {/* Right column */}
-          <div className="space-y-6">
-            <div className="hidden lg:block">
+          <div className="hidden lg:flex lg:flex-col gap-6">
+            <div>
               <SwapPanel {...swapPanelProps} />
             </div>
 
-            <div className="hidden lg:block card gradient-border p-4">
+            <div className="card gradient-border p-4">
               <TokenInfo
                 tokenInfo={tokenInfo as any}
                 showHeader={true}
@@ -213,8 +209,10 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
               />
             </div>
 
-            <div className="hidden lg:block">
-              <TrustLevel />
+            <div className="flex-1 flex">
+              <div className="w-full">
+                <TrustLevel />
+              </div>
             </div>
           </div>
         </div>

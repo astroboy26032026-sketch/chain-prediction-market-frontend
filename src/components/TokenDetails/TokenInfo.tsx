@@ -12,6 +12,7 @@ import {
 import Image from 'next/image';
 import { toast } from 'react-toastify';
 
+import Link from 'next/link';
 import { formatTimestamp, shortenAddress, formatAddressV2, formatAmount } from '@/utils/blockchainUtils';
 import type { Token } from '@/interface/types';
 
@@ -58,6 +59,8 @@ interface TokenInfoProps {
     totalSupply?: number | string;
     supply?: number | string;
     progressDex?: number;
+    arenaStatus?: string; // 'joined' | 'active' | 'matched' | etc.
+    arenaId?: string; // arena match id for linking
   };
   showHeader?: boolean;
   refreshTrigger?: number;
@@ -189,6 +192,42 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
           label="Total Supply"
           value={totalSupplyValue > 0 ? fmtNum(totalSupplyValue, 0) : '—'}
         />
+      </div>
+
+      {/* Arena Status */}
+      <div className={`p-3 rounded-lg border-thin ${tokenInfo?.arenaStatus ? 'bg-[var(--card2)]' : 'bg-[var(--card2)]'}`}
+        style={tokenInfo?.arenaStatus ? { borderLeft: '3px solid var(--accent)' } : undefined}
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-xs text-gray-400 mb-1">Arena</div>
+            <div className="text-sm font-medium flex items-center gap-2">
+              {tokenInfo?.arenaStatus ? (
+                <>
+                  <span className="relative flex h-2.5 w-2.5 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: 'var(--accent)' }} />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5" style={{ backgroundColor: 'var(--accent)' }} />
+                  </span>
+                  <span className="text-[var(--accent)] font-semibold capitalize">{tokenInfo.arenaStatus}</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-2.5 h-2.5 rounded-full bg-gray-600 shrink-0" />
+                  <span className="text-gray-500">Not joined</span>
+                </>
+              )}
+            </div>
+          </div>
+          {tokenInfo?.arenaStatus && (
+            <Link
+              href={tokenInfo?.arenaId ? `/arena/${tokenInfo.arenaId}` : `/arena?token=${addr}`}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all text-white"
+              style={{ backgroundImage: 'linear-gradient(135deg, var(--primary), var(--accent))' }}
+            >
+              View Arena
+            </Link>
+          )}
+        </div>
       </div>
     </div>
   );
