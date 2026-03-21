@@ -12,7 +12,7 @@ import LoadingBar from '@/components/ui/LoadingBar';
 import { getProfileInfo, getProfileStats, getTokenInfo, getTokensByCreator } from '@/utils/api.index';
 import { formatAddressV2 } from '@/utils/blockchainUtils';
 
-import { Check, Copy, Wallet } from 'lucide-react';
+import { Check, Copy, Wallet, Twitter, Send as TelegramIcon, Facebook, Pencil, X, Lock, Camera, Mail } from 'lucide-react';
 
 import { COMMON, SEO as SEO_TEXT, PROFILE } from '@/constants/ui-text';
 
@@ -64,6 +64,14 @@ function timeAgo(input?: string | null) {
   return 'just now';
 }
 
+function fmtCompact(n: number): string {
+  if (!Number.isFinite(n) || n === 0) return '$0';
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `$${(n / 1e3).toFixed(1)}K`;
+  return `$${n.toLocaleString()}`;
+}
+
 /* =========================
    Types
 ========================= */
@@ -79,6 +87,9 @@ type TokenMini = {
   logo?: string;
   marketCap?: number;
   holders?: number;
+  volume24h?: number;
+  createdAt?: string;
+  status?: string; // 'active' | 'graduated' etc.
 };
 
 const LIST_STEP = 10;
@@ -103,14 +114,14 @@ const TabButton: React.FC<{ active: boolean; title: string; onClick: () => void 
         : 'btn btn-primary border-transparent text-white opacity-85 hover:opacity-100'
     }`}
   >
-    {title.toUpperCase()}
+    {title}
   </button>
 );
 
 const SectionCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] overflow-hidden shadow-sm">
     <div className="px-4 sm:px-6 py-4 border-b border-[var(--card-border)] text-sm font-extrabold tracking-wide text-[var(--primary)]">
-      {title.toUpperCase()}
+      {title}
     </div>
     <div className="p-4 sm:p-6">{children}</div>
   </div>
@@ -147,6 +158,18 @@ const ProfilePage: React.FC = () => {
   const [visibleHoldingCount, setVisibleHoldingCount] = useState(LIST_STEP);
   const [visibleCreatedCount, setVisibleCreatedCount] = useState(LIST_STEP);
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(LIST_STEP);
+
+  const [showEditModal, setShowEditModal] = useState(false);
+  // Track arena opt-in per token address
+  const [arenaMap, setArenaMap] = useState<Record<string, boolean>>({});
+  const [editForm, setEditForm] = useState({
+    displayName: '',
+    bio: '',
+    twitter: '',
+    telegram: '',
+    email: '',
+    isPublic: true,
+  });
 
   const avatarSrc = useMemo(() => {
     const raw = (profileInfo as any)?.avatarUrl || (profileInfo as any)?.avatar || '';
@@ -257,7 +280,26 @@ const ProfilePage: React.FC = () => {
         symbol: String(t.symbol ?? '—'),
         logo: normalizeImageUrl(t.logo),
         marketCap: typeof t.marketCap === 'number' ? t.marketCap : undefined,
+        holders: typeof t.holders === 'number' ? t.holders : (typeof t.holderCount === 'number' ? t.holderCount : undefined),
+        volume24h: typeof t.volume24h === 'number' ? t.volume24h : (typeof t.vol24h === 'number' ? t.vol24h : undefined),
+        createdAt: t.createdAt ? String(t.createdAt) : undefined,
+        status: t.status ? String(t.status) : undefined,
       }));
+      // TODO: Remove mock data when BE returns real created tokens
+      if (list.length === 0) {
+        list.push({
+          address: 'MockToken111111111111111111111111111111111',
+          name: 'My First Token',
+          symbol: 'MFT',
+          logo: '',
+          marketCap: 45200,
+          holders: 234,
+          volume24h: 12800,
+          createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+          status: 'Active',
+        });
+      }
+      // END mock data
       setCreatedTokens(list);
     } catch (e) {
       console.error('created tokens fetch failed', e);
@@ -323,6 +365,20 @@ const ProfilePage: React.FC = () => {
     setVisibleCreatedCount(LIST_STEP);
     setVisibleHistoryCount(LIST_STEP);
   }, [addressToUse]);
+
+  // Populate edit form when modal opens
+  useEffect(() => {
+    if (showEditModal && profileInfo) {
+      setEditForm({
+        displayName: String((profileInfo as any)?.displayName ?? (profileInfo as any)?.name ?? ''),
+        bio: String(profileInfo?.bio ?? ''),
+        twitter: String((profileInfo as any)?.twitter ?? ''),
+        telegram: String((profileInfo as any)?.telegram ?? ''),
+        email: String((profileInfo as any)?.email ?? ''),
+        isPublic: (profileInfo as any)?.isPublic !== false,
+      });
+    }
+  }, [showEditModal, profileInfo]);
 
   const recentActivities: any[] = useMemo(() => {
     const acts: any[] = Array.isArray((profileStats as any)?.recentActivities) ? (profileStats as any).recentActivities : [];
@@ -409,7 +465,13 @@ const ProfilePage: React.FC = () => {
                     ) : null}
                   </div>
 
-                  {profileInfo?.bio ? <div className="mt-2 text-sm opacity-80">{String(profileInfo.bio)}</div> : null}
+                  {profileInfo?.bio ? (
+                      <div className="mt-2 text-sm opacity-80 break-words overflow-hidden" title={String(profileInfo.bio)}>
+                        {String(profileInfo.bio).length > 50
+                          ? `${String(profileInfo.bio).slice(0, 50)}...`
+                          : String(profileInfo.bio)}
+                      </div>
+                    ) : null}
                 </div>
               </div>
             )}
@@ -436,22 +498,119 @@ const ProfilePage: React.FC = () => {
             {tab === 'profile' && (
               <>
                 <SectionCard title="Basic Information">
-                  <div className="space-y-3 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                     <div>
                       <div className="text-xs opacity-70">Username</div>
-                      <div className="font-semibold">{username}</div>
-                    </div>
-
-                    <div>
-                      <div className="text-xs opacity-70">Bio</div>
-                      <div className="opacity-90">{profileInfo?.bio ? String(profileInfo.bio) : '—'}</div>
+                      <div className="font-semibold mt-1">{username}</div>
                     </div>
 
                     <div>
                       <div className="text-xs opacity-70">Member Since</div>
-                      <div className="opacity-90">{memberSince}</div>
+                      <div className="opacity-90 mt-1">{memberSince}</div>
                     </div>
                   </div>
+
+                  {profileInfo?.bio && (
+                    <div className="mt-4 pt-4 border-t border-[var(--card-border)] text-sm">
+                      <div className="text-xs opacity-70 mb-1">Bio</div>
+                      <div className="opacity-90 leading-relaxed whitespace-pre-line break-words overflow-hidden">
+                        {String(profileInfo.bio).length > 200
+                          ? `${String(profileInfo.bio).slice(0, 200)}...`
+                          : String(profileInfo.bio)}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Social Links */}
+                  <div className="mt-4 pt-4 border-t border-[var(--card-border)] text-sm">
+                    <div className="text-xs opacity-70 mb-2">Social Links</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="flex items-center gap-2 p-2.5 rounded-xl border border-[var(--card-border)] bg-[var(--card2)]">
+                        <Twitter className="w-4 h-4 text-[var(--primary)] shrink-0" />
+                        <span className="text-sm truncate">
+                          {(profileInfo as any)?.twitter ? (
+                            <a href={String((profileInfo as any).twitter)} target="_blank" rel="noopener noreferrer" className="hover:text-[var(--primary)] transition-colors">
+                              {String((profileInfo as any).twitter).replace(/^https?:\/\/(www\.)?/, '')}
+                            </a>
+                          ) : (
+                            <span className="opacity-40">Not set</span>
+                          )}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 p-2.5 rounded-xl border border-[var(--card-border)] bg-[var(--card2)]">
+                        <TelegramIcon className="w-4 h-4 text-[var(--primary)] shrink-0" />
+                        <span className="text-sm truncate">
+                          {(profileInfo as any)?.telegram ? (
+                            <a href={String((profileInfo as any).telegram)} target="_blank" rel="noopener noreferrer" className="hover:text-[var(--primary)] transition-colors">
+                              {String((profileInfo as any).telegram).replace(/^https?:\/\/(www\.)?/, '')}
+                            </a>
+                          ) : (
+                            <span className="opacity-40">Not set</span>
+                          )}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 p-2.5 rounded-xl border border-[var(--card-border)] bg-[var(--card2)]">
+                        <Facebook className="w-4 h-4 text-[var(--primary)] shrink-0" />
+                        <span className="text-sm truncate">
+                          {(profileInfo as any)?.facebook ? (
+                            <a href={String((profileInfo as any).facebook)} target="_blank" rel="noopener noreferrer" className="hover:text-[var(--primary)] transition-colors">
+                              {String((profileInfo as any).facebook).replace(/^https?:\/\/(www\.)?/, '')}
+                            </a>
+                          ) : (
+                            <span className="opacity-40">Not set</span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Privacy */}
+                  <div className="mt-4 pt-4 border-t border-[var(--card-border)] text-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-semibold">Privacy</div>
+                        <div className="text-xs opacity-70 mt-0.5">
+                          {(profileInfo as any)?.isPublic !== false ? 'Anyone can view your profile' : 'Your profile is private'}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium opacity-70">
+                          {(profileInfo as any)?.isPublic !== false ? 'Public' : 'Private'}
+                        </span>
+                        <div className="relative shrink-0 cursor-default" style={{ width: 36, height: 20 }}>
+                          <span
+                            className="absolute inset-0 rounded-full"
+                            style={(profileInfo as any)?.isPublic !== false
+                              ? { backgroundImage: 'linear-gradient(135deg, var(--primary), var(--accent))' }
+                              : { backgroundColor: 'var(--card2)', border: '1px solid var(--card-border)' }}
+                          />
+                          <span
+                            className="absolute rounded-full bg-white shadow"
+                            style={{
+                              width: 16,
+                              height: 16,
+                              top: 2,
+                              left: (profileInfo as any)?.isPublic !== false ? 18 : 2,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Edit button */}
+                  {isOwner && (
+                    <div className="mt-4 pt-4 border-t border-[var(--card-border)]">
+                      <button
+                        type="button"
+                        onClick={() => setShowEditModal(true)}
+                        className="btn btn-primary w-full py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2"
+                      >
+                        <Pencil className="w-4 h-4" />
+                        Edit Profile
+                      </button>
+                    </div>
+                  )}
                 </SectionCard>
 
                 <SectionCard title="Wallet Information">
@@ -492,6 +651,42 @@ const ProfilePage: React.FC = () => {
 
             {tab === 'holding' && (
               <SectionCard title={PROFILE.TAB_HOLDING}>
+                {/* Portfolio Stats */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+                  <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card2)] p-4">
+                    <div className="text-xs opacity-70">Total Value</div>
+                    <div className="mt-2 text-xl font-extrabold text-[var(--primary)]">
+                      {(profileStats as any)?.totalValue != null ? `$${Number((profileStats as any).totalValue).toLocaleString()}` : '—'}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card2)] p-4">
+                    <div className="text-xs opacity-70">24h Change</div>
+                    <div className="mt-2 text-xl font-extrabold text-[var(--primary)]">
+                      {(profileStats as any)?.change24h != null
+                        ? `${Number((profileStats as any).change24h) >= 0 ? '+' : ''}$${Math.abs(Number((profileStats as any).change24h)).toLocaleString()}`
+                        : '—'}
+                    </div>
+                    {(profileStats as any)?.change24hPct != null && (
+                      <div className="text-xs text-[var(--accent)] mt-0.5">
+                        {Number((profileStats as any).change24hPct) >= 0 ? '+' : ''}{Number((profileStats as any).change24hPct).toFixed(2)}%
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card2)] p-4">
+                    <div className="text-xs opacity-70">Total P&L</div>
+                    <div className="mt-2 text-xl font-extrabold text-[var(--primary)]">
+                      {(profileStats as any)?.totalPnl != null
+                        ? `${Number((profileStats as any).totalPnl) >= 0 ? '+' : ''}$${Math.abs(Number((profileStats as any).totalPnl)).toLocaleString()}`
+                        : '—'}
+                    </div>
+                    {(profileStats as any)?.totalPnlPct != null && (
+                      <div className="text-xs text-[var(--accent)] mt-0.5">
+                        {Number((profileStats as any).totalPnlPct) >= 0 ? '+' : ''}{Number((profileStats as any).totalPnlPct).toFixed(1)}%
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {loadingHolding ? (
                   <div className="flex justify-center py-6">
                     <LoadingBar size="medium" />
@@ -562,38 +757,96 @@ const ProfilePage: React.FC = () => {
                 ) : (
                   <>
                     <div className="space-y-3">
-                      {visibleCreatedTokens.map((t) => (
-                        <button
-                          key={t.address}
-                          onClick={() => router.push(`/token/${t.address}`)}
-                          className="w-full text-left rounded-2xl border border-[var(--card-border)] bg-[var(--card2)] hover:bg-[var(--card-hover)] transition-colors p-4 flex items-center gap-4"
-                        >
-                          <div className="relative w-12 h-12 rounded-2xl overflow-hidden bg-[var(--card)] border border-[var(--card-border)] shrink-0">
-                            {t.logo ? (
-                              <Image
-                                src={t.logo}
-                                alt={t.symbol}
-                                fill
-                                sizes="48px"
-                                className="object-cover"
-                                unoptimized
-                              />
-                            ) : null}
-                          </div>
+                      {visibleCreatedTokens.map((t) => {
+                        const statusLabel = t.status || '';
+                        const isGraduated = statusLabel.toLowerCase() === 'graduated';
+                        return (
+                          <div
+                            key={t.address}
+                            className="rounded-2xl border border-[var(--card-border)] bg-[var(--card2)] hover:bg-[var(--card-hover)] transition-colors p-4"
+                          >
+                            <div className="flex items-center gap-4">
+                              {/* Logo */}
+                              <button
+                                type="button"
+                                onClick={() => router.push(`/token/${t.address}`)}
+                                className="relative w-12 h-12 rounded-2xl overflow-hidden bg-[var(--card)] border border-[var(--card-border)] shrink-0"
+                              >
+                                {t.logo ? (
+                                  <Image src={t.logo} alt={t.symbol} fill sizes="48px" className="object-cover" unoptimized />
+                                ) : null}
+                              </button>
 
-                          <div className="flex-1 min-w-0">
-                            <div className="font-extrabold truncate">{t.name}</div>
-                            <div className="text-xs opacity-70 truncate">{t.symbol}</div>
-                          </div>
+                              {/* Info */}
+                              <button
+                                type="button"
+                                onClick={() => router.push(`/token/${t.address}`)}
+                                className="flex-1 min-w-0 text-left"
+                              >
+                                <div className="font-extrabold truncate">{t.name}</div>
+                                <div className="text-xs opacity-70 truncate">{t.symbol}</div>
+                                <div className="text-xs opacity-50 mt-0.5">
+                                  {t.createdAt ? `Created: ${timeAgo(t.createdAt)}` : ''}
+                                  {statusLabel && (
+                                    <span className={`ml-2 font-semibold ${isGraduated ? 'text-[var(--primary)]' : 'text-[var(--accent)]'}`}>
+                                      • {statusLabel}
+                                    </span>
+                                  )}
+                                </div>
+                              </button>
 
-                          <div className="text-right shrink-0">
-                            <div className="text-xs opacity-70">Market Cap</div>
-                            <div className="font-extrabold">
-                              {typeof t.marketCap === 'number' ? `$${t.marketCap.toLocaleString()}` : '—'}
+                              {/* Stats */}
+                              <div className="text-right shrink-0 space-y-0.5">
+                                <div className="font-extrabold text-sm">
+                                  MC: {typeof t.marketCap === 'number' ? fmtCompact(t.marketCap) : '—'}
+                                </div>
+                                <div className="text-xs opacity-70">
+                                  {typeof t.holders === 'number' ? `${t.holders.toLocaleString()} holders` : ''}
+                                </div>
+                                <div className="text-xs opacity-70">
+                                  {typeof t.volume24h === 'number' ? `Vol: ${fmtCompact(t.volume24h)}` : ''}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Join Arena toggle */}
+                            <div className="mt-3 pt-3 border-t border-[var(--card-border)] flex items-center justify-between">
+                              <div>
+                                <div className="text-sm font-semibold">Join Arena</div>
+                                <div className="text-xs opacity-50">
+                                  {arenaMap[t.address] ? 'Available for arena matching' : 'Not participating in arena'}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setArenaMap((prev) => ({ ...prev, [t.address]: !prev[t.address] }));
+                                  // TODO: integrate with Arena API when available
+                                  toast.info(arenaMap[t.address] ? 'Left arena matching' : 'Joined arena matching');
+                                }}
+                                className="relative shrink-0"
+                                style={{ width: 36, height: 20 }}
+                              >
+                                <span
+                                  className="absolute inset-0 rounded-full transition-colors"
+                                  style={arenaMap[t.address]
+                                    ? { backgroundImage: 'linear-gradient(135deg, var(--primary), var(--accent))' }
+                                    : { backgroundColor: 'var(--card)', border: '1px solid var(--card-border)' }}
+                                />
+                                <span
+                                  className="absolute rounded-full bg-white shadow transition-transform"
+                                  style={{
+                                    width: 16,
+                                    height: 16,
+                                    top: 2,
+                                    left: arenaMap[t.address] ? 18 : 2,
+                                  }}
+                                />
+                              </button>
                             </div>
                           </div>
-                        </button>
-                      ))}
+                        );
+                      })}
                     </div>
 
                     {hasMoreCreated ? (
@@ -699,6 +952,202 @@ const ProfilePage: React.FC = () => {
           </div>
         </div>
       </div>
+      {/* Edit Profile Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowEditModal(false)} />
+          <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-[var(--card-border)] bg-[var(--background)] shadow-2xl">
+            {/* Modal Header */}
+            <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-[var(--card-border)] bg-[var(--background)]">
+              <span className="text-lg font-bold">Edit Profile</span>
+              <button
+                type="button"
+                onClick={() => setShowEditModal(false)}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Avatar */}
+              <div>
+                <div className="text-sm font-semibold mb-3">Avatar</div>
+                <div className="flex items-center gap-4">
+                  <div className="relative w-16 h-16 rounded-2xl overflow-hidden bg-[var(--card2)] border border-[var(--card-border)] flex items-center justify-center shrink-0">
+                    {avatarSrc ? (
+                      <Image src={avatarSrc} alt="avatar" fill sizes="64px" className="object-cover" unoptimized />
+                    ) : (
+                      <span className="text-xl font-extrabold opacity-80">
+                        {String(username || 'A').slice(0, 1).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-primary px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2"
+                    onClick={() => toast.info('Avatar upload API not available yet')}
+                  >
+                    <Camera className="w-4 h-4" />
+                    Change Avatar
+                  </button>
+                  <span className="text-xs opacity-50">Max 5MB, JPG/PNG/GIF</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {/* Left column */}
+                <div className="space-y-5">
+                  {/* Username (locked) */}
+                  <div>
+                    <div className="text-sm font-semibold mb-1.5">Username <span className="text-xs opacity-50">(One-time only)</span></div>
+                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-[var(--card-border)] bg-[var(--card2)] opacity-70">
+                      <span className="text-sm flex-1">{username}</span>
+                      <Lock className="w-3.5 h-3.5 opacity-50" />
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1.5 text-xs opacity-50">
+                      <Lock className="w-3 h-3" />
+                      Cannot be changed
+                    </div>
+                  </div>
+
+                  {/* Bio */}
+                  <div>
+                    <div className="text-sm font-semibold mb-1.5">Bio</div>
+                    <textarea
+                      value={editForm.bio}
+                      onChange={(e) => {
+                        if (e.target.value.length <= 200) setEditForm((f) => ({ ...f, bio: e.target.value }));
+                      }}
+                      placeholder="Tell us about yourself"
+                      rows={4}
+                      className="w-full px-3 py-2.5 rounded-xl border border-[var(--card-border)] bg-[var(--card)] text-sm outline-none focus:ring-1 focus:ring-[var(--primary)]/40 transition-shadow placeholder-gray-500 resize-none"
+                    />
+                    <div className="text-right text-xs opacity-50 mt-1">{editForm.bio.length} / 200</div>
+                  </div>
+                </div>
+
+                {/* Right column */}
+                <div className="space-y-5">
+                  {/* Twitter/X */}
+                  <div>
+                    <div className="text-sm font-semibold mb-1.5">Twitter/X</div>
+                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-[var(--card-border)] bg-[var(--card)]">
+                      <Twitter className="w-4 h-4 text-[var(--primary)] shrink-0" />
+                      <input
+                        type="text"
+                        value={editForm.twitter}
+                        onChange={(e) => setEditForm((f) => ({ ...f, twitter: e.target.value }))}
+                        placeholder="https://twitter.com/username"
+                        className="flex-1 bg-transparent text-sm outline-none placeholder-gray-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Telegram */}
+                  <div>
+                    <div className="text-sm font-semibold mb-1.5">Telegram</div>
+                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-[var(--card-border)] bg-[var(--card)]">
+                      <TelegramIcon className="w-4 h-4 text-[var(--primary)] shrink-0" />
+                      <input
+                        type="text"
+                        value={editForm.telegram}
+                        onChange={(e) => setEditForm((f) => ({ ...f, telegram: e.target.value }))}
+                        placeholder="@username or URL"
+                        className="flex-1 bg-transparent text-sm outline-none placeholder-gray-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Email */}
+                  <div>
+                    <div className="text-sm font-semibold mb-1.5">Email</div>
+                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-[var(--card-border)] bg-[var(--card)]">
+                      <Mail className="w-4 h-4 text-[var(--primary)] shrink-0" />
+                      <input
+                        type="email"
+                        value={editForm.email}
+                        onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                        placeholder="your@email.com"
+                        className="flex-1 bg-transparent text-sm outline-none placeholder-gray-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Wallet Address (locked) */}
+                  <div>
+                    <div className="text-sm font-semibold mb-1.5">Wallet Address</div>
+                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-[var(--card-border)] bg-[var(--card2)] opacity-70">
+                      <Wallet className="w-4 h-4 shrink-0" />
+                      <span className="text-sm flex-1 truncate font-mono">{addressToUse ? formatAddressV2(addressToUse) : '—'}</span>
+                      <Lock className="w-3.5 h-3.5 opacity-50" />
+                    </div>
+                    <div className="text-xs opacity-50 mt-1.5">Cannot be changed</div>
+                  </div>
+
+                  {/* Privacy Settings */}
+                  <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card2)] p-3">
+                    <div className="text-sm font-semibold mb-2">Privacy Settings</div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium">{editForm.isPublic ? 'Public' : 'Private'}</div>
+                        <div className="text-xs opacity-50">
+                          {editForm.isPublic ? 'Anyone can view your profile' : 'Your profile is hidden'}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditForm((f) => ({ ...f, isPublic: !f.isPublic }))}
+                        className="relative shrink-0"
+                        style={{ width: 36, height: 20 }}
+                      >
+                        <span
+                          className="absolute inset-0 rounded-full transition-colors"
+                          style={editForm.isPublic
+                            ? { backgroundImage: 'linear-gradient(135deg, var(--primary), var(--accent))' }
+                            : { backgroundColor: 'var(--card)', border: '1px solid var(--card-border)' }}
+                        />
+                        <span
+                          className="absolute rounded-full bg-white shadow transition-transform"
+                          style={{
+                            width: 16,
+                            height: 16,
+                            top: 2,
+                            left: editForm.isPublic ? 18 : 2,
+                          }}
+                        />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="sticky bottom-0 px-6 py-4 border-t border-[var(--card-border)] bg-[var(--background)]">
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-[var(--card-border)] bg-[var(--card)] text-sm font-semibold hover:bg-[var(--card-hover)] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    toast.info('Edit Profile API not available yet');
+                    setShowEditModal(false);
+                  }}
+                  className="flex-1 btn btn-primary py-2.5 rounded-xl text-sm font-semibold"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 };
