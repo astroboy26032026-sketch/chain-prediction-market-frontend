@@ -402,28 +402,22 @@ export default function ArenaDetailPage() {
 
             {/* ──── Bet Form Card ──── */}
             <div className="bg-[var(--card)] rounded-2xl border border-[var(--card-border)] p-4 mb-5 sticky top-20">
-              {/* Buy / Sell tabs — same style as token SwapPanel */}
-              <div className="flex gap-2 mb-4">
-                <button
-                  onClick={() => setBetTab('buy')}
-                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border border-[var(--card-border)] transition-colors ${
-                    betTab === 'buy'
-                      ? 'bg-[var(--primary)] text-white'
-                      : 'bg-[var(--card)] text-gray-300 hover:text-white'
-                  }`}
-                >
-                  Buy
-                </button>
-                <button
-                  onClick={() => setBetTab('sell')}
-                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border border-[var(--card-border)] transition-colors ${
-                    betTab === 'sell'
-                      ? 'bg-[var(--primary)] text-white'
-                      : 'bg-[var(--card)] text-gray-300 hover:text-white'
-                  }`}
-                >
-                  Sell
-                </button>
+              {/* Buy / Sell tabs — gradient style */}
+              <div className="flex bg-[var(--card2)] rounded-xl p-1 mb-4">
+                {(['buy', 'sell'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setBetTab(t)}
+                    className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all capitalize ${
+                      betTab === t
+                        ? 'text-white shadow-sm'
+                        : 'text-gray-400 hover:text-gray-200'
+                    }`}
+                    style={betTab === t ? { backgroundImage: 'linear-gradient(135deg, var(--primary), var(--accent))' } : undefined}
+                  >
+                    {t}
+                  </button>
+                ))}
               </div>
 
               {/* Market dropdown (static for now) */}
@@ -533,17 +527,18 @@ export default function ArenaDetailPage() {
 
             {/* ──── Related Arenas ──── */}
             <div className="bg-[var(--card)] rounded-2xl border border-[var(--card-border)] p-4">
-              {/* Tabs: Related / Trending / Popular */}
-              <div className="flex gap-1 mb-4">
+              {/* Tabs: Related / Trending / Popular — gradient style */}
+              <div className="flex bg-[var(--card2)] rounded-xl p-1 mb-4">
                 {(['related', 'trending', 'popular'] as const).map(tab => (
                   <button
                     key={tab}
                     onClick={() => setSidebarTab(tab)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors ${
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all ${
                       sidebarTab === tab
-                        ? 'bg-[var(--primary)] text-white'
-                        : 'text-gray-400 hover:text-white'
+                        ? 'text-white shadow-sm'
+                        : 'text-gray-400 hover:text-gray-200'
                     }`}
+                    style={sidebarTab === tab ? { backgroundImage: 'linear-gradient(135deg, var(--primary), var(--accent))' } : undefined}
                   >
                     {tab}
                   </button>
