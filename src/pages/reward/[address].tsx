@@ -1,9 +1,10 @@
 // src/pages/reward/[address].tsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { Buffer } from 'buffer';
 import { VersionedTransaction } from '@solana/web3.js';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { Gift, Trophy } from 'lucide-react';
 
 import Layout from '@/components/layout/Layout';
 import SEO from '@/components/seo/SEO';
@@ -582,6 +583,183 @@ const ClaimModal: React.FC<ClaimModalProps> = ({ open, amountText, onCancel, onC
 };
 
 /* =========================
+   LUCKY WHEEL COMPONENT
+========================= */
+const WHEEL_SEGMENTS = [
+  { label: '0.1 SOL', value: 0.1, color: '#22c55e' },
+  { label: '0.5 SOL', value: 0.5, color: '#3b82f6' },
+  { label: '1 SOL', value: 1, color: '#a855f7' },
+  { label: '0.05 SOL', value: 0.05, color: '#f59e0b' },
+  { label: '5 SOL', value: 5, color: '#ef4444' },
+  { label: '0.2 SOL', value: 0.2, color: '#06b6d4' },
+  { label: '10 SOL', value: 10, color: '#ec4899' },
+  { label: 'Try Again', value: 0, color: '#6b7280' },
+  { label: '0.01 SOL', value: 0.01, color: '#84cc16' },
+  { label: '50 SOL', value: 50, color: '#f97316' },
+  { label: '0.5 SOL', value: 0.5, color: '#8b5cf6' },
+  { label: 'Try Again', value: 0, color: '#4b5563' },
+];
+
+const LuckyWheel: React.FC<{ tickets: number; onSpinComplete: (prize: typeof WHEEL_SEGMENTS[0]) => void }> = ({ tickets, onSpinComplete }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [spinning, setSpinning] = useState(false);
+  const [rotation, setRotation] = useState(0);
+  const animRef = useRef<number>(0);
+  const segments = WHEEL_SEGMENTS;
+  const segAngle = (2 * Math.PI) / segments.length;
+
+  const drawWheel = useCallback((rot: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const size = canvas.width;
+    const cx = size / 2;
+    const cy = size / 2;
+    const r = size / 2 - 8;
+
+    ctx.clearRect(0, 0, size, size);
+
+    // Draw segments
+    segments.forEach((seg, i) => {
+      const startA = rot + i * segAngle;
+      const endA = startA + segAngle;
+
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, startA, endA);
+      ctx.closePath();
+      ctx.fillStyle = seg.color;
+      ctx.fill();
+
+      // Border
+      ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Label
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(startA + segAngle / 2);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${Math.max(10, r * 0.08)}px sans-serif`;
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      ctx.shadowBlur = 3;
+      ctx.fillText(seg.label, r - 14, 4);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    });
+
+    // Center circle
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.15, 0, Math.PI * 2);
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fill();
+    ctx.strokeStyle = 'var(--primary)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // "SPIN" text in center
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${r * 0.09}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('SPIN', cx, cy);
+
+    // Outer ring
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 4, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(201,142,107,0.4)';
+    ctx.lineWidth = 6;
+    ctx.stroke();
+
+    // Pointer (triangle at top)
+    ctx.beginPath();
+    ctx.moveTo(cx, 4);
+    ctx.lineTo(cx - 12, -8);
+    ctx.lineTo(cx + 12, -8);
+    ctx.closePath();
+    ctx.fillStyle = '#C98E6B';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }, [segments, segAngle]);
+
+  useEffect(() => {
+    drawWheel(rotation);
+  }, [rotation, drawWheel]);
+
+  const handleSpin = () => {
+    if (spinning || tickets <= 0) return;
+    setSpinning(true);
+
+    // Pick random winner
+    const winIdx = Math.floor(Math.random() * segments.length);
+    // Calculate target rotation: multiple full spins + land on segment
+    // Pointer is at top (angle 0 = right, so top = -PI/2)
+    // We want segment winIdx to be at the pointer
+    const targetSegAngle = -(winIdx * segAngle + segAngle / 2) - Math.PI / 2;
+    const fullSpins = 5 + Math.floor(Math.random() * 3); // 5-7 full rotations
+    const targetRotation = rotation + fullSpins * Math.PI * 2 + (targetSegAngle - (rotation % (Math.PI * 2)));
+
+    const startRot = rotation;
+    const duration = 4000 + Math.random() * 1000;
+    const startTime = performance.now();
+
+    const animate = (now: number) => {
+      const elapsed = now - startTime;
+      const t = Math.min(1, elapsed / duration);
+      // Ease out cubic
+      const ease = 1 - Math.pow(1 - t, 3);
+      const currentRot = startRot + (targetRotation - startRot) * ease;
+
+      setRotation(currentRot);
+
+      if (t < 1) {
+        animRef.current = requestAnimationFrame(animate);
+      } else {
+        setRotation(targetRotation);
+        setSpinning(false);
+        onSpinComplete(segments[winIdx]);
+      }
+    };
+
+    animRef.current = requestAnimationFrame(animate);
+  };
+
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative" style={{ width: 340, height: 340 }}>
+        {/* Pointer */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 z-10">
+          <div className="w-0 h-0 border-l-[14px] border-r-[14px] border-t-[22px] border-l-transparent border-r-transparent" style={{ borderTopColor: '#C98E6B' }} />
+        </div>
+        <canvas
+          ref={canvasRef}
+          width={340}
+          height={340}
+          className="cursor-pointer"
+          onClick={handleSpin}
+        />
+      </div>
+
+      <button
+        onClick={handleSpin}
+        disabled={spinning || tickets <= 0}
+        className="btn btn-primary mt-6 px-8 py-3 text-base font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {spinning ? 'Spinning...' : tickets <= 0 ? 'No Tickets' : 'SPIN THE WHEEL'}
+      </button>
+
+      <p className="text-xs text-gray-400 mt-2">1 ticket per spin</p>
+    </div>
+  );
+};
+
+/* =========================
    MAIN PAGE
 ========================= */
 type HistoryRow = {
@@ -602,9 +780,20 @@ const RewardPage: React.FC = () => {
     return typeof raw === 'string' ? raw.trim() : '';
   }, [router.query.address]);
 
+  // Tab from query param (?tab=wheel)
+  const rewardTab = useMemo(() => {
+    const t = router.query.tab;
+    return t === 'wheel' ? 'wheel' : 'slots';
+  }, [router.query.tab]);
+
+  const setRewardTab = (tab: 'slots' | 'wheel') => {
+    router.replace({ pathname: router.pathname, query: { ...router.query, tab } }, undefined, { shallow: true });
+  };
+
   const [rewardInfo, setRewardInfo] = useState<RewardInfoResponse | null>(null);
   const [spinConfig, setSpinConfig] = useState<RewardSpinConfigResponse | null>(null);
   const [marqueeItems, setMarqueeItems] = useState<RewardMarqueeItem[]>([]);
+  const [wheelResult, setWheelResult] = useState<{ label: string; value: number } | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [claiming, setClaiming] = useState(false);
@@ -1007,51 +1196,275 @@ const RewardPage: React.FC = () => {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 pb-12 pt-6">
         <h1 className="text-2xl sm:text-3xl font-extrabold my-6 text-[var(--primary)]">{SEO_TEXT.REWARDS_TITLE}</h1>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-          <div className="card text-center">
-            <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">Reward</p>
-            <div className="text-3xl font-extrabold text-[var(--primary)]">{fmtSol(claimableSol)} SOL</div>
-
-            <div className="mt-6 flex justify-center">
-              <button
-                onClick={onClaim}
-                disabled={!canClaim}
-                className={`${actionBtnClass} ${!canClaim ? 'opacity-60 cursor-not-allowed' : ''}`}
-              >
-                {claiming ? REWARD.CLAIMING : REWARD.CLAIM}
-              </button>
-            </div>
-          </div>
-
-          <div className="card text-center">
-            <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">{REWARD.YOUR_TICKETS}</p>
-            <div className="text-3xl font-extrabold text-[var(--primary)] mb-4">{tickets}</div>
-
-            <div className="mt-6 flex justify-center">
-              <button
-                onClick={handleSpin}
-                disabled={!canSpin}
-                className={`${actionBtnClass} ${!canSpin ? 'opacity-60 cursor-not-allowed' : ''}`}
-              >
-                {spinLabel}
-              </button>
-            </div>
-          </div>
+        {/* ═══ Tabs: Slot Machine / Lucky Wheel ═══ */}
+        <div className="flex bg-[var(--card2)] rounded-xl p-1 mb-8">
+          {([
+            { key: 'slots' as const, label: 'Slot Machine', icon: <Gift size={16} /> },
+            { key: 'wheel' as const, label: 'Lucky Wheel', icon: <Trophy size={16} /> },
+          ]).map(({ key, label, icon }) => (
+            <button
+              key={key}
+              onClick={() => setRewardTab(key)}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                rewardTab === key
+                  ? 'text-white shadow-sm'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+              style={rewardTab === key ? { backgroundImage: 'linear-gradient(135deg, var(--primary), var(--accent))' } : undefined}
+            >
+              {icon} {label}
+            </button>
+          ))}
         </div>
 
-        <div className="card py-10 flex flex-col items-center justify-center">
-          <div className="w-full md:w-auto overflow-x-auto md:overflow-visible">
-            <div className="inline-flex flex-nowrap items-center justify-center gap-2 sm:gap-6 px-1">
-              {Array.from({ length: reels }).map((_, i) => (
-                <Reel key={i} index={i} spinning={spinning} finalSymbol={finals[i]} symbols={symbols} sizePx={reelSize} />
-              ))}
+        {/* Stats row — different per tab */}
+        {rewardTab === 'slots' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+            <div className="card text-center">
+              <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">Slot Reward</p>
+              <div className="text-3xl font-extrabold text-[var(--primary)]">{fmtSol(claimableSol)} SOL</div>
+
+              <div className="mt-6 flex justify-center">
+                <button
+                  onClick={onClaim}
+                  disabled={!canClaim}
+                  className={`${actionBtnClass} ${!canClaim ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  {claiming ? REWARD.CLAIMING : REWARD.CLAIM}
+                </button>
+              </div>
+            </div>
+
+            <div className="card text-center">
+              <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">{REWARD.YOUR_TICKETS}</p>
+              <div className="text-3xl font-extrabold text-[var(--primary)] mb-4">{tickets}</div>
+
+              <div className="mt-6 flex justify-center">
+                <button
+                  onClick={handleSpin}
+                  disabled={!canSpin}
+                  className={`${actionBtnClass} ${!canSpin ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  {spinLabel}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          /* Lucky Wheel stats — fake data (comment: replace with BE/API when ready) */
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+            <div className="card text-center">
+              <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">Wheel Reward</p>
+              <div className="text-3xl font-extrabold text-[var(--primary)]">{fmtSol(wheelResult?.value ?? 0)} SOL</div>
+              <div className="mt-4 flex justify-center">
+                {/* fake claim — comment: replace with BE/API when ready */}
+                <button
+                  onClick={() => {
+                    if (!wheelResult || wheelResult.value <= 0) return;
+                    openStatusModal(
+                      'Claim Successful',
+                      `You claimed ${fmtSol(wheelResult.value)} SOL from the Lucky Wheel! (Demo mode — BE not connected yet)`,
+                      'success'
+                    );
+                    setWheelResult(null);
+                  }}
+                  disabled={!wheelResult || wheelResult.value <= 0}
+                  className={`${actionBtnClass} ${!wheelResult || wheelResult.value <= 0 ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  Claim SOL
+                </button>
+              </div>
+            </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-10 items-stretch">
-          <div className="flex flex-col gap-6">
-            <div className="card">
+            <div className="card text-center">
+              <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">Wheel Tickets</p>
+              {/* fake — separate ticket pool for wheel (comment: replace with API) */}
+              <div className="text-3xl font-extrabold text-[var(--primary)] mb-4">2</div>
+              <p className="text-xs text-gray-500">Earned from Trading Volume</p>
+            </div>
+
+            <div className="card text-center">
+              <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">Total Won</p>
+              {/* fake total (comment: replace with API) */}
+              <div className="text-3xl font-extrabold text-[var(--primary)]">0.000 SOL</div>
+              <p className="text-xs text-gray-500">Lifetime wheel winnings</p>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ Slot Machine Tab ═══ */}
+        {rewardTab === 'slots' && (
+          <>
+            <div className="card py-10 flex flex-col items-center justify-center">
+              <div className="w-full md:w-auto overflow-x-auto md:overflow-visible">
+                <div className="inline-flex flex-nowrap items-center justify-center gap-2 sm:gap-6 px-1">
+                  {Array.from({ length: reels }).map((_, i) => (
+                    <Reel key={i} index={i} spinning={spinning} finalSymbol={finals[i]} symbols={symbols} sizePx={reelSize} />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-10 items-stretch">
+              <div className="flex flex-col gap-6">
+                <div className="card">
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-[var(--primary)]">{REWARD.CONVERT_POINTS}</h3>
+                      <p className="text-sm text-gray-400 mt-1">{REWARD.CURRENT_POINTS}: {points}</p>
+                    </div>
+
+                    {(convertConfig?.options?.length || convertConfig?.allowAll) ? (
+                      <div className="grid grid-cols-3 gap-2">
+                        {(convertConfig?.options ?? []).map((opt) => (
+                          <button
+                            key={opt}
+                            onClick={() => handleConvert(opt, 'exact')}
+                            disabled={!canConvert || points < opt}
+                            className={`btn btn-primary h-9 text-[13px] font-semibold text-white ${!canConvert || points < opt ? 'opacity-60 cursor-not-allowed' : ''}`}
+                          >
+                            {converting ? '...' : `${opt} Ticket${opt > 1 ? 's' : ''}`}
+                          </button>
+                        ))}
+                        {convertConfig?.allowAll && (
+                          <button
+                            onClick={() => handleConvert(convertConfig.maxTicketsConvertible || points, 'all')}
+                            disabled={!canConvert}
+                            className={`btn btn-primary h-9 text-[13px] font-semibold text-white ${!canConvert ? 'opacity-60 cursor-not-allowed' : ''}`}
+                          >
+                            {converting ? '...' : (convertConfig.labelAll || 'All Tickets')}
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-400">Not enough points to convert tickets.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="card flex-1">
+                  <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">{REWARD.MULTIPLIERS}</h3>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 text-center max-w-[420px]">
+                    {symbols.map((key) => (
+                      <div key={key} className="bg-[var(--card2)] rounded-lg p-2 border border-[var(--card-border)]">
+                        <div className="text-2xl">{symbolToUi(key)}</div>
+                        <div className="text-[11px] text-gray-400 truncate">{key}</div>
+                        <div className="text-xs text-gray-400">x{Number(multiplier[key] ?? 0)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="card h-full">
+                <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">{REWARD.RULES}</h3>
+                <div className="text-xs leading-relaxed text-gray-400 whitespace-pre-wrap break-words">
+                  {normalizeRuleText(rulesText)}
+                </div>
+              </div>
+            </div>
+
+            <div className="card mt-6">
+              <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">{REWARD.HISTORY}</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs sm:text-sm min-w-[360px]">
+                  <thead>
+                    <tr className="text-left text-gray-400">
+                      <th className="py-2 pr-2 sm:pr-4">Time</th>
+                      <th className="py-2 pr-2 sm:pr-4">Bet</th>
+                      <th className="py-2 pr-2 sm:pr-4">Result</th>
+                      <th className="py-2 pr-2 sm:pr-4">Payout</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.length ? (
+                      history.map((h) => (
+                        <tr key={h.id} className="border-t border-[var(--card-border)]">
+                          <td className="py-2 pr-2 sm:pr-4">{h.time}</td>
+                          <td className="py-2 pr-2 sm:pr-4">{h.bet}</td>
+                          <td className="py-2 pr-2 sm:pr-4 font-semibold">{h.result}</td>
+                          <td className="py-2 pr-2 sm:pr-4">{fmtSol(h.payoutSol)} SOL</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr className="border-t border-[var(--card-border)]">
+                        <td className="py-4 text-gray-400" colSpan={4}>
+                          {REWARD.NO_SPINS}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ═══ Lucky Wheel Tab ═══ */}
+        {rewardTab === 'wheel' && (
+          <>
+            <div className="card py-10 flex flex-col items-center justify-center">
+              <LuckyWheel
+                tickets={tickets}
+                onSpinComplete={(prize) => {
+                  setWheelResult(prize);
+                  if (prize.value > 0) {
+                    openStatusModal(
+                      'You Won!',
+                      `🎉 Congratulations! You won ${prize.label}! The prize will be added to your claimable balance.`,
+                      'success'
+                    );
+                  } else {
+                    openStatusModal(
+                      'Try Again',
+                      'No luck this time. Spin again for another chance!',
+                      'success'
+                    );
+                  }
+                  // Deduct ticket locally
+                  setRewardInfo(prev => {
+                    if (!prev) return prev;
+                    return {
+                      ...prev,
+                      tickets: Math.max(0, prev.tickets - 1),
+                      claimableSol: prev.claimableSol + prize.value,
+                    };
+                  });
+                }}
+              />
+            </div>
+
+            {/* Wheel prizes info */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+              <div className="card">
+                <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">Prize Table</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {WHEEL_SEGMENTS.filter((s, i, arr) =>
+                    arr.findIndex(x => x.label === s.label) === i
+                  ).map((seg, i) => (
+                    <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-[var(--card2)] border border-[var(--card-border)]">
+                      <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: seg.color }} />
+                      <span className="text-sm text-gray-300 font-semibold">{seg.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="card">
+                <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">How it Works</h3>
+                <div className="space-y-2 text-sm text-gray-400">
+                  <p>1. Each spin costs <strong className="text-white">1 ticket</strong></p>
+                  <p>2. Click the wheel or the SPIN button to start</p>
+                  <p>3. The wheel spins and lands on a random prize</p>
+                  <p>4. Winnings are added to your claimable SOL balance</p>
+                  <p>5. Click <strong className="text-white">CLAIM</strong> to withdraw to your wallet</p>
+                  <p className="text-[var(--primary)] font-semibold mt-3">Earn tickets from Daily Quests & Trading Volume events!</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Convert points section for wheel tab too */}
+            <div className="card mt-6">
               <div className="flex flex-col gap-4">
                 <div>
                   <h3 className="text-lg font-bold text-[var(--primary)]">{REWARD.CONVERT_POINTS}</h3>
@@ -1085,62 +1498,8 @@ const RewardPage: React.FC = () => {
                 )}
               </div>
             </div>
-
-            <div className="card flex-1">
-              <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">{REWARD.MULTIPLIERS}</h3>
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 text-center max-w-[420px]">
-                {symbols.map((key) => (
-                  <div key={key} className="bg-[var(--card2)] rounded-lg p-2 border border-[var(--card-border)]">
-                    <div className="text-2xl">{symbolToUi(key)}</div>
-                    <div className="text-[11px] text-gray-400 truncate">{key}</div>
-                    <div className="text-xs text-gray-400">x{Number(multiplier[key] ?? 0)}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="card h-full">
-            <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">{REWARD.RULES}</h3>
-            <div className="text-xs leading-relaxed text-gray-400 whitespace-pre-wrap break-words">
-              {normalizeRuleText(rulesText)}
-            </div>
-          </div>
-        </div>
-
-        <div className="card mt-6">
-          <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">{REWARD.HISTORY}</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs sm:text-sm min-w-[360px]">
-              <thead>
-                <tr className="text-left text-gray-400">
-                  <th className="py-2 pr-2 sm:pr-4">Time</th>
-                  <th className="py-2 pr-2 sm:pr-4">Bet</th>
-                  <th className="py-2 pr-2 sm:pr-4">Result</th>
-                  <th className="py-2 pr-2 sm:pr-4">Payout</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.length ? (
-                  history.map((h) => (
-                    <tr key={h.id} className="border-t border-[var(--card-border)]">
-                      <td className="py-2 pr-2 sm:pr-4">{h.time}</td>
-                      <td className="py-2 pr-2 sm:pr-4">{h.bet}</td>
-                      <td className="py-2 pr-2 sm:pr-4 font-semibold">{h.result}</td>
-                      <td className="py-2 pr-2 sm:pr-4">{fmtSol(h.payoutSol)} SOL</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr className="border-t border-[var(--card-border)]">
-                    <td className="py-4 text-gray-400" colSpan={4}>
-                      {REWARD.NO_SPINS}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+          </>
+        )}
 
         {loading && <p className="mt-4 text-sm text-gray-400">Loading reward data...</p>}
       </div>

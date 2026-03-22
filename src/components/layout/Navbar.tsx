@@ -139,20 +139,20 @@ const SidebarContent: React.FC<{
           <span className="sidebar-label">Leader Board</span>
         </NavLink>
 
-        <NavLink href="/referrals" onClick={onNavClick}>
-          <UsersRound className="sidebar-icon" />
-          <span className="sidebar-label">Referrals</span>
-        </NavLink>
+        <button onClick={() => { onPointClick(); onNavClick?.(); }} className="sidebar-link">
+          <Gem className="sidebar-icon" />
+          <span className="sidebar-label">Point System</span>
+        </button>
 
         <button onClick={() => { onRewardClick(); onNavClick?.(); }} className="sidebar-link">
           <Gift className="sidebar-icon" />
           <span className="sidebar-label">Rewards</span>
         </button>
 
-        <button onClick={() => { onPointClick(); onNavClick?.(); }} className="sidebar-link">
-          <Gem className="sidebar-icon" />
-          <span className="sidebar-label">Daily Point</span>
-        </button>
+        <NavLink href="/referrals" onClick={onNavClick}>
+          <UsersRound className="sidebar-icon" />
+          <span className="sidebar-label">Referrals</span>
+        </NavLink>
 
         <NavLink href="/stake" onClick={onNavClick}>
           <Coins className="sidebar-icon" />

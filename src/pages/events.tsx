@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
+import { useRouter } from 'next/router';
+import { useWallet } from '@solana/wallet-adapter-react';
 import Layout from '@/components/layout/Layout';
 import SEO from '@/components/seo/SEO';
-import { Clock, Users, Gift, Trophy, Zap, ChevronRight, X, Star, Target, Flame } from 'lucide-react';
+import { Clock, Users, Gift, Trophy, Zap, ChevronRight, X, Star, Target, Flame, Swords, Sparkles, TrendingUp } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 /* ─── Mock event data ─── */
 interface EventItem {
@@ -22,14 +25,54 @@ interface EventItem {
   rewards: string[];
   rules: string[];
   tags: string[];
+  /** Where the Join button navigates: 'referrals' | 'points' | 'points-trading' | 'reward' | null */
+  joinRoute?: string | null;
 }
 
 const MOCK_EVENTS: EventItem[] = [
   {
-    id: 'evt_1',
+    id: 'evt_quest',
+    title: 'Daily Quest',
+    subtitle: 'Complete daily tasks: login, trade & earn points!',
+    description: 'Earn bonus points every day by completing quests — not just logging in! Trade tokens, create memes, join arena battles, and more. Streak bonuses multiply your daily earnings — 7-day streak gives 3x points! Points can be converted to tickets and spun for SOL rewards.',
+    bannerGradient: 'linear-gradient(135deg, #1a0a00 0%, #4a2800 50%, #7c4a1a 100%)',
+    iconBg: 'bg-orange-500/20',
+    icon: <Gift size={28} className="text-orange-400" />,
+    badge: 'NEW',
+    badgeColor: 'bg-green-500',
+    status: 'live',
+    startDate: '2026-03-01',
+    endDate: '2026-03-31',
+    participants: 8920,
+    rewards: ['Login: 10 pts/day', 'Trade 1 token: 20 pts', 'Create token: 50 pts', '7-day streak: 3x multiplier', '30-day streak: Bonus 500 pts'],
+    rules: ['Must connect wallet to claim', 'One claim per task per day', 'Streak resets if you miss a day', 'Points convertible to spin tickets'],
+    tags: ['Daily', 'Quest', 'Points'],
+    joinRoute: 'points',
+  },
+  {
+    id: 'evt_referrals',
+    title: 'Daily Referrals',
+    subtitle: 'Invite friends & receive SOL directly!',
+    description: 'Share your referral link and earn SOL directly to your wallet for every friend who joins and trades. No points, no waiting — real SOL rewards sent immediately when your referral makes their first trade. The more you refer, the more you earn!',
+    bannerGradient: 'linear-gradient(135deg, #1a0a2e 0%, #3d1a78 50%, #6b21a8 100%)',
+    iconBg: 'bg-purple-500/20',
+    icon: <Users size={28} className="text-purple-400" />,
+    badge: 'HOT',
+    badgeColor: 'bg-red-500',
+    status: 'live',
+    startDate: '2026-03-10',
+    endDate: '2026-04-10',
+    participants: 3420,
+    rewards: ['0.05 SOL per referral (direct)', '5x bonus week: 0.25 SOL/ref', 'Extra 10 SOL for 10+ referrals', 'Top referrer: Exclusive badge'],
+    rules: ['Referred users must complete at least 1 trade', 'Self-referrals are not allowed', 'SOL sent directly to your wallet', 'No limit on referral earnings'],
+    tags: ['Referral', 'SOL', 'Direct Reward'],
+    joinRoute: 'referrals',
+  },
+  {
+    id: 'evt_trading',
     title: 'Trading Volume Challenge',
-    subtitle: 'Trade more, earn more rewards!',
-    description: 'Compete with other traders to reach the highest trading volume this week. Top 100 traders will share a prize pool of 500 SOL. All trades on the platform count toward your total volume.',
+    subtitle: 'Trade more, climb the leaderboard & win big!',
+    description: 'Compete with other traders to reach the highest trading volume this week. Top 100 traders will share a prize pool of 500 SOL. All trades on the platform count toward your total volume. Track your progress on the leaderboard!',
     bannerGradient: 'linear-gradient(135deg, #0f2027 0%, #203a43 40%, #2c5364 100%)',
     iconBg: 'bg-blue-500/20',
     icon: <Trophy size={28} className="text-blue-400" />,
@@ -42,62 +85,30 @@ const MOCK_EVENTS: EventItem[] = [
     rewards: ['1st Place: 100 SOL', '2nd Place: 50 SOL', '3rd Place: 25 SOL', 'Top 10: 15 SOL each', 'Top 100: 2 SOL each'],
     rules: ['Minimum trade amount: 0.1 SOL per trade', 'Both buy and sell count toward volume', 'Wash trading will result in disqualification', 'Winners announced within 48h after event ends'],
     tags: ['Trading', 'Competition', 'Rewards'],
+    joinRoute: 'points-trading',
   },
   {
-    id: 'evt_2',
-    title: 'Refer & Earn Bonus',
-    subtitle: 'Invite friends, get 5x referral rewards',
-    description: 'During this limited-time event, all referral rewards are multiplied by 5x! Invite your friends to join the platform and earn bonus SOL for every successful referral. No limit on earnings.',
-    bannerGradient: 'linear-gradient(135deg, #1a0a2e 0%, #3d1a78 50%, #6b21a8 100%)',
-    iconBg: 'bg-purple-500/20',
-    icon: <Users size={28} className="text-purple-400" />,
-    badge: '5X',
-    badgeColor: 'bg-purple-500',
-    status: 'live',
-    startDate: '2026-03-10',
-    endDate: '2026-04-10',
-    participants: 3420,
-    rewards: ['5x referral bonus on all invites', 'Extra 10 SOL for 10+ referrals', 'Exclusive NFT badge for top referrers'],
-    rules: ['Referred users must complete at least 1 trade', 'Self-referrals are not allowed', 'Rewards distributed weekly'],
-    tags: ['Referral', 'Bonus', 'Social'],
-  },
-  {
-    id: 'evt_3',
+    id: 'evt_meme',
     title: 'Meme Token Launch Party',
-    subtitle: 'Create a token & win prizes',
+    subtitle: 'Create a token & win prizes — Coming Soon!',
     description: 'Launch your own meme token during the event period! The most popular token (by holder count and trading volume) wins the grand prize. Extra rewards for creative token names and descriptions.',
     bannerGradient: 'linear-gradient(135deg, #0a1628 0%, #1a3a2a 50%, #2d5016 100%)',
     iconBg: 'bg-green-500/20',
     icon: <Zap size={28} className="text-green-400" />,
-    badge: 'NEW',
-    badgeColor: 'bg-green-500',
-    status: 'live',
-    startDate: '2026-03-18',
-    endDate: '2026-04-01',
-    participants: 567,
+    badge: 'SOON',
+    badgeColor: 'bg-yellow-500',
+    status: 'upcoming',
+    startDate: '2026-04-01',
+    endDate: '2026-04-15',
+    participants: 0,
     maxParticipants: 1000,
     rewards: ['Grand Prize: 200 SOL', 'Best Name Award: 50 SOL', 'Most Holders: 50 SOL', 'Community Vote Winner: 30 SOL'],
     rules: ['Token must be created during event period', 'No NSFW content', 'Token must have valid description and logo', 'Judging based on holders, volume, and community votes'],
     tags: ['Creation', 'Meme', 'Launch'],
+    joinRoute: null,
   },
   {
-    id: 'evt_4',
-    title: 'Daily Login Rewards',
-    subtitle: 'Log in every day for bonus points',
-    description: 'Connect your wallet and visit the platform daily to earn bonus points. Streak bonuses multiply your daily earnings — 7-day streak gives 3x points! Points can be redeemed for SOL rewards.',
-    bannerGradient: 'linear-gradient(135deg, #1a0a00 0%, #4a2800 50%, #7c4a1a 100%)',
-    iconBg: 'bg-orange-500/20',
-    icon: <Gift size={28} className="text-orange-400" />,
-    status: 'live',
-    startDate: '2026-03-01',
-    endDate: '2026-03-31',
-    participants: 8920,
-    rewards: ['Day 1-3: 10 points/day', 'Day 4-6: 25 points/day', 'Day 7+: 50 points/day (3x streak)', '30-day streak: Bonus 500 points'],
-    rules: ['Must connect wallet to claim', 'One claim per day per wallet', 'Streak resets if you miss a day', 'Points redeemable at end of month'],
-    tags: ['Daily', 'Points', 'Streak'],
-  },
-  {
-    id: 'evt_5',
+    id: 'evt_arena',
     title: 'Arena Prediction Tournament',
     subtitle: 'Predict & win big in the Arena',
     description: 'Join the special Arena tournament with boosted prize pools! Make predictions on featured markets and compete for the top spot on the leaderboard. Top predictors win exclusive rewards.',
@@ -113,9 +124,29 @@ const MOCK_EVENTS: EventItem[] = [
     rewards: ['Prize Pool: 1000 SOL', 'Best Accuracy: Exclusive NFT', 'Top 50: Share 200 SOL', 'Participation reward: 1 SOL each (first 500)'],
     rules: ['Must have Arena account', 'Minimum 5 predictions to qualify', 'Only featured markets count', 'Results verified on-chain'],
     tags: ['Arena', 'Tournament', 'Prediction'],
+    joinRoute: null,
   },
   {
-    id: 'evt_6',
+    id: 'evt_club_war',
+    title: 'Club Faction War',
+    subtitle: 'Rally your club & dominate the battlefield!',
+    description: 'Clubs go head-to-head in weekly faction wars! Each club competes through trading volume, arena wins, and member activity. The winning club earns exclusive rewards, boosted point multipliers, and bragging rights. Recruit members, coordinate strategies, and climb the global club ranking!',
+    bannerGradient: 'linear-gradient(135deg, #1a0520 0%, #3a0a30 40%, #6b1050 100%)',
+    iconBg: 'bg-pink-500/20',
+    icon: <Swords size={28} className="text-pink-400" />,
+    badge: 'SOON',
+    badgeColor: 'bg-yellow-500',
+    status: 'upcoming',
+    startDate: '2026-04-07',
+    endDate: '2026-04-28',
+    participants: 0,
+    rewards: ['Winning Club: 300 SOL pool', 'Top Club MVP: 50 SOL', 'All members of top 3 clubs: 2x point booster', 'Participation: Club XP badge'],
+    rules: ['Must be a club member to participate', 'All member activities contribute to club score', 'War resets weekly', 'Inactive clubs are auto-removed from ranking'],
+    tags: ['Club', 'War', 'Faction'],
+    joinRoute: 'clubs',
+  },
+  {
+    id: 'evt_staking',
     title: 'Staking Boost Week',
     subtitle: 'Double APY on all staking pools',
     description: 'For one week only, all staking pools offer 2x APY! Stake your tokens now to maximize your earnings. Early stakers get an additional bonus of 0.5% extra APY.',
@@ -129,9 +160,48 @@ const MOCK_EVENTS: EventItem[] = [
     rewards: ['2x APY on all pools', 'Early bird bonus: +0.5% APY', 'Random airdrop to 10 stakers'],
     rules: ['Minimum stake: 1 SOL', 'Must maintain stake for full week', 'Early unstake forfeits bonus', 'APY calculated at time of stake'],
     tags: ['Staking', 'APY', 'Boost'],
+    joinRoute: null,
   },
   {
-    id: 'evt_7',
+    id: 'evt_lucky_spin',
+    title: 'Lucky Wheel Spin',
+    subtitle: 'Spin the wheel & win instant SOL prizes!',
+    description: 'Use your spin tickets earned from trading and daily quests to spin the Lucky Wheel for a chance to win instant SOL prizes! Higher tier tickets unlock bigger prize pools. Spin daily for bonus multipliers!',
+    bannerGradient: 'linear-gradient(135deg, #1a1000 0%, #4a3500 40%, #7c5a1a 100%)',
+    iconBg: 'bg-yellow-500/20',
+    icon: <Sparkles size={28} className="text-yellow-400" />,
+    badge: 'SOON',
+    badgeColor: 'bg-yellow-500',
+    status: 'upcoming',
+    startDate: '2026-04-15',
+    endDate: '2026-05-15',
+    participants: 0,
+    rewards: ['Jackpot: 50 SOL', 'Grand: 10 SOL', 'Major: 5 SOL', 'Minor: 1 SOL', 'Consolation: 0.1 SOL'],
+    rules: ['1 spin ticket per spin', 'Earn tickets from daily quests & trading', 'Prizes sent directly to wallet', 'Daily spin bonus: 2x chance on first spin'],
+    tags: ['Spin', 'Lucky', 'Instant Reward'],
+    joinRoute: 'reward',
+  },
+  {
+    id: 'evt_volume_race',
+    title: 'Weekly Volume Race',
+    subtitle: 'Top traders earn bonus point multipliers',
+    description: 'Track your weekly trading volume against other traders! Top performers unlock exclusive point multipliers for the following week. The higher your rank, the bigger your multiplier. Even small traders can earn rewards by hitting personal milestones.',
+    bannerGradient: 'linear-gradient(135deg, #0a0a1a 0%, #1a2a4a 50%, #2a4a7a 100%)',
+    iconBg: 'bg-indigo-500/20',
+    icon: <TrendingUp size={28} className="text-indigo-400" />,
+    badge: 'SOON',
+    badgeColor: 'bg-yellow-500',
+    status: 'upcoming',
+    startDate: '2026-04-07',
+    endDate: '2026-04-14',
+    participants: 0,
+    rewards: ['Top 10: 5x point multiplier next week', 'Top 50: 3x point multiplier', 'Top 100: 2x point multiplier', 'All participants: 1.5x base multiplier'],
+    rules: ['Volume resets every Monday 00:00 UTC', 'Min 0.01 SOL per trade counts', 'Wash trading is auto-detected', 'Multiplier applied automatically'],
+    tags: ['Weekly', 'Volume', 'Multiplier'],
+    joinRoute: 'points-trading',
+  },
+  {
+    id: 'evt_art',
     title: 'Community Art Contest',
     subtitle: 'Design the next platform mascot',
     description: 'Submit your best crypto/meme artwork for a chance to become the official platform mascot! Community voting will decide the winner. The winning design will be featured across the platform.',
@@ -147,6 +217,7 @@ const MOCK_EVENTS: EventItem[] = [
     rewards: ['Winner: 150 SOL + Featured on platform', 'Runner-up: 50 SOL', 'Top 10: 10 SOL each', 'All participants: Exclusive badge'],
     rules: ['Original artwork only', 'Must be crypto/meme themed', 'Submission via platform upload', 'Community voting for top 10, judges pick winner'],
     tags: ['Community', 'Art', 'Contest'],
+    joinRoute: null,
   },
 ];
 
@@ -165,7 +236,7 @@ function daysLeft(end: string) {
 }
 
 /* ─── Event Detail Modal ─── */
-const EventModal: React.FC<{ event: EventItem; onClose: () => void }> = ({ event, onClose }) => {
+const EventModal: React.FC<{ event: EventItem; onClose: () => void; onNavigate?: (event: EventItem) => void }> = ({ event, onClose, onNavigate }) => {
   const statusColor = event.status === 'live' ? 'text-green-400' : event.status === 'upcoming' ? 'text-yellow-400' : 'text-gray-400';
   const statusLabel = event.status === 'live' ? 'Live Now' : event.status === 'upcoming' ? 'Coming Soon' : 'Ended';
 
@@ -173,7 +244,8 @@ const EventModal: React.FC<{ event: EventItem; onClose: () => void }> = ({ event
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       <div
-        className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-[var(--card)] border border-[var(--card-border)] rounded-2xl shadow-2xl"
+        className="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto bg-[var(--card)] border border-[var(--card-border)] rounded-2xl shadow-2xl scrollbar-hide"
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Banner header */}
@@ -266,20 +338,23 @@ const EventModal: React.FC<{ event: EventItem; onClose: () => void }> = ({ event
               className="btn btn-primary w-full py-3 text-sm font-bold"
               onClick={() => {
                 onClose();
-                // TODO: integrate with BE when ready
+                onNavigate?.(event);
               }}
             >
               {event.status === 'upcoming' ? 'Notify Me' : 'Join Event'}
             </button>
           )}
         </div>
+      <style jsx>{`
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+      `}</style>
       </div>
     </div>
   );
 };
 
 /* ─── Event Banner Card ─── */
-const EventBanner: React.FC<{ event: EventItem; onJoin: () => void }> = ({ event, onJoin }) => {
+const EventBanner: React.FC<{ event: EventItem; onJoin: () => void; onNavigate?: (event: EventItem) => void }> = ({ event, onJoin, onNavigate }) => {
   const tLeft = daysLeft(event.endDate);
 
   return (
@@ -340,13 +415,26 @@ const EventBanner: React.FC<{ event: EventItem; onJoin: () => void }> = ({ event
             <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl ${event.iconBg} flex items-center justify-center backdrop-blur-sm border border-white/10`}>
               {event.icon}
             </div>
-            <button
-              onClick={e => { e.stopPropagation(); onJoin(); }}
-              className="flex items-center gap-1 px-4 py-1.5 rounded-lg text-xs font-bold text-white transition-all hover:scale-105"
-              style={{ backgroundImage: 'linear-gradient(135deg, var(--primary), var(--accent))' }}
-            >
-              {event.status === 'ended' ? 'View' : 'Join'} <ChevronRight size={14} />
-            </button>
+            {event.status === 'upcoming' && !event.joinRoute ? (
+              <span className="px-4 py-1.5 rounded-lg text-xs font-bold text-yellow-300 bg-yellow-500/15 border border-yellow-500/30">
+                Soon
+              </span>
+            ) : (
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  if (event.joinRoute && onNavigate) {
+                    onNavigate(event);
+                  } else {
+                    onJoin();
+                  }
+                }}
+                className="flex items-center gap-1 px-4 py-1.5 rounded-lg text-xs font-bold text-white transition-all hover:scale-105"
+                style={{ backgroundImage: 'linear-gradient(135deg, var(--primary), var(--accent))' }}
+              >
+                {event.status === 'ended' ? 'View' : 'Join'} <ChevronRight size={14} />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -356,6 +444,10 @@ const EventBanner: React.FC<{ event: EventItem; onJoin: () => void }> = ({ event
 
 /* ─── Events Page ─── */
 export default function EventsPage() {
+  const router = useRouter();
+  const { publicKey } = useWallet();
+  const address = publicKey?.toBase58();
+
   const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null);
   const [filter, setFilter] = useState<'all' | 'live' | 'upcoming' | 'ended'>('all');
 
@@ -363,6 +455,23 @@ export default function EventsPage() {
 
   const liveCount = MOCK_EVENTS.filter(e => e.status === 'live').length;
   const upcomingCount = MOCK_EVENTS.filter(e => e.status === 'upcoming').length;
+
+  const handleNavigate = (event: EventItem) => {
+    if (!event.joinRoute) return;
+
+    const route = event.joinRoute;
+    if (route === 'referrals') {
+      router.push('/referrals');
+    } else if (route === 'points' || route === 'points-trading') {
+      if (!address) { toast.error('Please connect your wallet first'); return; }
+      router.push(`/point/${address}${route === 'points-trading' ? '?tab=trading' : ''}`);
+    } else if (route === 'reward') {
+      if (!address) { toast.error('Please connect your wallet first'); return; }
+      router.push(`/reward/${address}`);
+    } else if (route === 'clubs') {
+      router.push('/clubs');
+    }
+  };
 
   return (
     <Layout>
@@ -407,7 +516,7 @@ export default function EventsPage() {
         ) : (
           <div className="space-y-4">
             {filteredEvents.map(event => (
-              <EventBanner key={event.id} event={event} onJoin={() => setSelectedEvent(event)} />
+              <EventBanner key={event.id} event={event} onJoin={() => setSelectedEvent(event)} onNavigate={handleNavigate} />
             ))}
           </div>
         )}
@@ -415,7 +524,7 @@ export default function EventsPage() {
 
       {/* Detail Modal */}
       {selectedEvent && (
-        <EventModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+        <EventModal event={selectedEvent} onClose={() => setSelectedEvent(null)} onNavigate={handleNavigate} />
       )}
     </Layout>
   );
