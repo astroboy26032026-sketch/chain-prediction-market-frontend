@@ -396,7 +396,7 @@ const Header = ({ token, volume, marketCap, formatUSD }: any) => (
     </div>
 
     <div className="flex-grow">
-      <h3 className="text-lg font-semibold text-orange-400">{token.name}</h3>
+      <h3 className="text-lg font-semibold text-[var(--primary)]">{token.name}</h3>
       <div className="text-sm text-gray-400">{token.symbol}</div>
 
       <div className="mt-3 grid grid-cols-2 gap-2 text-sm">

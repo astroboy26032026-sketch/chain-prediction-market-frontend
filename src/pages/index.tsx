@@ -43,8 +43,8 @@ const Home: React.FC = () => {
   const { marqueeTokens, marqueeLogoError, onLogoError } = useMarqueeTokens(includeNsfw);
   const { showNewTokens, setShowNewTokens, newTokensBuffer } = useNewTokensStream(setTokens);
 
-  // Arena: show top 4 trending on homepage
-  const arenaItems = useMemo(() => getMockArenas('Trending').slice(0, 4), []);
+  // Arena: show top 12 trending on homepage
+  const arenaItems = useMemo(() => getMockArenas('Trending').slice(0, 12), []);
 
   // Handle marquee loading overlay on route change
   useEffect(() => {

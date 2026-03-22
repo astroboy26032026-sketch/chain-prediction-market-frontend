@@ -53,7 +53,7 @@ export const SEO = {
   LEADERBOARD_DESC: 'Top 15 trending tokens leaderboard',
   REFERRALS_TITLE: 'Referrals',
   REFERRALS_DESC: 'Your referral dashboard',
-  POINTS_TITLE: 'Points',
+  POINTS_TITLE: 'Daily Point',
   POINTS_DESC: 'Earn points for doing stuff: trade, create, stake have fun!',
   REWARDS_TITLE: 'Rewards',
   REWARDS_DESC: 'Spin to win SOL rewards',

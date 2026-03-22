@@ -776,6 +776,8 @@ export interface Arena {
   createdAt: string;
   image?: string;
   category?: string;
+  participants?: number;
+  resolved?: boolean;
 }
 
 export interface ArenaDetail extends Arena {

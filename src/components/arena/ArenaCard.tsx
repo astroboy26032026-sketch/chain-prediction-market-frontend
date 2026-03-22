@@ -50,7 +50,7 @@ const ArenaCard: React.FC<ArenaCardProps> = ({ arena }) => {
               ?
             </div>
           )}
-          <h3 className="text-sm font-bold text-white group-hover:text-[var(--primary)] transition-colors line-clamp-2 flex-1 leading-snug">
+          <h3 className="text-sm font-bold text-[var(--primary)] group-hover:text-white transition-colors line-clamp-2 flex-1 leading-snug">
             {arena.title}
           </h3>
           <LinkIcon size={14} className="text-gray-500 shrink-0 mt-0.5" />
