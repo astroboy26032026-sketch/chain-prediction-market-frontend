@@ -1421,13 +1421,12 @@ const RewardPage: React.FC = () => {
                       'success'
                     );
                   }
-                  // Deduct ticket locally
+                  // Deduct ticket locally — do NOT touch claimableSol (that belongs to slot machine API)
                   setRewardInfo(prev => {
                     if (!prev) return prev;
                     return {
                       ...prev,
                       tickets: Math.max(0, prev.tickets - 1),
-                      claimableSol: prev.claimableSol + prize.value,
                     };
                   });
                 }}

@@ -12,7 +12,7 @@ import LoadingBar from '@/components/ui/LoadingBar';
 import { getProfileInfo, getProfileStats, getTokenInfo, getTokensByCreator } from '@/utils/api.index';
 import { formatAddressV2 } from '@/utils/blockchainUtils';
 
-import { Check, Copy, Wallet, Twitter, Send as TelegramIcon, Facebook, Pencil, X, Lock, Camera, Mail } from 'lucide-react';
+import { Check, Copy, Wallet, Twitter, Send as TelegramIcon, Facebook, Pencil, X, Lock, Camera, Mail, Swords, Bell, TrendingUp, TrendingDown, Trophy, Clock, Gift, AlertCircle, CheckCircle2, Info } from 'lucide-react';
 
 import { COMMON, SEO as SEO_TEXT, PROFILE } from '@/constants/ui-text';
 
@@ -78,7 +78,7 @@ function fmtCompact(n: number): string {
 type ProfileInfo = Awaited<ReturnType<typeof getProfileInfo>>;
 type ProfileStats = Awaited<ReturnType<typeof getProfileStats>>;
 
-type TabKey = 'profile' | 'holding' | 'created' | 'history';
+type TabKey = 'profile' | 'holding' | 'created' | 'history' | 'arena' | 'notifications';
 
 type TokenMini = {
   address: string;
@@ -93,6 +93,63 @@ type TokenMini = {
 };
 
 const LIST_STEP = 10;
+
+/* =========================
+   Fake Arena History Data
+   // fake — replace with BE/API when ready
+========================= */
+const MOCK_ARENA_HISTORY = [
+  { id: 'a1', arena: 'BTC vs ETH — Weekly Showdown', pick: 'BTC', result: 'win', amount: 0.5, payout: 0.95, date: '2026-03-21T14:30:00Z', status: 'settled' },
+  { id: 'a2', arena: 'SOL Pump or Dump?', pick: 'Pump', result: 'win', amount: 1.2, payout: 2.16, date: '2026-03-20T09:15:00Z', status: 'settled' },
+  { id: 'a3', arena: 'DOGE to $1 This Month?', pick: 'No', result: 'loss', amount: 0.3, payout: 0, date: '2026-03-19T18:00:00Z', status: 'settled' },
+  { id: 'a4', arena: 'Memecoin Madness — PEPE vs BONK', pick: 'PEPE', result: 'pending', amount: 0.8, payout: 0, date: '2026-03-22T10:00:00Z', status: 'live' },
+  { id: 'a5', arena: 'ETH Merge Anniversary Pump?', pick: 'Yes', result: 'win', amount: 2.0, payout: 3.6, date: '2026-03-18T12:00:00Z', status: 'settled' },
+  { id: 'a6', arena: 'NFT Market Recovery Bet', pick: 'Bullish', result: 'loss', amount: 0.4, payout: 0, date: '2026-03-17T16:45:00Z', status: 'settled' },
+  { id: 'a7', arena: 'SOL vs AVAX — 24h Volume', pick: 'SOL', result: 'win', amount: 1.5, payout: 2.7, date: '2026-03-16T08:30:00Z', status: 'settled' },
+  { id: 'a8', arena: 'BTC $100K Before April?', pick: 'Yes', result: 'pending', amount: 3.0, payout: 0, date: '2026-03-22T06:00:00Z', status: 'live' },
+  { id: 'a9', arena: 'AI Token Battle — FET vs RNDR', pick: 'FET', result: 'loss', amount: 0.6, payout: 0, date: '2026-03-15T20:00:00Z', status: 'settled' },
+  { id: 'a10', arena: 'Weekend Pump Challenge', pick: 'PUMP', result: 'win', amount: 0.25, payout: 0.5, date: '2026-03-14T22:00:00Z', status: 'settled' },
+  { id: 'a11', arena: 'Layer 2 Wars — ARB vs OP', pick: 'ARB', result: 'win', amount: 1.0, payout: 1.85, date: '2026-03-13T11:00:00Z', status: 'settled' },
+  { id: 'a12', arena: 'Stablecoin Depeg Scare', pick: 'No Depeg', result: 'win', amount: 5.0, payout: 7.5, date: '2026-03-12T07:00:00Z', status: 'settled' },
+];
+
+/* =========================
+   Fake Notification Data
+   // fake — replace with BE/API when ready
+========================= */
+const MOCK_NOTIFICATIONS = [
+  { id: 'n1', type: 'reward' as const, title: 'Spin Reward Claimed!', message: 'You claimed 0.05 SOL from the Lucky Wheel.', date: '2026-03-22T11:30:00Z', read: false },
+  { id: 'n2', type: 'arena' as const, title: 'Arena Bet Won!', message: 'Your bet on "BTC vs ETH" settled — you won 0.95 SOL!', date: '2026-03-21T14:35:00Z', read: false },
+  { id: 'n3', type: 'system' as const, title: 'New Event: Meme Token Showdown', message: 'A new arena event is starting soon. Join now to earn bonus points!', date: '2026-03-21T10:00:00Z', read: false },
+  { id: 'n4', type: 'trade' as const, title: 'Buy Order Filled', message: 'Your buy order for 1,000 PEPE tokens has been filled.', date: '2026-03-20T16:20:00Z', read: true },
+  { id: 'n5', type: 'points' as const, title: 'Daily Points Earned', message: 'You earned 50 Seed Points for today\'s trading activity.', date: '2026-03-20T09:00:00Z', read: true },
+  { id: 'n6', type: 'arena' as const, title: 'Arena Bet Lost', message: 'Your bet on "DOGE to $1" did not win. Better luck next time!', date: '2026-03-19T18:05:00Z', read: true },
+  { id: 'n7', type: 'reward' as const, title: 'Tickets Converted', message: 'You converted 500 points into 5 spin tickets.', date: '2026-03-19T12:00:00Z', read: true },
+  { id: 'n8', type: 'system' as const, title: 'Profile Updated', message: 'Your profile information has been updated successfully.', date: '2026-03-18T15:30:00Z', read: true },
+  { id: 'n9', type: 'trade' as const, title: 'Sell Order Filled', message: 'Your sell order for 500 BONK tokens has been filled.', date: '2026-03-18T10:45:00Z', read: true },
+  { id: 'n10', type: 'points' as const, title: 'Trading Volume Milestone!', message: 'You reached $1,000 trading volume — 100 bonus points!', date: '2026-03-17T14:00:00Z', read: true },
+  { id: 'n11', type: 'arena' as const, title: 'Arena Bet Won!', message: 'Your bet on "SOL vs AVAX" settled — you won 2.7 SOL!', date: '2026-03-16T08:35:00Z', read: true },
+  { id: 'n12', type: 'system' as const, title: 'Welcome to Pumpfun Clone!', message: 'Thanks for joining! Explore Arena, Spin the Wheel, and start trading.', date: '2026-03-10T00:00:00Z', read: true },
+];
+
+// fake — unread count for navbar badge
+export const UNREAD_NOTIFICATION_COUNT = MOCK_NOTIFICATIONS.filter((n) => !n.read).length;
+
+const NOTIF_ICON_MAP = {
+  reward: Gift,
+  arena: Swords,
+  system: Info,
+  trade: TrendingUp,
+  points: Trophy,
+} as const;
+
+const NOTIF_COLOR_MAP = {
+  reward: 'text-yellow-400',
+  arena: 'text-[var(--primary)]',
+  system: 'text-blue-400',
+  trade: 'text-[var(--accent)]',
+  points: 'text-purple-400',
+} as const;
 
 const StatTile: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
   <div className="flex-1 min-w-[180px] rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 sm:p-5 shadow-sm">
@@ -158,6 +215,8 @@ const ProfilePage: React.FC = () => {
   const [visibleHoldingCount, setVisibleHoldingCount] = useState(LIST_STEP);
   const [visibleCreatedCount, setVisibleCreatedCount] = useState(LIST_STEP);
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(LIST_STEP);
+  const [visibleArenaCount, setVisibleArenaCount] = useState(LIST_STEP);
+  const [visibleNotifCount, setVisibleNotifCount] = useState(LIST_STEP);
 
   const [showEditModal, setShowEditModal] = useState(false);
   // Track arena opt-in per token address
@@ -491,6 +550,25 @@ const ProfilePage: React.FC = () => {
             <TabButton active={tab === 'holding'} title={PROFILE.TAB_HOLDING} onClick={() => setTab('holding')} />
             <TabButton active={tab === 'created'} title={PROFILE.TAB_CREATED} onClick={() => setTab('created')} />
             <TabButton active={tab === 'history'} title={PROFILE.TAB_HISTORY} onClick={() => setTab('history')} />
+            <TabButton active={tab === 'arena'} title="Arena History" onClick={() => setTab('arena')} />
+            <button
+              onClick={() => setTab('notifications')}
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold tracking-wide transition-colors border flex items-center gap-2 ${
+                tab === 'notifications'
+                  ? 'btn btn-primary border-transparent text-white'
+                  : 'btn btn-primary border-transparent text-white opacity-85 hover:opacity-100'
+              }`}
+            >
+              Notifications
+              {UNREAD_NOTIFICATION_COUNT > 0 && (
+                <span className="relative flex items-center">
+                  <Bell className="w-4 h-4 notification-bell-shake" />
+                  <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 flex items-center justify-center px-1 rounded-full bg-red-500 text-white text-[10px] font-extrabold leading-none">
+                    {UNREAD_NOTIFICATION_COUNT}
+                  </span>
+                </span>
+              )}
+            </button>
           </div>
 
           {/* Content */}
@@ -945,6 +1023,162 @@ const ProfilePage: React.FC = () => {
                         </button>
                       </div>
                     ) : null}
+                  </>
+                )}
+              </SectionCard>
+            )}
+
+            {/* ===== Arena History Tab ===== */}
+            {tab === 'arena' && (
+              <SectionCard title="Arena History">
+                {MOCK_ARENA_HISTORY.length === 0 ? (
+                  <div className="text-center py-10 opacity-60">No arena bets yet.</div>
+                ) : (
+                  <>
+                    {/* Summary stats — fake */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                      <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card2)] p-3 text-center">
+                        <div className="text-xs opacity-70">Total Bets</div>
+                        <div className="text-lg font-extrabold text-[var(--primary)] mt-1">{MOCK_ARENA_HISTORY.length}</div>
+                      </div>
+                      <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card2)] p-3 text-center">
+                        <div className="text-xs opacity-70">Wins</div>
+                        <div className="text-lg font-extrabold text-green-400 mt-1">{MOCK_ARENA_HISTORY.filter((a) => a.result === 'win').length}</div>
+                      </div>
+                      <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card2)] p-3 text-center">
+                        <div className="text-xs opacity-70">Losses</div>
+                        <div className="text-lg font-extrabold text-red-400 mt-1">{MOCK_ARENA_HISTORY.filter((a) => a.result === 'loss').length}</div>
+                      </div>
+                      <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card2)] p-3 text-center">
+                        <div className="text-xs opacity-70">Total Payout</div>
+                        <div className="text-lg font-extrabold text-[var(--accent)] mt-1">
+                          {MOCK_ARENA_HISTORY.reduce((s, a) => s + a.payout, 0).toFixed(2)} SOL
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Arena bet list */}
+                    <div className="space-y-3">
+                      {MOCK_ARENA_HISTORY.slice(0, visibleArenaCount).map((bet) => {
+                        const isWin = bet.result === 'win';
+                        const isLoss = bet.result === 'loss';
+                        return (
+                          <div
+                            key={bet.id}
+                            className="flex items-center gap-3 p-3 sm:p-4 rounded-xl border border-[var(--card-border)] bg-[var(--card2)] hover:bg-[var(--card-hover)] transition-colors"
+                          >
+                            {/* Status icon */}
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                              isWin ? 'bg-green-500/15' : isLoss ? 'bg-red-500/15' : 'bg-yellow-500/15'
+                            }`}>
+                              {isWin ? <TrendingUp className="w-5 h-5 text-green-400" /> :
+                               isLoss ? <TrendingDown className="w-5 h-5 text-red-400" /> :
+                               <Clock className="w-5 h-5 text-yellow-400" />}
+                            </div>
+
+                            {/* Info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="font-extrabold text-sm truncate">{bet.arena}</div>
+                              <div className="text-xs opacity-70 mt-0.5">
+                                Pick: <span className="font-semibold text-[var(--primary)]">{bet.pick}</span>
+                                <span className="mx-1.5">·</span>
+                                {timeAgo(bet.date)}
+                              </div>
+                            </div>
+
+                            {/* Amount & result */}
+                            <div className="text-right shrink-0">
+                              <div className="text-xs opacity-70">Bet: {bet.amount} SOL</div>
+                              <div className={`font-extrabold text-sm mt-0.5 ${
+                                isWin ? 'text-green-400' : isLoss ? 'text-red-400' : 'text-yellow-400'
+                              }`}>
+                                {isWin ? `+${bet.payout.toFixed(2)} SOL` : isLoss ? `-${bet.amount} SOL` : 'Pending'}
+                              </div>
+                            </div>
+
+                            {/* Status badge */}
+                            <div className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider shrink-0 ${
+                              bet.status === 'live'
+                                ? 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30'
+                                : isWin
+                                  ? 'bg-green-500/15 text-green-400 border border-green-500/30'
+                                  : 'bg-red-500/15 text-red-400 border border-red-500/30'
+                            }`}>
+                              {bet.status === 'live' ? 'Live' : isWin ? 'Won' : 'Lost'}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {visibleArenaCount < MOCK_ARENA_HISTORY.length && (
+                      <div className="flex justify-center mt-8">
+                        <button
+                          type="button"
+                          onClick={() => setVisibleArenaCount((prev) => Math.min(prev + LIST_STEP, MOCK_ARENA_HISTORY.length))}
+                          className="px-5 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] hover:shadow disabled:opacity-50"
+                        >
+                          Load more
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </SectionCard>
+            )}
+
+            {/* ===== Notifications Tab ===== */}
+            {tab === 'notifications' && (
+              <SectionCard title="Notifications">
+                {MOCK_NOTIFICATIONS.length === 0 ? (
+                  <div className="text-center py-10 opacity-60">No notifications yet.</div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      {MOCK_NOTIFICATIONS.slice(0, visibleNotifCount).map((notif) => {
+                        const IconComp = NOTIF_ICON_MAP[notif.type] || Info;
+                        const colorClass = NOTIF_COLOR_MAP[notif.type] || 'text-gray-400';
+                        return (
+                          <div
+                            key={notif.id}
+                            className={`flex items-start gap-3 p-3 sm:p-4 rounded-xl border transition-colors ${
+                              notif.read
+                                ? 'border-[var(--card-border)] bg-[var(--card2)]'
+                                : 'border-[var(--primary)]/30 bg-[var(--primary)]/5'
+                            }`}
+                          >
+                            {/* Icon */}
+                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-[var(--card)] border border-[var(--card-border)]`}>
+                              <IconComp className={`w-4 h-4 ${colorClass}`} />
+                            </div>
+
+                            {/* Content */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-extrabold text-sm truncate">{notif.title}</span>
+                                {!notif.read && (
+                                  <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                                )}
+                              </div>
+                              <div className="text-xs opacity-70 mt-0.5 leading-relaxed">{notif.message}</div>
+                              <div className="text-[10px] opacity-50 mt-1">{timeAgo(notif.date)}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {visibleNotifCount < MOCK_NOTIFICATIONS.length && (
+                      <div className="flex justify-center mt-8">
+                        <button
+                          type="button"
+                          onClick={() => setVisibleNotifCount((prev) => Math.min(prev + LIST_STEP, MOCK_NOTIFICATIONS.length))}
+                          className="px-5 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] hover:shadow disabled:opacity-50"
+                        >
+                          Load more
+                        </button>
+                      </div>
+                    )}
                   </>
                 )}
               </SectionCard>

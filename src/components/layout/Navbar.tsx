@@ -6,7 +6,8 @@ import { useRouter } from 'next/router';
 import { toast } from 'react-toastify';
 import HowItWorksPopup from '@/components/notifications/HowItWorksPopup';
 import { Switch } from '@/components/ui/switch';
-import { Sun, Moon, User2, UsersRound, Gift, Trophy, Gem, Coins, Menu, X, Zap, CalendarDays } from 'lucide-react';
+import { Sun, Moon, User2, UsersRound, Gift, Trophy, Gem, Coins, Menu, X, Zap, CalendarDays, Bell } from 'lucide-react';
+import { UNREAD_NOTIFICATION_COUNT } from '@/pages/profile/[address]';
 
 import { useWallet } from '@solana/wallet-adapter-react';
 import dynamic from 'next/dynamic';
@@ -117,6 +118,15 @@ const SidebarContent: React.FC<{
         <button onClick={() => { onProfileClick(); onNavClick?.(); }} className="sidebar-link">
           <User2 className="sidebar-icon" />
           <span className="sidebar-label">My Profile</span>
+          {/* Notification bell with shake animation + unread badge */}
+          {UNREAD_NOTIFICATION_COUNT > 0 && (
+            <span className="relative ml-auto flex items-center">
+              <Bell className="w-4 h-4 text-[var(--primary)] notification-bell-shake" />
+              <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 flex items-center justify-center px-1 rounded-full bg-red-500 text-white text-[10px] font-extrabold leading-none">
+                {UNREAD_NOTIFICATION_COUNT}
+              </span>
+            </span>
+          )}
         </button>
 
         <NavLink href="/arena" onClick={onNavClick}>
