@@ -7,7 +7,8 @@
       "Bash(grep -r \"remove\\\\.getAllTokensTrends\\\\|api.index\\\\|api.ts\" /c/Users/Administrator/Desktop/Project/Pump_fun_clone/src --include=*.tsx --include=*.ts)",
       "WebFetch(domain:pump.fun)",
       "Bash(npx next:*)",
-      "Bash(grep -r border-thin c:/Users/Administrator/Desktop/Project/Pump_fun_clone/ --include=*.css --include=*.config.* --include=*.js --include=*.mjs -l)"
+      "Bash(grep -r border-thin c:/Users/Administrator/Desktop/Project/Pump_fun_clone/ --include=*.css --include=*.config.* --include=*.js --include=*.mjs -l)",
+      "Bash(timeout 60)"
     ]
   }
 }

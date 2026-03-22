@@ -129,6 +129,11 @@ const SidebarContent: React.FC<{
           <span className="sidebar-label arena-nav-label">Events</span>
         </NavLink>
 
+        <NavLink href="/clubs" onClick={onNavClick}>
+          <span className="arena-nav-fire">⚔️</span>
+          <span className="sidebar-label arena-nav-label">Clubs</span>
+        </NavLink>
+
         <NavLink href="/leaderboard" onClick={onNavClick}>
           <Trophy className="sidebar-icon" />
           <span className="sidebar-label">Leader Board</span>
