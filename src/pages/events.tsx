@@ -88,6 +88,25 @@ const MOCK_EVENTS: EventItem[] = [
     joinRoute: 'points-trading',
   },
   {
+    id: 'evt_club_mission',
+    title: 'Club Mission Challenge',
+    subtitle: 'Complete club missions & earn exclusive rewards!',
+    description: 'Join your club and complete weekly missions together! Each mission earns Club Mission Points that can be redeemed for exclusive rewards. Missions range from trading volume targets to recruiting new members and winning arena wars. The top clubs with the most completed missions unlock bonus prize pools and exclusive club perks.',
+    bannerGradient: 'linear-gradient(135deg, #0a1a2e 0%, #1a3a5e 40%, #2a5a8e 100%)',
+    iconBg: 'bg-cyan-500/20',
+    icon: <Target size={28} className="text-cyan-400" />,
+    badge: 'NEW',
+    badgeColor: 'bg-green-500',
+    status: 'live',
+    startDate: '2026-03-15',
+    endDate: '2026-04-15',
+    participants: 2180,
+    rewards: ['Complete 5 missions: 500 Club Points', 'Complete 10 missions: 1500 Club Points + Spin Ticket', 'Top Club: 200 SOL prize pool', 'All participants: 2x point booster for 1 week'],
+    rules: ['Must be a club member to participate', 'Missions reset weekly', 'Club Points are separate from Daily Points', 'Points can be redeemed in Rewards page'],
+    tags: ['Club', 'Mission', 'Points', 'Rewards'],
+    joinRoute: 'club-missions',
+  },
+  {
     id: 'evt_meme',
     title: 'Meme Token Launch Party',
     subtitle: 'Create a token & win prizes — Coming Soon!',
@@ -470,6 +489,9 @@ export default function EventsPage() {
       router.push(`/reward/${address}`);
     } else if (route === 'clubs') {
       router.push('/clubs');
+    } else if (route === 'club-missions') {
+      if (!address) { toast.error('Please connect your wallet first'); return; }
+      router.push(`/point/${address}?tab=club`);
     }
   };
 

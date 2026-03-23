@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import { Buffer } from 'buffer';
 import { VersionedTransaction } from '@solana/web3.js';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { Gift, Trophy } from 'lucide-react';
+import { Gift, Trophy, Shield, Target, CheckCircle2, Users, Swords } from 'lucide-react';
 
 import Layout from '@/components/layout/Layout';
 import SEO from '@/components/seo/SEO';
@@ -780,13 +780,15 @@ const RewardPage: React.FC = () => {
     return typeof raw === 'string' ? raw.trim() : '';
   }, [router.query.address]);
 
-  // Tab from query param (?tab=wheel)
+  // Tab from query param (?tab=wheel|club)
   const rewardTab = useMemo(() => {
     const t = router.query.tab;
-    return t === 'wheel' ? 'wheel' : 'slots';
+    if (t === 'wheel') return 'wheel';
+    if (t === 'club') return 'club';
+    return 'slots';
   }, [router.query.tab]);
 
-  const setRewardTab = (tab: 'slots' | 'wheel') => {
+  const setRewardTab = (tab: 'slots' | 'wheel' | 'club') => {
     router.replace({ pathname: router.pathname, query: { ...router.query, tab } }, undefined, { shallow: true });
   };
 
@@ -1201,6 +1203,7 @@ const RewardPage: React.FC = () => {
           {([
             { key: 'slots' as const, label: 'Slot Machine', icon: <Gift size={16} /> },
             { key: 'wheel' as const, label: 'Lucky Wheel', icon: <Trophy size={16} /> },
+            { key: 'club' as const, label: 'Club Rewards', icon: <Shield size={16} /> },
           ]).map(({ key, label, icon }) => (
             <button
               key={key}
@@ -1218,7 +1221,7 @@ const RewardPage: React.FC = () => {
         </div>
 
         {/* Stats row — different per tab */}
-        {rewardTab === 'slots' ? (
+        {rewardTab === 'slots' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
             <div className="card text-center">
               <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">Slot Reward</p>
@@ -1250,7 +1253,9 @@ const RewardPage: React.FC = () => {
               </div>
             </div>
           </div>
-        ) : (
+        )}
+
+        {rewardTab === 'wheel' && (
           /* Lucky Wheel stats — fake data (comment: replace with BE/API when ready) */
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
             <div className="card text-center">
@@ -1288,6 +1293,27 @@ const RewardPage: React.FC = () => {
               {/* fake total (comment: replace with API) */}
               <div className="text-3xl font-extrabold text-[var(--primary)]">0.000 SOL</div>
               <p className="text-xs text-gray-500">Lifetime wheel winnings</p>
+            </div>
+          </div>
+        )}
+
+        {rewardTab === 'club' && (
+          /* Club Rewards stats — fake data (comment: replace with BE/API when ready) */
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+            <div className="card text-center">
+              <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">Club Points</p>
+              <div className="text-3xl font-extrabold text-[var(--primary)]">1,250</div>
+              <p className="text-xs text-gray-500 mt-1">Earned from club missions</p>
+            </div>
+            <div className="card text-center">
+              <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">Redeemed</p>
+              <div className="text-3xl font-extrabold text-green-400">350</div>
+              <p className="text-xs text-gray-500 mt-1">Points spent on rewards</p>
+            </div>
+            <div className="card text-center">
+              <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">Available</p>
+              <div className="text-3xl font-extrabold text-[var(--primary)]">900</div>
+              <p className="text-xs text-gray-500 mt-1">Ready to redeem</p>
             </div>
           </div>
         )}
@@ -1495,6 +1521,146 @@ const RewardPage: React.FC = () => {
                 ) : (
                   <p className="text-sm text-gray-400">Not enough points to convert tickets.</p>
                 )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ═══ Club Rewards Tab (fake data — comment: replace with BE/API when ready) ═══ */}
+        {rewardTab === 'club' && (
+          <>
+            {/* Club info */}
+            <div className="card mb-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">🐸</span>
+                  <div>
+                    <div className="text-sm font-bold text-white">PEPE Army</div>
+                    <div className="text-xs text-gray-400">Rewards are automatically distributed to club members</div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => router.push(`/point/${address}?tab=club`)}
+                  className="text-xs font-semibold text-[var(--primary)] hover:underline"
+                >
+                  View Missions &rarr;
+                </button>
+              </div>
+            </div>
+
+            {/* Distribution method info */}
+            <div className="card mb-6 border-l-2 border-l-[var(--primary)]">
+              <div className="flex items-center gap-2 mb-2">
+                <Users size={16} className="text-[var(--primary)]" />
+                <span className="text-sm font-bold text-white">Reward Distribution</span>
+              </div>
+              <p className="text-xs text-gray-400 mb-2">This club distributes rewards by <span className="text-[var(--primary)] font-semibold">Contribution %</span> — members who contribute more to missions earn a larger share.</p>
+              <div className="flex items-center gap-4 text-[10px] text-gray-500">
+                <span>Distribution: Auto</span>
+                <span>|</span>
+                <span>Frequency: Weekly</span>
+                <span>|</span>
+                <span>Next: 4d 12h</span>
+              </div>
+            </div>
+
+            {/* Auto reward catalog — no redeem buttons */}
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Gift size={18} className="text-[var(--primary)]" />
+                <span className="text-sm font-bold text-white">Auto Rewards</span>
+                <span className="ml-auto text-[10px] text-gray-500">Distributed automatically based on contribution</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[
+                  { name: 'Extra Spin Ticket', desc: 'Bonus slot machine spin ticket', icon: '🎰', threshold: '100 pts', received: true, receivedDate: '2026-03-22' },
+                  { name: 'Lucky Wheel Spin', desc: 'Bonus lucky wheel spin', icon: '🎡', threshold: '150 pts', received: true, receivedDate: '2026-03-20' },
+                  { name: '2x Point Booster', desc: 'Double daily points for 24h', icon: '⚡', threshold: '200 pts', received: false, receivedDate: null },
+                  { name: 'Arena Free Entry', desc: 'Free entry to arena battle', icon: '⚔️', threshold: '300 pts', received: false, receivedDate: null },
+                  { name: 'Club XP Badge', desc: 'Exclusive animated profile badge', icon: '🏅', threshold: '500 pts', received: false, receivedDate: null },
+                  { name: 'SOL Airdrop Entry', desc: 'Monthly 50 SOL raffle entry', icon: '💰', threshold: '800 pts', received: false, receivedDate: null },
+                  { name: 'Exclusive NFT Mint', desc: 'Guaranteed club NFT mint spot', icon: '🎨', threshold: '1,500 pts', received: false, receivedDate: null },
+                  { name: 'Club Treasury Share', desc: 'Share of club treasury SOL', icon: '🏦', threshold: '3,000 pts', received: false, receivedDate: null },
+                ].map((reward, i) => (
+                  <div key={i} className={`card border border-[var(--card-border)] ${reward.received ? 'border-l-2 border-l-green-500' : ''}`}>
+                    <div className="flex items-start gap-3">
+                      <span className="text-2xl">{reward.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold text-white">{reward.name}</div>
+                        <p className="text-xs text-gray-400 mt-0.5">{reward.desc}</p>
+                        <div className="flex items-center justify-between mt-3">
+                          <span className="text-xs text-gray-500">Requires {reward.threshold}</span>
+                          {reward.received ? (
+                            <span className="flex items-center gap-1 text-[10px] text-green-400 font-semibold">
+                              <CheckCircle2 size={12} /> Received {reward.receivedDate}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-gray-500 font-semibold">Pending</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Reward History — auto distributed */}
+            <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card2)] p-0 overflow-hidden">
+              <div className="px-4 sm:px-6 py-5">
+                <div className="flex items-center gap-2">
+                  <Swords size={16} className="text-[var(--primary)]" />
+                  <span className="text-sm font-extrabold tracking-wide">Reward History</span>
+                </div>
+              </div>
+              <div className="border-t border-[var(--card-border)]">
+                <div className="w-full overflow-auto">
+                  <table className="min-w-full text-xs sm:text-sm">
+                    <thead className="bg-[var(--card)]">
+                      <tr className="[&>th]:px-2 [&>th]:sm:px-4 [&>th]:py-3 [&>th]:text-center [&>th]:font-extrabold [&>th]:text-xs">
+                        <th className="min-w-[90px]">DATE</th>
+                        <th className="min-w-[150px]">REWARD</th>
+                        <th className="min-w-[100px]">CONTRIBUTION</th>
+                        <th className="min-w-[80px]">STATUS</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--card-border)]">
+                      {[
+                        { date: '2026-03-22', reward: 'Extra Spin Ticket', contribution: '12.4%', status: 'Delivered' },
+                        { date: '2026-03-20', reward: 'Lucky Wheel Spin', contribution: '8.7%', status: 'Delivered' },
+                        { date: '2026-03-18', reward: '2x Point Booster', contribution: '15.2%', status: 'Processing' },
+                      ].map((r, i) => (
+                        <tr key={i} className="hover:bg-[var(--card-hover)]">
+                          <td className="px-2 sm:px-4 py-3 text-center">{r.date}</td>
+                          <td className="px-2 sm:px-4 py-3 text-center text-gray-300 font-semibold">{r.reward}</td>
+                          <td className="px-2 sm:px-4 py-3 text-center font-bold text-[var(--primary)]">{r.contribution}</td>
+                          <td className="px-2 sm:px-4 py-3 text-center">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              r.status === 'Delivered' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+                            }`}>
+                              {r.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* How it works */}
+            <div className="card mt-6">
+              <div className="flex items-center gap-2 mb-3">
+                <Target size={16} className="text-[var(--primary)]" />
+                <span className="text-sm font-bold text-white">How Club Rewards Work</span>
+              </div>
+              <div className="space-y-2 text-xs text-gray-400">
+                <p>1. Complete club missions to earn Club Mission Points</p>
+                <p>2. Rewards are <span className="text-white font-semibold">automatically distributed</span> to members — no manual claiming needed</p>
+                <p>3. Distribution is based on the method set by the club owner (contribution %, equal split, or rank-based)</p>
+                <p>4. Rewards include spin tickets, boosters, badges, and SOL prizes</p>
+                <p>5. Higher-tier rewards unlock as your club levels up</p>
               </div>
             </div>
           </>

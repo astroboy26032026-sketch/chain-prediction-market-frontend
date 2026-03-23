@@ -347,6 +347,7 @@ function WarsTab({ clubName, clubAvatar }: { clubName: string; clubAvatar: strin
 
 /* ─── Missions Tab ─── */
 function MissionsTab() {
+  const router = useRouter();
   return (
     <div className="space-y-3">
       {MOCK_MISSIONS.map(m => {
@@ -388,6 +389,24 @@ function MissionsTab() {
           </div>
         );
       })}
+
+      {/* Links to Point System & Rewards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+        <button
+          onClick={() => router.push('/point/wallet?tab=club')}
+          className="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white"
+          style={{ backgroundImage: 'linear-gradient(135deg, var(--primary), var(--accent))' }}
+        >
+          <TrendingUp size={16} /> View in Point System
+        </button>
+        <button
+          onClick={() => router.push('/reward/wallet?tab=club')}
+          className="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white border border-[var(--primary)]"
+          style={{ backgroundImage: 'linear-gradient(135deg, var(--primary), var(--accent))' }}
+        >
+          <Award size={16} /> Redeem Club Rewards
+        </button>
+      </div>
     </div>
   );
 }

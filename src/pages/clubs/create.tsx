@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '@/components/layout/Layout';
 import SEO from '@/components/seo/SEO';
-import { ArrowLeft, Upload, Users, Lock, Globe, Zap } from 'lucide-react';
+import { ArrowLeft, Upload, Users, Lock, Globe, Zap, Trophy, Gift, TrendingUp, Crown, Percent } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { type ClubCategory, CLUB_CATEGORIES } from '@/constants/clubs-mock';
 
@@ -18,6 +18,8 @@ export default function CreateClubPage() {
   const [avatar, setAvatar] = useState('🐸');
   const [linkedToken, setLinkedToken] = useState('');
   const [creating, setCreating] = useState(false);
+  const [enableRewards, setEnableRewards] = useState(false);
+  const [rewardDistribution, setRewardDistribution] = useState<'contribution' | 'equal' | 'rank'>('contribution');
 
   const canCreate = name.trim().length >= 3 && tag.trim().length >= 2 && description.trim().length >= 10;
 
@@ -145,6 +147,109 @@ export default function CreateClubPage() {
               placeholder="Token mint address..."
               className="w-full px-4 py-2.5 rounded-xl bg-[var(--card2)] border border-[var(--card-border)] text-white placeholder-gray-500 text-sm focus:outline-none focus:border-[var(--primary)] transition-colors font-mono"
             />
+          </div>
+
+          {/* Reward Participation */}
+          <div className="bg-[var(--card)] rounded-2xl border border-[var(--card-border)] p-5">
+            <div className="flex items-center gap-2 mb-1.5">
+              <Trophy size={14} className="text-[var(--primary)]" />
+              <span className="text-sm font-bold text-[var(--foreground)]">Reward Participation</span>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">Enable rewards so your club members automatically receive prizes from completed missions.</p>
+
+            {/* Toggle */}
+            <div className="flex gap-3 mb-4">
+              <button
+                onClick={() => setEnableRewards(true)}
+                className={`flex-1 flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                  enableRewards ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--card-border)] bg-[var(--card2)]'
+                }`}
+              >
+                <Gift size={20} className={enableRewards ? 'text-[var(--primary)]' : 'text-gray-500'} />
+                <div className="text-left">
+                  <div className={`text-sm font-semibold ${enableRewards ? 'text-white' : 'text-gray-400'}`}>Yes, enable rewards</div>
+                  <div className="text-[10px] text-gray-500">Members earn auto-distributed prizes</div>
+                </div>
+              </button>
+              <button
+                onClick={() => setEnableRewards(false)}
+                className={`flex-1 flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                  !enableRewards ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--card-border)] bg-[var(--card2)]'
+                }`}
+              >
+                <Lock size={20} className={!enableRewards ? 'text-[var(--primary)]' : 'text-gray-500'} />
+                <div className="text-left">
+                  <div className={`text-sm font-semibold ${!enableRewards ? 'text-white' : 'text-gray-400'}`}>No rewards</div>
+                  <div className="text-[10px] text-gray-500">Club for social / community only</div>
+                </div>
+              </button>
+            </div>
+
+            {/* Distribution options — shown only if rewards enabled */}
+            {enableRewards && (
+              <div className="border-t border-[var(--card-border)] pt-4">
+                <span className="text-xs font-bold text-gray-300 block mb-3">How should rewards be distributed?</span>
+                <div className="space-y-2">
+                  {([
+                    {
+                      key: 'contribution' as const,
+                      icon: <Percent size={16} />,
+                      title: 'By Contribution %',
+                      desc: 'Members who contribute more to missions get a larger share. Fair and motivating.',
+                      example: 'e.g. Member A did 40% of mission work → gets 40% of reward pool',
+                    },
+                    {
+                      key: 'equal' as const,
+                      icon: <Users size={16} />,
+                      title: 'Equal Split',
+                      desc: 'All active members receive the same reward regardless of contribution.',
+                      example: 'e.g. 10 active members → each gets 10% of reward pool',
+                    },
+                    {
+                      key: 'rank' as const,
+                      icon: <Crown size={16} />,
+                      title: 'By Rank / Leaderboard',
+                      desc: 'Top contributors on the leaderboard get the biggest share, descending by rank.',
+                      example: 'e.g. #1 gets 30%, #2 gets 20%, #3 gets 15%, rest split remaining',
+                    },
+                  ]).map(opt => (
+                    <button
+                      key={opt.key}
+                      onClick={() => setRewardDistribution(opt.key)}
+                      className={`w-full text-left p-4 rounded-xl border transition-all ${
+                        rewardDistribution === opt.key
+                          ? 'border-[var(--primary)] bg-[var(--primary)]/10'
+                          : 'border-[var(--card-border)] bg-[var(--card2)] hover:border-gray-600'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={rewardDistribution === opt.key ? 'text-[var(--primary)]' : 'text-gray-500'}>{opt.icon}</span>
+                        <span className={`text-sm font-semibold ${rewardDistribution === opt.key ? 'text-white' : 'text-gray-400'}`}>
+                          {opt.title}
+                        </span>
+                        {rewardDistribution === opt.key && (
+                          <span className="ml-auto px-2 py-0.5 rounded-full text-[9px] font-bold bg-[var(--primary)]/20 text-[var(--primary)]">
+                            Selected
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 ml-6">{opt.desc}</p>
+                      <p className="text-[10px] text-gray-600 ml-6 mt-1 italic">{opt.example}</p>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-4 p-3 rounded-xl bg-[var(--card2)] border border-[var(--card-border)]">
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingUp size={12} className="text-[var(--primary)]" />
+                    <span className="text-[10px] font-bold text-gray-300">Note</span>
+                  </div>
+                  <p className="text-[10px] text-gray-500">
+                    Reward distribution method can be changed later by the club owner. Rewards are distributed automatically at the end of each mission cycle (weekly). Members must be active (completed at least 1 mission) to be eligible.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Privacy */}
