@@ -5,7 +5,7 @@ import { useRouter } from 'next/router';
 
 import Layout from '@/components/layout/Layout';
 import SEO from '@/components/seo/SEO';
-import Spinner from '@/components/ui/Spinner';
+import SpaceLoader from '@/components/ui/SpaceLoader';
 
 import {
   getTransactionsByAddress,
@@ -335,11 +335,7 @@ const UserDashboard: React.FC = () => {
         )}
       </div>
 
-      {tokenLoading && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Spinner size="large" />
-        </div>
-      )}
+      {tokenLoading && <SpaceLoader variant="overlay" size="large" />}
     </Layout>
   );
 };

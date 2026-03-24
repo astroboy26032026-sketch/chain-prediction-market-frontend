@@ -20,12 +20,6 @@ import {
   ChatWriteRequest,
   ChatWriteResponse,
 
-  // ✅ Referrals types
-  ReferralSummary,
-  ReferralLinkInfo,
-  ReferralListResponse,
-  ClaimReferralResponse,
-
   // ✅ Trading types
   TradingBuyRequest,
   TradingBuyResponse,
@@ -38,15 +32,6 @@ import {
   SubmitSignatureResponse,
   TradingTxStatusResponse,
 
-  // ✅ Arena types
-  Arena,
-  ArenaDetail,
-  ArenaListResponse,
-  ArenaMyBetsResponse,
-  ArenaBetRequest,
-  ArenaBetResponse,
-  ArenaStatus,
-  ArenaType,
 } from '@/interface/types';
 
 // =====================
@@ -343,113 +328,6 @@ export type UpdateTokenRequest = {
 
 export async function updateToken(_payload: UpdateTokenRequest): Promise<Token> {
   throw new Error('updateToken API is not implemented on backend yet.');
-}
-
-// =====================
-// ✅ Profile (NEW DOC IMPLEMENTATION)
-// - GET /profile/info?walletAddress=...
-// - GET /profile/stats?walletAddress=...&limitActivities=20&limitFavoriteTokens=10
-// =====================
-
-export type ProfileInfoResponse = {
-  walletAddress: string;
-  username: string;
-  avatar: string;
-  bio: string;
-  joinedAt: string;
-  totalTokensCreated: number;
-  totalTokensBought: number;
-  totalTokensSold: number;
-};
-
-export type ProfileStatsResponse = {
-  walletAddress: string;
-  totalBuys: number;
-  totalSells: number;
-  totalVolumeSOL: number;
-  totalPnL: number;
-  rank: number; // backend note: currently 0
-  favoriteTokens: string[];
-  recentActivities: Array<{
-    type: string;
-    tokenAddress: string;
-    amount: number;
-    timestamp: string;
-  }>;
-};
-
-function normalizeProfileInfo(input: any, walletAddress: string): ProfileInfoResponse {
-  // đảm bảo không crash UI khi backend trả null/undefined field
-  return {
-    walletAddress: String(input?.walletAddress ?? walletAddress ?? '').trim(),
-    username: String(input?.username ?? ''),
-    avatar: String(input?.avatarUrl ?? input?.avatar ?? ''),
-    bio: String(input?.bio ?? ''),
-    joinedAt: String(input?.joinedAt ?? ''),
-    totalTokensCreated: Number(input?.totalTokensCreated ?? 0),
-    totalTokensBought: Number(input?.totalTokensBought ?? 0),
-    totalTokensSold: Number(input?.totalTokensSold ?? 0),
-  };
-}
-
-function normalizeProfileStats(input: any, walletAddress: string): ProfileStatsResponse {
-  return {
-    walletAddress: String(input?.walletAddress ?? walletAddress ?? '').trim(),
-    totalBuys: Number(input?.totalBuys ?? 0),
-    totalSells: Number(input?.totalSells ?? 0),
-    totalVolumeSOL: Number(input?.totalVolumeSOL ?? 0),
-    totalPnL: Number(input?.totalPnL ?? 0),
-    rank: Number(input?.rank ?? 0),
-    favoriteTokens: Array.isArray(input?.favoriteTokens) ? input.favoriteTokens.map(String) : [],
-    recentActivities: Array.isArray(input?.recentActivities)
-      ? input.recentActivities.map((x: any) => ({
-          type: String(x?.type ?? ''),
-          tokenAddress: String(x?.tokenAddress ?? ''),
-          amount: Number(x?.amount ?? 0),
-          timestamp: String(x?.timestamp ?? ''),
-        }))
-      : [],
-  };
-}
-
-/**
- * Get user profile information
- * GET /profile/info?walletAddress=...
- */
-export async function getProfileInfo(walletAddress: string): Promise<ProfileInfoResponse> {
-  const addr = String(walletAddress ?? '').trim();
-  if (!addr) throw new Error('Missing walletAddress');
-
-  // thống nhất đi qua proxy giống các endpoint khác
-  const headers = getAuthHeaders();
-  const { data } = await getViaProxy<ProfileInfoResponse>('/profile/info', { walletAddress: addr }, headers);
-
-  return normalizeProfileInfo(data, addr);
-}
-
-/**
- * Get user trading statistics
- * GET /profile/stats?walletAddress=...&limitActivities=20&limitFavoriteTokens=10
- */
-export async function getProfileStats(
-  walletAddress: string,
-  opts?: { limitActivities?: number; limitFavoriteTokens?: number }
-): Promise<ProfileStatsResponse> {
-  const addr = String(walletAddress ?? '').trim();
-  if (!addr) throw new Error('Missing walletAddress');
-
-  const limitActivities = opts?.limitActivities == null ? 20 : toNonNegInt(opts.limitActivities, 'limitActivities');
-  const limitFavoriteTokens =
-    opts?.limitFavoriteTokens == null ? 10 : toNonNegInt(opts.limitFavoriteTokens, 'limitFavoriteTokens');
-
-  const headers = getAuthHeaders();
-  const { data } = await getViaProxy<ProfileStatsResponse>(
-    '/profile/stats',
-    { walletAddress: addr, limitActivities, limitFavoriteTokens },
-    headers
-  );
-
-  return normalizeProfileStats(data, addr);
 }
 
 // =====================
@@ -1125,58 +1003,6 @@ export async function getLeaderboardList(params?: {
 }
 
 // =====================
-// ✅ Referrals API (Solana)
-// =====================
-export async function getReferralSummary(): Promise<ReferralSummary> {
-  const headers = getAuthHeaders();
-  if (!headers?.Authorization) throw new Error('Unauthorized (Bearer token required)');
-  const { data } = await getViaProxy<ReferralSummary>('/referrals/summary', {}, headers);
-  return data;
-}
-
-export async function getReferralLinkInfo(): Promise<ReferralLinkInfo> {
-  const headers = getAuthHeaders();
-  if (!headers?.Authorization) throw new Error('Unauthorized (Bearer token required)');
-  const { data } = await getViaProxy<ReferralLinkInfo>('/referrals/link', {}, headers);
-  return data;
-}
-
-export async function getReferralList(opts?: { limit?: number; cursor?: string | null }): Promise<ReferralListResponse> {
-  const headers = getAuthHeaders();
-  if (!headers?.Authorization) throw new Error('Unauthorized (Bearer token required)');
-
-  const limitRaw = opts?.limit ?? 50;
-  const limit = Math.min(Math.max(Number(limitRaw) || 50, 1), 200);
-
-  const { data } = await getViaProxy<ReferralListResponse>(
-    '/referrals/list',
-    { limit, cursor: opts?.cursor ?? undefined },
-    headers
-  );
-
-  return { items: data?.items ?? [] };
-}
-
-export async function claimReferralRewards(): Promise<ClaimReferralResponse> {
-  const headers = getAuthHeaders();
-  if (!headers?.Authorization) {
-    throw new Error('Unauthorized (Bearer token required)');
-  }
-
-  const { data } = await postViaProxy<ClaimReferralResponse>('/referrals/claim', {}, headers);
-
-  return data;
-}
-
-export async function trackReferral(walletAddress: string): Promise<{ ok: boolean }> {
-  const { data } = await postViaProxy<{ ok: boolean }>(
-    '/referrals/track',
-    { walletAddress, tradingVolumeSol: 0 },
-  );
-  return data;
-}
-
-// =====================
 // ✅ ADD BACK: functions used by Dashboard (to avoid TS error)
 // =====================
 export async function getTokensByCreator(
@@ -1472,47 +1298,3 @@ export async function spinReward(walletAddress: string): Promise<RewardSpinRespo
   return normalizeRewardSpinResponse(data);
 }
 
-// =====================
-// ✅ Arena / Prediction Market
-// =====================
-
-export async function getArenaList(params?: {
-  status?: ArenaStatus;
-  type?: ArenaType;
-  limit?: number;
-  cursor?: string;
-}): Promise<ArenaListResponse> {
-  const headers = getAuthHeaders();
-  const { data } = await getViaProxy<ArenaListResponse>('/arena/list', params ?? {}, headers);
-  return {
-    items: data.items ?? [],
-    nextCursor: data.nextCursor ?? null,
-  };
-}
-
-export async function getArenaDetail(id: string): Promise<ArenaDetail> {
-  if (!id) throw new Error('Missing arena id');
-  const headers = getAuthHeaders();
-  const { data } = await getViaProxy<ArenaDetail>(`/arena/${id}`, {}, headers);
-  return data;
-}
-
-export async function placeBet(req: ArenaBetRequest): Promise<ArenaBetResponse> {
-  if (!req.arenaId || !req.optionId || !req.amount) throw new Error('Invalid bet request');
-  const headers = getAuthHeaders();
-  const { data } = await postViaProxy<ArenaBetResponse>('/arena/bet', req, headers);
-  return data;
-}
-
-export async function getMyBets(params?: {
-  status?: 'active' | 'completed';
-  limit?: number;
-  cursor?: string;
-}): Promise<ArenaMyBetsResponse> {
-  const headers = getAuthHeaders();
-  const { data } = await getViaProxy<ArenaMyBetsResponse>('/arena/my-bets', params ?? {}, headers);
-  return {
-    items: data.items ?? [],
-    nextCursor: data.nextCursor ?? null,
-  };
-}

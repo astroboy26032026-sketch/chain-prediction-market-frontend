@@ -19,3 +19,4 @@
 .palette-dots .palette-dot--bud    { background:linear-gradient(135deg,#7C9A3A,#C2D37A) !important; }
 .palette-dots .palette-dot--bloom  { background:linear-gradient(135deg,#E07BA5,#A1D6C2) !important; }
 .palette-dots .palette-dot--canopy { background:linear-gradient(135deg,#2F7A69,#79C9B5) !important; }
+.palette-dots .palette-dot--galaxy { background:linear-gradient(135deg,#0A0C18,#7C6FFF 50%,#40BFFF) !important; }

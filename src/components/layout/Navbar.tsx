@@ -4,10 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
 import { toast } from 'react-toastify';
-import HowItWorksPopup from '@/components/notifications/HowItWorksPopup';
-import { Switch } from '@/components/ui/switch';
-import { Sun, Moon, User2, UsersRound, Gift, Trophy, Gem, Coins, Menu, X, Zap, CalendarDays, Bell } from 'lucide-react';
-import { UNREAD_NOTIFICATION_COUNT } from '@/pages/profile/[address]';
+import { Menu, X } from 'lucide-react';
 
 import { useWallet } from '@solana/wallet-adapter-react';
 import dynamic from 'next/dynamic';
@@ -19,8 +16,8 @@ const SolanaAuth = dynamic(() => import('@/components/auth/SolanaAuth'), {
 /* =========================
    Palette setup
 ========================= */
-type Palette = 'seed' | 'sprout' | 'bud' | 'bloom' | 'canopy';
-const PALETTES: Palette[] = ['seed', 'sprout', 'bud', 'bloom', 'canopy'];
+type Palette = 'seed' | 'sprout' | 'bud' | 'bloom' | 'canopy' | 'galaxy';
+const PALETTES: Palette[] = ['seed', 'sprout', 'bud', 'bloom', 'canopy', 'galaxy'];
 
 /* =========================
    SVG brand icons
@@ -97,75 +94,37 @@ const NavLink: React.FC<{ href: string; children: React.ReactNode; exact?: boole
    Sidebar content (shared between desktop & mobile)
 ========================= */
 const SidebarContent: React.FC<{
-  isDark: boolean;
   palette: Palette;
-  onThemeToggle: (v: boolean) => void;
   onPaletteChange: (p: Palette) => void;
-  onProfileClick: () => void;
   onPointClick: () => void;
   onRewardClick: () => void;
   onCreateClick: () => void;
-  onShowHow: () => void;
   onNavClick?: () => void;
 }> = ({
-  isDark, palette, onThemeToggle, onPaletteChange,
-  onProfileClick, onPointClick, onRewardClick, onCreateClick, onShowHow, onNavClick,
+  palette, onPaletteChange,
+  onPointClick, onRewardClick, onCreateClick, onNavClick,
 }) => (
   <>
     <div>
       {/* Menu */}
       <div className="flex flex-col gap-2 sidebar-menu">
-        <button onClick={() => { onProfileClick(); onNavClick?.(); }} className="sidebar-link">
-          <User2 className="sidebar-icon" />
-          <span className="sidebar-label">My Profile</span>
-          {/* Notification bell with shake animation + unread badge */}
-          {UNREAD_NOTIFICATION_COUNT > 0 && (
-            <span className="relative ml-auto flex items-center">
-              <Bell className="w-4 h-4 text-[var(--primary)] notification-bell-shake" />
-              <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 flex items-center justify-center px-1 rounded-full bg-red-500 text-white text-[10px] font-extrabold leading-none">
-                {UNREAD_NOTIFICATION_COUNT}
-              </span>
-            </span>
-          )}
-        </button>
-
-        <NavLink href="/arena" onClick={onNavClick}>
-          <span className="arena-nav-fire">🔥</span>
-          <span className="sidebar-label arena-nav-label">Arena</span>
-        </NavLink>
-
         <NavLink href="/events" onClick={onNavClick}>
-          <span className="arena-nav-fire">🎉</span>
-          <span className="sidebar-label arena-nav-label">Events</span>
-        </NavLink>
-
-        <NavLink href="/clubs" onClick={onNavClick}>
-          <span className="arena-nav-fire">⚔️</span>
-          <span className="sidebar-label arena-nav-label">Clubs</span>
-        </NavLink>
-
-        <NavLink href="/leaderboard" onClick={onNavClick}>
-          <Trophy className="sidebar-icon" />
-          <span className="sidebar-label">Leader Board</span>
+          <span className="text-lg leading-none">🌌</span>
+          <span className="sidebar-label">Promote</span>
         </NavLink>
 
         <button onClick={() => { onPointClick(); onNavClick?.(); }} className="sidebar-link">
-          <Gem className="sidebar-icon" />
+          <span className="text-lg leading-none">⭐</span>
           <span className="sidebar-label">Point System</span>
         </button>
 
         <button onClick={() => { onRewardClick(); onNavClick?.(); }} className="sidebar-link">
-          <Gift className="sidebar-icon" />
+          <span className="text-lg leading-none">🎁</span>
           <span className="sidebar-label">Rewards</span>
         </button>
 
-        <NavLink href="/referrals" onClick={onNavClick}>
-          <UsersRound className="sidebar-icon" />
-          <span className="sidebar-label">Referrals</span>
-        </NavLink>
-
         <NavLink href="/stake" onClick={onNavClick}>
-          <Coins className="sidebar-icon" />
+          <span className="text-lg leading-none">🪐</span>
           <span className="sidebar-label">Stake</span>
         </NavLink>
 
@@ -181,30 +140,9 @@ const SidebarContent: React.FC<{
           <SolanaAuth />
         </div>
 
-        {/* Theme & Palette */}
+        {/* Palette */}
         <div className="mt-4 p-3 rounded-xl border border-[var(--navbar-border)] bg-[var(--card)] bg-opacity-70 backdrop-blur-md">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              {isDark ? <Moon className="w-5 h-5 text-[var(--primary)]" /> : <Sun className="w-5 h-5 text-yellow-400" />}
-              <span className="text-[13px] opacity-90">{isDark ? 'Dark Mode' : 'Light Mode'}</span>
-            </div>
-
-            <Switch
-              checked={isDark}
-              onCheckedChange={onThemeToggle}
-              className={`${
-                isDark ? 'bg-[color:var(--primary)]' : 'bg-[color:var(--card-border)]'
-              } relative inline-flex h-6 w-11 items-center rounded-full transition-colors`}
-            >
-              <span
-                className={`${
-                  isDark ? 'translate-x-6' : 'translate-x-1'
-                } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
-              />
-            </Switch>
-          </div>
-
-          <div className="mt-3 flex items-center justify-between">
+          <div className="flex items-center justify-between">
             <span className="text-xs opacity-80">Palette</span>
             <div className="palette-dots">
               {PALETTES.map((p) => (
@@ -235,17 +173,14 @@ const SidebarContent: React.FC<{
 
         <div className="footer-nav flex-wrap">
           <Link href="/about" className="footer-nav-link" onClick={onNavClick}>
-            Doc
+            Docs & How it Works
           </Link>
           <Link href="/FAQ" className="footer-nav-link" onClick={onNavClick}>
             FAQ
           </Link>
-          <button onClick={() => { onShowHow(); onNavClick?.(); }} className="footer-nav-link">
-            How it Works
-          </button>
         </div>
 
-        <p className="footer-text">© {new Date().getFullYear()} Pumpfun Clone</p>
+        <p className="footer-text">© {new Date().getFullYear()} CosmoX</p>
       </div>
     </div>
   </>
@@ -255,7 +190,6 @@ const SidebarContent: React.FC<{
    Navbar Component
 ========================= */
 const Navbar: React.FC = () => {
-  const [showHow, setShowHow] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const router = useRouter();
 
@@ -275,27 +209,18 @@ const Navbar: React.FC = () => {
   const { publicKey } = useWallet();
   const address = publicKey?.toBase58();
 
-  const [isDark, setIsDark] = useState(true);
   const [palette, setPalette] = useState<Palette>('seed');
 
   useEffect(() => {
-    const t = getInitialTheme();
-    applyTheme(t);
-    setIsDark(t === 'dark');
+    applyTheme('dark');
     const p = getInitialPalette();
     applyPalette(p);
     setPalette(p);
   }, []);
 
   const sharedProps = {
-    isDark,
     palette,
-    onThemeToggle: (v: boolean) => { setIsDark(v); applyTheme(v ? 'dark' : 'light'); },
     onPaletteChange: (p: Palette) => { setPalette(p); applyPalette(p); },
-    onProfileClick: () => {
-      if (!address) return toast.error('Please connect your wallet first');
-      router.push(`/profile/${address}`);
-    },
     onPointClick: () => {
       if (!address) return toast.error('Please connect your wallet first');
       router.push(`/point/${address}`);
@@ -305,16 +230,15 @@ const Navbar: React.FC = () => {
       router.push(`/reward/${address}`);
     },
     onCreateClick: () => router.push('/create'),
-    onShowHow: () => setShowHow(true),
   };
 
   return (
     <>
       {/* ===== MOBILE TOP BAR ===== */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 h-14 bg-[var(--navbar-bg)] border-b border-[var(--navbar-border)] backdrop-blur-md safe-area-top">
-        <Link href="/" className="flex items-center gap-2">
-          <Image src="/logo-seed.png" alt="Logo" width={36} height={36} className="rounded-lg" priority />
-          <span className="brand-title text-base">Pumpfun Clone</span>
+        <Link href="/" className="flex items-center gap-2 shrink-0">
+          <Image src="/logo.png" alt="Logo" width={44} height={44} className="rounded-lg" priority />
+          <span className="brand-title" style={{ fontSize: '20px' }}>CosmoX</span>
         </Link>
         <button
           onClick={() => setMobileOpen((v) => !v)}
@@ -345,22 +269,20 @@ const Navbar: React.FC = () => {
       <nav className="hidden md:flex navbar app-navbar fixed left-0 top-0 z-40 h-screen w-[248px] flex-col justify-between px-4 py-6">
         {/* Desktop keeps logo */}
         <div>
-          <Link href="/" className="flex items-center gap-3 mb-6 group">
+          <Link href="/" className="flex items-center gap-2 mb-6 group">
             <Image
-              src="/logo-seed.png"
-              alt="Pumpfun Clone Logo"
-              width={72}
-              height={72}
+              src="/logo.png"
+              alt="CosmoX Logo"
+              width={96}
+              height={96}
               className="rounded-xl logo-bounce shadow-lg"
               priority
             />
-            <span className="brand-title">Pumpfun Clone</span>
+            <span className="brand-title">CosmoX</span>
           </Link>
         </div>
         <SidebarContent {...sharedProps} />
       </nav>
-
-      <HowItWorksPopup isVisible={showHow} onClose={() => setShowHow(false)} />
     </>
   );
 };

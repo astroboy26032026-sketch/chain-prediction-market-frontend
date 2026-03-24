@@ -198,12 +198,10 @@ const ALLOWED_PROXY_PREFIXES = [
   '/token/',
   '/chats',
   '/chat/',
-  '/referral/',
-  '/rewards/',
+'/rewards/',
   '/points/',
   '/trading/',
   '/user/',
-  '/profile/',
   '/staking/',
   '/leaderboard/',
 ];

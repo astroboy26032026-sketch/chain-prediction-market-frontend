@@ -40,14 +40,6 @@ const MarqueeSection: React.FC<MarqueeSectionProps> = ({
 }) => {
   return (
     <>
-      <Marquee speed={30} height={96}>
-        <div className="flex items-center gap-6 px-6">
-          <span className="font-bold tracking-widest">
-            PUMP FUN CLONE • MAKE MONEY ON THE MEMECONOMY • FAIR LAUNCH • NO BOT DRAMA
-          </span>
-        </div>
-      </Marquee>
-
       <Marquee speed={130}>
         {(marqueeTokens ?? []).map((token, index) => {
           const rawAddr =

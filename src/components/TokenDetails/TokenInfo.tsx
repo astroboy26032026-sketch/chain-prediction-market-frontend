@@ -13,7 +13,7 @@ import Image from 'next/image';
 import { toast } from 'react-toastify';
 
 import Link from 'next/link';
-import { formatTimestamp, shortenAddress, formatAddressV2, formatAmount } from '@/utils/blockchainUtils';
+import { formatTimestamp, shortenAddress, formatAddressV2 } from '@/utils/blockchainUtils';
 import type { Token } from '@/interface/types';
 
 // =====================
@@ -59,8 +59,6 @@ interface TokenInfoProps {
     totalSupply?: number | string;
     supply?: number | string;
     progressDex?: number;
-    arenaStatus?: string; // 'joined' | 'active' | 'matched' | etc.
-    arenaId?: string; // arena match id for linking
   };
   showHeader?: boolean;
   refreshTrigger?: number;
@@ -113,12 +111,8 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
     return `${description.slice(0, maxLength)}...`;
   };
 
-  // current price: try multiple field names
-  const currentPriceValue = tokenInfo?.price ?? tokenInfo?.currentPrice ?? tokenInfo?.priceUsd ?? null;
-
   // market stats — try multiple field names
   const marketCapValue = Number(tokenInfo?.marketCap ?? tokenInfo?.mcapUsd ?? tokenInfo?.marketcapUsd ?? tokenInfo?.marketCapUsd ?? 0) || 0;
-  const volume24hValue = Number(tokenInfo?.volume24h ?? tokenInfo?.vol24h ?? tokenInfo?.vol24hUsd ?? tokenInfo?.volume24hUsd ?? 0) || 0;
   const holdersValue = Number(tokenInfo?.holders ?? tokenInfo?.holderCount ?? 0) || 0;
   const liquidityValue = Number(tokenInfo?.liquidity ?? 0) || 0;
   const totalSupplyValue = Number(tokenInfo?.totalSupply ?? tokenInfo?.supply ?? 0) || 0;
@@ -151,8 +145,8 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
         <InfoItem
           label="Deployer"
           value={tokenInfo?.creatorAddress ? shortenAddress(tokenInfo.creatorAddress) : '—'}
-          link={tokenInfo?.creatorAddress ? `/profile/${tokenInfo.creatorAddress}` : undefined}
-          isExternal={false}
+          link={tokenInfo?.creatorAddress ? explorerAddressUrl(tokenInfo.creatorAddress) : undefined}
+          isExternal={true}
           copyValue={tokenInfo?.creatorAddress}
         />
       </div>
@@ -163,23 +157,8 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
           value={tokenInfo?.createdAt ? formatTimestamp(tokenInfo.createdAt as any) : '—'}
         />
         <InfoItem
-          label="Current Price"
-          value={
-            currentPriceValue != null && String(currentPriceValue).trim() !== '' && Number(currentPriceValue) > 0
-              ? `$${formatAmount(String(currentPriceValue))}`
-              : '—'
-          }
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <InfoItem
           label="Market Cap"
           value={marketCapValue > 0 ? `$${fmtNum(marketCapValue, 2)}` : '—'}
-        />
-        <InfoItem
-          label="24h Volume"
-          value={volume24hValue > 0 ? `$${fmtNum(volume24hValue, 2)}` : '—'}
         />
       </div>
 
@@ -194,41 +173,6 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
         />
       </div>
 
-      {/* Arena Status */}
-      <div className={`p-3 rounded-lg border-thin ${tokenInfo?.arenaStatus ? 'bg-[var(--card2)]' : 'bg-[var(--card2)]'}`}
-        style={tokenInfo?.arenaStatus ? { borderLeft: '3px solid var(--accent)' } : undefined}
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-xs text-gray-400 mb-1">Arena</div>
-            <div className="text-sm font-medium flex items-center gap-2">
-              {tokenInfo?.arenaStatus ? (
-                <>
-                  <span className="relative flex h-2.5 w-2.5 shrink-0">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: 'var(--accent)' }} />
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5" style={{ backgroundColor: 'var(--accent)' }} />
-                  </span>
-                  <span className="text-[var(--accent)] font-semibold capitalize">{tokenInfo.arenaStatus}</span>
-                </>
-              ) : (
-                <>
-                  <span className="w-2.5 h-2.5 rounded-full bg-gray-600 shrink-0" />
-                  <span className="text-gray-500">Not joined</span>
-                </>
-              )}
-            </div>
-          </div>
-          {tokenInfo?.arenaStatus && (
-            <Link
-              href={tokenInfo?.arenaId ? `/arena/${tokenInfo.arenaId}` : `/arena?token=${addr}`}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all text-white"
-              style={{ backgroundImage: 'linear-gradient(135deg, var(--primary), var(--accent))' }}
-            >
-              View Arena
-            </Link>
-          )}
-        </div>
-      </div>
     </div>
   );
 

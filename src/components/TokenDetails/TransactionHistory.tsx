@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getTokenTrades } from '@/utils/api.index';
 import type { TokenTrade } from '@/interface/types';
-import LoadingBar from '@/components/ui/LoadingBar';
+import SpaceLoader from '@/components/ui/SpaceLoader';
 import { COMMON } from '@/constants/ui-text';
 
 type Props = {
@@ -93,7 +93,7 @@ const TransactionHistory: React.FC<Props> = ({ tokenAddress }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tokenAddress]);
 
-  if (initialLoading) return <LoadingBar />;
+  if (initialLoading) return <SpaceLoader variant="overlay" />;
 
   return (
     <div className="w-full">

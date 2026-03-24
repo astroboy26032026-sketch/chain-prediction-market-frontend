@@ -5,7 +5,7 @@ import { Tab } from '@headlessui/react';
 
 import Layout from '@/components/layout/Layout';
 import SEO from '@/components/seo/SEO';
-import Spinner from '@/components/ui/Spinner';
+import SpaceLoader from '@/components/ui/SpaceLoader';
 import ShareButton from '@/components/ui/ShareButton';
 
 import TradingViewChart from '@/components/charts/TradingViewChart';
@@ -15,7 +15,6 @@ import TokenInfo from '@/components/TokenDetails/TokenInfo';
 import Chats from '@/components/TokenDetails/Chats';
 
 import SwapPanel from '@/components/token/SwapPanel';
-import TrustLevel from '@/components/token/TrustLevel';
 
 import { useTokenDetail } from '@/hooks/useTokenDetail';
 import { COMMON } from '@/constants/ui-text';
@@ -59,7 +58,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
     return (
       <Layout>
         <div className="flex justify-center items-center min-h-screen">
-          <Spinner size="large" />
+          <SpaceLoader variant="overlay" size="large" />
         </div>
       </Layout>
     );
@@ -75,16 +74,7 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
     tokenBalance: swap.tokenBalance,
     tokenSymbol,
     actionButtonText: swap.actionButtonText,
-    antiMEV: swap.antiMEV,
-    setAntiMEV: swap.setAntiMEV,
-    txSpeed: swap.txSpeed,
-    setTxSpeed: swap.setTxSpeed,
-    priorityFee: swap.priorityFee,
-    setPriorityFee: swap.setPriorityFee,
-    bribe: swap.bribe,
-    setBribe: swap.setBribe,
     slippagePct: swap.slippagePct,
-    setSlippagePct: swap.setSlippagePct,
     onSwap: swap.handleSwap,
     onFromAmountChange: swap.handleFromAmountChange,
     onMaxClick: swap.handleMaxClick,
@@ -104,7 +94,6 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
           refreshTrigger={refreshCounter}
           liquidityEvents={liquidityEvents}
         />
-        <TrustLevel />
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -209,11 +198,6 @@ const TokenDetail: React.FC<TokenDetailProps> = ({ initialTokenInfo }) => {
               />
             </div>
 
-            <div className="flex-1 flex">
-              <div className="w-full">
-                <TrustLevel />
-              </div>
-            </div>
           </div>
         </div>
 

@@ -4,7 +4,6 @@ import { useRouter } from 'next/router';
 import { Buffer } from 'buffer';
 import { VersionedTransaction } from '@solana/web3.js';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { Gift, Trophy, Shield, Target, CheckCircle2, Users, Swords } from 'lucide-react';
 
 import Layout from '@/components/layout/Layout';
 import SEO from '@/components/seo/SEO';
@@ -14,86 +13,19 @@ import {
   convertRewardPoints,
   getRewardInfo,
   getRewardMarquee,
-  getRewardSpinConfig,
-  spinReward,
   type RewardInfoResponse,
   type RewardMarqueeItem,
-  type RewardSpinConfigResponse,
-  type RewardSpinHistoryItem,
 } from '@/utils/api';
 
 /* =========================
    CONFIG
 ========================= */
-const FALLBACK_SYMBOLS = ['seed', 'leaf', 'clover', 'flower', 'flame', 'gem', 'star'];
-const FALLBACK_MULTIPLIER: Record<string, number> = {
-  seed: 1,
-  leaf: 1.5,
-  clover: 2,
-  flower: 3,
-  flame: 5,
-  gem: 10,
-  star: 25,
-};
-const FALLBACK_REELS = 5;
-const FALLBACK_RULE = `# Spin Game Rules
-
-## How to play
-- Press SPIN to spin all reels.
-- The screen will freeze until the spin completes.
-
-## Winning
-- Win if you get 3 or more of the same symbol.
-- Symbols do not need to be adjacent.
-
-## Claim
-- When you win, SOL is pending.
-- Press CLAIM to collect your SOL.`;
-
-const SYMBOL_UI_MAP: Record<string, string> = {
-  seed: '🌱',
-  leaf: '🌿',
-  clover: '🍀',
-  flower: '🌼',
-  flame: '🔥',
-  gem: '💎',
-  star: '⭐',
-};
-
-const SYMBOL_PX = 84;
-const SYMBOL_PX_MOBILE = 56;
-const STRIP_REPEAT = 80;
-const BASE_CYCLES = 8;
-const STOP_GAP_MS = 220;
-const STOP_DURATION_MS = 900;
 const CLAIM_STATUS_TIMEOUT_MS = 20000;
 const CLAIM_STATUS_POLL_MS = 1500;
-
-/** Returns reel size: 56px on mobile (<640px), 84px on desktop */
-function useReelSize(): number {
-  const [size, setSize] = useState(SYMBOL_PX);
-  useEffect(() => {
-    const update = () => setSize(window.innerWidth < 640 ? SYMBOL_PX_MOBILE : SYMBOL_PX);
-    update();
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, []);
-  return size;
-}
 
 /* =========================
    UTILS
 ========================= */
-function getTranslateY(el: HTMLElement): number {
-  const st = getComputedStyle(el);
-  const tr = st.transform || (st as any).webkitTransform || 'none';
-  if (tr === 'none') return 0;
-  const m = tr.match(/matrix\(([^)]+)\)/);
-  if (!m) return 0;
-  const parts = m[1].split(',').map((n: string) => parseFloat(n.trim()));
-  return parts.length === 6 ? parts[5] : 0;
-}
-
 function fmtSol(value: number, min = 3, max = 6): string {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n) || n === 0) return '0.000';
@@ -103,30 +35,12 @@ function fmtSol(value: number, min = 3, max = 6): string {
   });
 }
 
-function symbolToUi(symbol: string): string {
-  return SYMBOL_UI_MAP[symbol] ?? symbol;
-}
-
 function maskUserId(userId: string): string {
   const s = String(userId ?? '').trim();
   if (!s) return 'Guest';
   if (/^guest/i.test(s)) return s;
   if (s.length <= 10) return s;
   return `${s.slice(0, 4)}...${s.slice(-4)}`;
-}
-
-function formatSpinTime(input: string): string {
-  const d = new Date(input);
-  if (Number.isNaN(d.getTime())) return input || '-';
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-
-function normalizeRuleText(rule: string): string {
-  return String(rule ?? '')
-    .replace(/^#{1,6}\s?/gm, '')
-    .replace(/\*\*/g, '')
-    .replace(/\|/g, ' | ')
-    .trim();
 }
 
 function extractErrorInfo(error: any): { status: number; code: string; message: string } {
@@ -147,63 +61,6 @@ function extractErrorInfo(error: any): { status: number; code: string; message: 
     status,
     code: String(text || '').trim().toLowerCase(),
     message: String(text || '').trim(),
-  };
-}
-
-function getSpinMessageFromError(error: any): { title: string; text: string; tone: 'success' | 'error' } {
-  const { status, code } = extractErrorInfo(error);
-
-  if (status === 400) {
-    if (code.includes('insufficient_tickets')) {
-      return {
-        title: REWARD.NOT_ENOUGH_TICKETS_TITLE,
-        text: REWARD.NOT_ENOUGH_TICKETS_TEXT,
-        tone: 'error',
-      };
-    }
-    return {
-      title: REWARD.SPIN_INVALID_TITLE,
-      text: 'Your spin request could not be processed. Please refresh the page and try again.',
-      tone: 'error',
-    };
-  }
-
-  if (status === 404) {
-    return {
-      title: 'Reward Account Not Found',
-      text: 'We could not find reward data for this wallet address. Please reconnect your wallet and try again.',
-      tone: 'error',
-    };
-  }
-
-  if (status === 429) {
-    return {
-      title: 'Spin On Cooldown',
-      text: 'Your next spin is still on cooldown. Please wait a moment, then try again.',
-      tone: 'error',
-    };
-  }
-
-  if (status === 500) {
-    return {
-      title: 'Server Error',
-      text: 'Something went wrong on the server while spinning. Please try again in a bit.',
-      tone: 'error',
-    };
-  }
-
-  if (status === 503 || code.includes('reward_spin_unavailable')) {
-    return {
-      title: 'Spin Unavailable',
-      text: 'The reward spin system is temporarily unavailable right now. Please try again later.',
-      tone: 'error',
-    };
-  }
-
-  return {
-    title: 'Spin Failed',
-    text: 'Your spin could not be completed. Please try again.',
-    tone: 'error',
   };
 }
 
@@ -311,122 +168,6 @@ function isWalletRejected(error: any): boolean {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/* =========================
-   REEL COMPONENT
-========================= */
-function Reel({
-  index,
-  finalSymbol,
-  spinning,
-  symbols,
-  sizePx = SYMBOL_PX,
-}: {
-  index: number;
-  finalSymbol: string | null;
-  spinning: boolean;
-  symbols: string[];
-  sizePx?: number;
-}) {
-  const stripRef = useRef<HTMLDivElement>(null);
-  const [looping, setLooping] = useState(false);
-  const [stopOffset, setStopOffset] = useState<number | null>(null);
-
-  const safeSymbols = symbols.length > 0 ? symbols : FALLBACK_SYMBOLS;
-
-  const repeated = useMemo(
-    () => Array.from({ length: STRIP_REPEAT * safeSymbols.length }, (_, i) => safeSymbols[i % safeSymbols.length]),
-    [safeSymbols]
-  );
-
-  useEffect(() => {
-    const strip = stripRef.current;
-    if (!strip) return;
-
-    if (spinning) {
-      strip.style.transition = 'none';
-      setLooping(true);
-      setStopOffset(null);
-      return;
-    }
-
-    if (finalSymbol) {
-      const currentTy = getTranslateY(strip);
-      const currentOffset = Math.max(0, -currentTy);
-      const currentIndex = Math.floor(currentOffset / sizePx);
-
-      const targetIdx = safeSymbols.indexOf(finalSymbol);
-      if (targetIdx < 0) return;
-
-      const cycles = BASE_CYCLES + index;
-      const deltaSteps =
-        cycles * safeSymbols.length +
-        ((targetIdx - (currentIndex % safeSymbols.length) + safeSymbols.length) % safeSymbols.length);
-
-      const totalSymbols = STRIP_REPEAT * safeSymbols.length;
-      const totalHeight = totalSymbols * sizePx;
-
-      let targetPx = (currentIndex + deltaSteps) * sizePx;
-
-      while (targetPx <= currentOffset) targetPx += totalHeight;
-      targetPx = ((targetPx % totalHeight) + totalHeight) % totalHeight;
-      if (targetPx <= currentOffset % totalHeight) targetPx += totalHeight;
-
-      const duration = STOP_DURATION_MS + index * 180;
-
-      setLooping(false);
-      requestAnimationFrame(() => {
-        if (!stripRef.current) return;
-        stripRef.current.style.transition = `transform ${duration}ms cubic-bezier(.12,.72,.08,1)`;
-        setStopOffset(targetPx);
-      });
-
-      const timer = setTimeout(() => {
-        if (stripRef.current) stripRef.current.style.transition = 'none';
-      }, duration + 80);
-      return () => clearTimeout(timer);
-    }
-  }, [spinning, finalSymbol, index, safeSymbols]);
-
-  return (
-    <div
-      className="reel-window shrink-0 bg-[var(--card2)] border border-[var(--card-border)] rounded-2xl shadow-inner overflow-hidden"
-      style={{ width: sizePx, height: sizePx }}
-    >
-      <div
-        ref={stripRef}
-        className={`reel-strip ${looping ? 'spin-fast' : ''}`}
-        style={{ transform: stopOffset != null ? `translateY(-${stopOffset}px)` : undefined }}
-      >
-        {repeated.map((s, i) => (
-          <div key={`${s}_${i}`} className="grid place-items-center" style={{ height: sizePx, fontSize: sizePx * 0.64 }}>
-            {symbolToUi(s)}
-          </div>
-        ))}
-      </div>
-
-      <style jsx>{`
-        .reel-window {
-          position: relative;
-        }
-        .reel-strip {
-          will-change: transform;
-        }
-        .spin-fast {
-          animation: spinY 120ms linear infinite;
-        }
-        @keyframes spinY {
-          from {
-            transform: translateY(0);
-          }
-          to {
-            transform: translateY(-${safeSymbols.length * sizePx}px);
-          }
-        }
-      `}</style>
-    </div>
-  );
 }
 
 /* =========================
@@ -586,18 +327,18 @@ const ClaimModal: React.FC<ClaimModalProps> = ({ open, amountText, onCancel, onC
    LUCKY WHEEL COMPONENT
 ========================= */
 const WHEEL_SEGMENTS = [
-  { label: '0.1 SOL', value: 0.1, color: '#22c55e' },
-  { label: '0.5 SOL', value: 0.5, color: '#3b82f6' },
-  { label: '1 SOL', value: 1, color: '#a855f7' },
-  { label: '0.05 SOL', value: 0.05, color: '#f59e0b' },
-  { label: '5 SOL', value: 5, color: '#ef4444' },
-  { label: '0.2 SOL', value: 0.2, color: '#06b6d4' },
-  { label: '10 SOL', value: 10, color: '#ec4899' },
-  { label: 'Try Again', value: 0, color: '#6b7280' },
-  { label: '0.01 SOL', value: 0.01, color: '#84cc16' },
-  { label: '50 SOL', value: 50, color: '#f97316' },
-  { label: '0.5 SOL', value: 0.5, color: '#8b5cf6' },
-  { label: 'Try Again', value: 0, color: '#4b5563' },
+  { label: '0.1 SOL',  value: 0.1,  color: '#F9A8D4', textColor: '#831843', emoji: '🌙' },
+  { label: '0.5 SOL',  value: 0.5,  color: '#93C5FD', textColor: '#1e3a8a', emoji: '⭐' },
+  { label: '1 SOL',    value: 1,    color: '#C4B5FD', textColor: '#4c1d95', emoji: '🪐' },
+  { label: '0.05 SOL', value: 0.05, color: '#FDA4AF', textColor: '#881337', emoji: '☄️' },
+  { label: '5 SOL',    value: 5,    color: '#7DD3FC', textColor: '#075985', emoji: '🚀' },
+  { label: '0.2 SOL',  value: 0.2,  color: '#DDD6FE', textColor: '#4c1d95', emoji: '🌟' },
+  { label: '10 SOL',   value: 10,   color: '#F9A8D4', textColor: '#831843', emoji: '🌌' },
+  { label: 'Try Again',value: 0,    color: '#93C5FD', textColor: '#1e3a8a', emoji: '🌑' },
+  { label: '0.01 SOL', value: 0.01, color: '#C4B5FD', textColor: '#4c1d95', emoji: '✨' },
+  { label: '50 SOL',   value: 50,   color: '#FDA4AF', textColor: '#881337', emoji: '💫' },
+  { label: '0.5 SOL',  value: 0.5,  color: '#7DD3FC', textColor: '#075985', emoji: '🛸' },
+  { label: 'Try Again',value: 0,    color: '#DDD6FE', textColor: '#4c1d95', emoji: '🌑' },
 ];
 
 const LuckyWheel: React.FC<{ tickets: number; onSpinComplete: (prize: typeof WHEEL_SEGMENTS[0]) => void }> = ({ tickets, onSpinComplete }) => {
@@ -621,6 +362,12 @@ const LuckyWheel: React.FC<{ tickets: number; onSpinComplete: (prize: typeof WHE
 
     ctx.clearRect(0, 0, size, size);
 
+    // White outer ring
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 8, 0, Math.PI * 2);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fill();
+
     // Draw segments
     segments.forEach((seg, i) => {
       const startA = rot + i * segAngle;
@@ -633,58 +380,53 @@ const LuckyWheel: React.FC<{ tickets: number; onSpinComplete: (prize: typeof WHE
       ctx.fillStyle = seg.color;
       ctx.fill();
 
-      // Border
-      ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-      ctx.lineWidth = 1.5;
+      // White border between segments
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.lineWidth = 2;
       ctx.stroke();
 
-      // Label
+      // Label text
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(startA + segAngle / 2);
       ctx.textAlign = 'right';
-      ctx.fillStyle = '#fff';
-      ctx.font = `bold ${Math.max(10, r * 0.08)}px sans-serif`;
-      ctx.shadowColor = 'rgba(0,0,0,0.5)';
-      ctx.shadowBlur = 3;
-      ctx.fillText(seg.label, r - 14, 4);
+      ctx.fillStyle = (seg as any).textColor || '#1e1b4b';
+      ctx.font = `bold ${Math.max(9, r * 0.08)}px sans-serif`;
+      ctx.shadowColor = 'rgba(255,255,255,0.5)';
+      ctx.shadowBlur = 2;
+      ctx.fillText(seg.label, r - 10, 4);
       ctx.shadowBlur = 0;
       ctx.restore();
     });
 
-    // Center circle
+    // Center hub — dark circle with "Spin" text
+    const hubR = r * 0.18;
     ctx.beginPath();
-    ctx.arc(cx, cy, r * 0.15, 0, Math.PI * 2);
-    ctx.fillStyle = '#1a1a2e';
+    ctx.arc(cx, cy, hubR, 0, Math.PI * 2);
+    ctx.fillStyle = '#0f172a';
     ctx.fill();
-    ctx.strokeStyle = 'var(--primary)';
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2.5;
     ctx.stroke();
 
-    // "SPIN" text in center
-    ctx.fillStyle = '#fff';
     ctx.font = `bold ${r * 0.09}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('SPIN', cx, cy);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('Spin', cx, cy);
+    ctx.textBaseline = 'alphabetic';
 
-    // Outer ring
+    // Teardrop pointer at top
+    const ptrY = cy - r - 4;
     ctx.beginPath();
-    ctx.arc(cx, cy, r + 4, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(201,142,107,0.4)';
-    ctx.lineWidth = 6;
-    ctx.stroke();
-
-    // Pointer (triangle at top)
-    ctx.beginPath();
-    ctx.moveTo(cx, 4);
-    ctx.lineTo(cx - 12, -8);
-    ctx.lineTo(cx + 12, -8);
+    ctx.moveTo(cx, ptrY + 18);
+    ctx.lineTo(cx - 9, ptrY);
+    ctx.lineTo(cx + 9, ptrY);
     ctx.closePath();
-    ctx.fillStyle = '#C98E6B';
+    ctx.fillStyle = '#0f172a';
     ctx.fill();
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
     ctx.stroke();
   }, [segments, segAngle]);
 
@@ -732,16 +474,18 @@ const LuckyWheel: React.FC<{ tickets: number; onSpinComplete: (prize: typeof WHE
 
   return (
     <div className="flex flex-col items-center">
+      {/* Galaxy glow backdrop */}
       <div className="relative" style={{ width: 340, height: 340 }}>
-        {/* Pointer */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 z-10">
-          <div className="w-0 h-0 border-l-[14px] border-r-[14px] border-t-[22px] border-l-transparent border-r-transparent" style={{ borderTopColor: '#C98E6B' }} />
-        </div>
+        {/* Outer glow */}
+        <div className="absolute inset-0 rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(124,111,255,0.25) 0%, rgba(64,191,255,0.10) 50%, transparent 70%)', pointerEvents: 'none' }}
+        />
         <canvas
           ref={canvasRef}
           width={340}
           height={340}
-          className="cursor-pointer"
+          className="cursor-pointer rounded-full"
+          style={{ filter: 'drop-shadow(0 0 18px rgba(124,111,255,0.55))' }}
           onClick={handleSpin}
         />
       </div>
@@ -749,12 +493,13 @@ const LuckyWheel: React.FC<{ tickets: number; onSpinComplete: (prize: typeof WHE
       <button
         onClick={handleSpin}
         disabled={spinning || tickets <= 0}
-        className="btn btn-primary mt-6 px-8 py-3 text-base font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+        className="btn btn-primary mt-5 px-10 py-3 text-sm font-bold tracking-widest uppercase disabled:opacity-50 disabled:cursor-not-allowed"
+        style={{ backgroundImage: 'linear-gradient(135deg, #7C6FFF, #40BFFF)' }}
       >
-        {spinning ? 'Spinning...' : tickets <= 0 ? 'No Tickets' : 'SPIN THE WHEEL'}
+        {spinning ? '🌀 Spinning…' : tickets <= 0 ? '🎟 No Tickets' : '🚀 SPIN'}
       </button>
 
-      <p className="text-xs text-gray-400 mt-2">1 ticket per spin</p>
+      <p className="text-xs text-gray-500 mt-2">1 ticket per spin · {tickets} ticket{tickets !== 1 ? 's' : ''} left</p>
     </div>
   );
 };
@@ -762,14 +507,6 @@ const LuckyWheel: React.FC<{ tickets: number; onSpinComplete: (prize: typeof WHE
 /* =========================
    MAIN PAGE
 ========================= */
-type HistoryRow = {
-  id: string;
-  time: string;
-  bet: number;
-  result: string;
-  payoutSol: number;
-};
-
 const RewardPage: React.FC = () => {
   const router = useRouter();
   const { connection } = useConnection();
@@ -780,36 +517,15 @@ const RewardPage: React.FC = () => {
     return typeof raw === 'string' ? raw.trim() : '';
   }, [router.query.address]);
 
-  // Tab from query param (?tab=wheel|club)
-  const rewardTab = useMemo(() => {
-    const t = router.query.tab;
-    if (t === 'wheel') return 'wheel';
-    if (t === 'club') return 'club';
-    return 'slots';
-  }, [router.query.tab]);
-
-  const setRewardTab = (tab: 'slots' | 'wheel' | 'club') => {
-    router.replace({ pathname: router.pathname, query: { ...router.query, tab } }, undefined, { shallow: true });
-  };
-
   const [rewardInfo, setRewardInfo] = useState<RewardInfoResponse | null>(null);
-  const [spinConfig, setSpinConfig] = useState<RewardSpinConfigResponse | null>(null);
   const [marqueeItems, setMarqueeItems] = useState<RewardMarqueeItem[]>([]);
   const [wheelResult, setWheelResult] = useState<{ label: string; value: number } | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [claiming, setClaiming] = useState(false);
   const [converting, setConverting] = useState(false);
-  const [spinning, setSpinning] = useState(false);
   const [cooldownNow, setCooldownNow] = useState<number>(Date.now());
 
-  const reelSize = useReelSize();
-  const symbols = spinConfig?.symbols?.length ? spinConfig.symbols : FALLBACK_SYMBOLS;
-  const reels = Number(spinConfig?.reels ?? FALLBACK_REELS) || FALLBACK_REELS;
-  const multiplier = spinConfig?.multiplier ?? FALLBACK_MULTIPLIER;
-  const rulesText = spinConfig?.rule || FALLBACK_RULE;
-
-  const [finals, setFinals] = useState<(string | null)[]>(Array(reels).fill(null));
   const [statusModal, setStatusModal] = useState<{
     open: boolean;
     title: string;
@@ -824,26 +540,11 @@ const RewardPage: React.FC = () => {
   const [claimModal, setClaimModal] = useState<{ open: boolean }>({ open: false });
 
   useEffect(() => {
-    setFinals(Array(reels).fill(null));
-  }, [reels]);
-
-  useEffect(() => {
     const timer = setInterval(() => {
       setCooldownNow(Date.now());
     }, 1000);
     return () => clearInterval(timer);
   }, []);
-
-  const history = useMemo<HistoryRow[]>(() => {
-    const recent = rewardInfo?.recentSpins ?? [];
-    return recent.map((item: RewardSpinHistoryItem, idx) => ({
-      id: `${item.time}_${idx}`,
-      time: formatSpinTime(item.time),
-      bet: 1,
-      result: item.result.map(symbolToUi).join(''),
-      payoutSol: Number(item.payoutSol ?? 0),
-    }));
-  }, [rewardInfo?.recentSpins]);
 
   const winners = useMemo(() => {
     if (!marqueeItems.length) return ['Loading winners...'];
@@ -862,15 +563,13 @@ const RewardPage: React.FC = () => {
 
     try {
       setLoading(true);
-      const [infoRes, marqueeRes, spinConfigRes] = await Promise.all([
+      const [infoRes, marqueeRes] = await Promise.all([
         getRewardInfo(address),
         getRewardMarquee(),
-        getRewardSpinConfig(),
       ]);
 
       setRewardInfo(infoRes);
       setMarqueeItems(Array.isArray(marqueeRes?.items) ? marqueeRes.items : []);
-      setSpinConfig(spinConfigRes);
       return infoRes;
     } catch (error: any) {
       console.error('[Reward] Load error:', error);
@@ -938,81 +637,12 @@ const RewardPage: React.FC = () => {
   }, [cooldownUntil, cooldownNow]);
 
   const cooldownActive = remainingCooldownMs > 0;
-  const spinLabel = spinning ? REWARD.SPINNING : cooldownActive ? `COOLDOWN ${formatCountdown(remainingCooldownMs)}` : REWARD.SPIN;
 
-  const canSpin = !loading && !spinning && tickets > 0 && !cooldownActive;
-  const canClaim = !loading && !spinning && !claiming && claimableSol > 0;
+  const canClaim = !loading && !claiming && claimableSol > 0;
   const convertConfig = rewardInfo?.convertConfig;
-  const canConvert = !loading && !spinning && !converting && points > 0;
+  const canConvert = !loading && !converting && points > 0;
 
   const actionBtnClass = 'btn btn-primary w-[160px] h-10 text-[14px] font-semibold tracking-wide text-white';
-
-  const handleSpin = async () => {
-    if (!address || !canSpin) return;
-
-    try {
-      const res = await spinReward(address);
-
-      const apiResult = Array.isArray(res.result) ? res.result.slice(0, reels) : [];
-      const paddedResult = Array.from({ length: reels }, (_, i) => apiResult[i] ?? symbols[i % symbols.length]);
-
-      setSpinning(true);
-      setFinals(Array(reels).fill(null));
-
-      paddedResult.forEach((sym, i) => {
-        setTimeout(() => {
-          setFinals((prev) => {
-            const next = [...prev];
-            next[i] = sym;
-            return next;
-          });
-        }, 600 + i * STOP_GAP_MS);
-      });
-
-      const totalStop = 600 + (reels - 1) * STOP_GAP_MS + STOP_DURATION_MS + 240;
-
-      setTimeout(() => {
-        const nowIso = new Date().toISOString();
-
-        setRewardInfo((prev) => {
-          if (!prev) return prev;
-          const nextSpin: RewardSpinHistoryItem = {
-            time: nowIso,
-            result: paddedResult,
-            payoutSol: Number(res.payoutSol ?? 0),
-          };
-
-          return {
-            ...prev,
-            tickets: Number(res.ticketsLeft ?? Math.max(prev.tickets - 1, 0)),
-            claimableSol: Number(res.claimableSol ?? prev.claimableSol),
-            cooldownUntil: String(res.cooldownUntil ?? prev.cooldownUntil ?? ''),
-            recentSpins: [nextSpin, ...(prev.recentSpins ?? [])].slice(0, 10),
-          };
-        });
-
-        if (Number(res.payoutSol ?? 0) > 0) {
-          openStatusModal(
-            REWARD.SPIN_SUCCESS_TITLE,
-            `🎉 Congratulations! You won +${fmtSol(Number(res.payoutSol ?? 0))} SOL.`,
-            'success'
-          );
-        } else {
-          openStatusModal(
-            REWARD.SPIN_NO_REWARD_TITLE,
-            REWARD.SPIN_NO_REWARD_TEXT,
-            'success'
-          );
-        }
-
-        setSpinning(false);
-      }, totalStop);
-    } catch (error: any) {
-      console.error('[Reward] Spin error:', error);
-      const msg = getSpinMessageFromError(error);
-      openStatusModal(msg.title, msg.text, msg.tone);
-    }
-  };
 
   const onClaim = () => {
     if (!canClaim) return;
@@ -1196,486 +826,116 @@ const RewardPage: React.FC = () => {
       </div>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 pb-12 pt-6">
-        <h1 className="text-2xl sm:text-3xl font-extrabold my-6 text-[var(--primary)]">{SEO_TEXT.REWARDS_TITLE}</h1>
+        <h1 className="text-2xl sm:text-3xl font-extrabold my-4 text-[var(--primary)] text-center">{SEO_TEXT.REWARDS_TITLE}</h1>
 
-        {/* ═══ Tabs: Slot Machine / Lucky Wheel ═══ */}
-        <div className="flex bg-[var(--card2)] rounded-xl p-1 mb-8">
-          {([
-            { key: 'slots' as const, label: 'Slot Machine', icon: <Gift size={16} /> },
-            { key: 'wheel' as const, label: 'Lucky Wheel', icon: <Trophy size={16} /> },
-            { key: 'club' as const, label: 'Club Rewards', icon: <Shield size={16} /> },
-          ]).map(({ key, label, icon }) => (
-            <button
-              key={key}
-              onClick={() => setRewardTab(key)}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-                rewardTab === key
-                  ? 'text-white shadow-sm'
-                  : 'text-gray-400 hover:text-gray-200'
-              }`}
-              style={rewardTab === key ? { backgroundImage: 'linear-gradient(135deg, var(--primary), var(--accent))' } : undefined}
-            >
-              {icon} {label}
-            </button>
-          ))}
-        </div>
+        {/* Dashboard: left = info, right = wheel */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 items-start">
 
-        {/* Stats row — different per tab */}
-        {rewardTab === 'slots' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-            <div className="card text-center">
-              <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">Slot Reward</p>
-              <div className="text-3xl font-extrabold text-[var(--primary)]">{fmtSol(claimableSol)} SOL</div>
-
-              <div className="mt-6 flex justify-center">
-                <button
-                  onClick={onClaim}
-                  disabled={!canClaim}
-                  className={`${actionBtnClass} ${!canClaim ? 'opacity-60 cursor-not-allowed' : ''}`}
-                >
-                  {claiming ? REWARD.CLAIMING : REWARD.CLAIM}
-                </button>
-              </div>
-            </div>
-
-            <div className="card text-center">
-              <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">{REWARD.YOUR_TICKETS}</p>
-              <div className="text-3xl font-extrabold text-[var(--primary)] mb-4">{tickets}</div>
-
-              <div className="mt-6 flex justify-center">
-                <button
-                  onClick={handleSpin}
-                  disabled={!canSpin}
-                  className={`${actionBtnClass} ${!canSpin ? 'opacity-60 cursor-not-allowed' : ''}`}
-                >
-                  {spinLabel}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {rewardTab === 'wheel' && (
-          /* Lucky Wheel stats — fake data (comment: replace with BE/API when ready) */
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-            <div className="card text-center">
-              <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">Wheel Reward</p>
-              <div className="text-3xl font-extrabold text-[var(--primary)]">{fmtSol(wheelResult?.value ?? 0)} SOL</div>
-              <div className="mt-4 flex justify-center">
-                {/* fake claim — comment: replace with BE/API when ready */}
-                <button
-                  onClick={() => {
-                    if (!wheelResult || wheelResult.value <= 0) return;
-                    openStatusModal(
-                      'Claim Successful',
-                      `You claimed ${fmtSol(wheelResult.value)} SOL from the Lucky Wheel! (Demo mode — BE not connected yet)`,
-                      'success'
-                    );
-                    setWheelResult(null);
-                  }}
-                  disabled={!wheelResult || wheelResult.value <= 0}
-                  className={`${actionBtnClass} ${!wheelResult || wheelResult.value <= 0 ? 'opacity-60 cursor-not-allowed' : ''}`}
-                >
-                  Claim SOL
-                </button>
-              </div>
-            </div>
-
-            <div className="card text-center">
-              <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">Wheel Tickets</p>
-              {/* fake — separate ticket pool for wheel (comment: replace with API) */}
-              <div className="text-3xl font-extrabold text-[var(--primary)] mb-4">2</div>
-              <p className="text-xs text-gray-500">Earned from Trading Volume</p>
-            </div>
-
-            <div className="card text-center">
-              <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">Total Won</p>
-              {/* fake total (comment: replace with API) */}
-              <div className="text-3xl font-extrabold text-[var(--primary)]">0.000 SOL</div>
-              <p className="text-xs text-gray-500">Lifetime wheel winnings</p>
-            </div>
-          </div>
-        )}
-
-        {rewardTab === 'club' && (
-          /* Club Rewards stats — fake data (comment: replace with BE/API when ready) */
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-            <div className="card text-center">
-              <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">Club Points</p>
-              <div className="text-3xl font-extrabold text-[var(--primary)]">1,250</div>
-              <p className="text-xs text-gray-500 mt-1">Earned from club missions</p>
-            </div>
-            <div className="card text-center">
-              <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">Redeemed</p>
-              <div className="text-3xl font-extrabold text-green-400">350</div>
-              <p className="text-xs text-gray-500 mt-1">Points spent on rewards</p>
-            </div>
-            <div className="card text-center">
-              <p className="text-xs uppercase tracking-wider text-gray-400 mb-2">Available</p>
-              <div className="text-3xl font-extrabold text-[var(--primary)]">900</div>
-              <p className="text-xs text-gray-500 mt-1">Ready to redeem</p>
-            </div>
-          </div>
-        )}
-
-        {/* ═══ Slot Machine Tab ═══ */}
-        {rewardTab === 'slots' && (
-          <>
-            <div className="card py-10 flex flex-col items-center justify-center">
-              <div className="w-full md:w-auto overflow-x-auto md:overflow-visible">
-                <div className="inline-flex flex-nowrap items-center justify-center gap-2 sm:gap-6 px-1">
-                  {Array.from({ length: reels }).map((_, i) => (
-                    <Reel key={i} index={i} spinning={spinning} finalSymbol={finals[i]} symbols={symbols} sizePx={reelSize} />
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-10 items-stretch">
-              <div className="flex flex-col gap-6">
-                <div className="card">
-                  <div className="flex flex-col gap-4">
-                    <div>
-                      <h3 className="text-lg font-bold text-[var(--primary)]">{REWARD.CONVERT_POINTS}</h3>
-                      <p className="text-sm text-gray-400 mt-1">{REWARD.CURRENT_POINTS}: {points}</p>
-                    </div>
-
-                    {(convertConfig?.options?.length || convertConfig?.allowAll) ? (
-                      <div className="grid grid-cols-3 gap-2">
-                        {(convertConfig?.options ?? []).map((opt) => (
-                          <button
-                            key={opt}
-                            onClick={() => handleConvert(opt, 'exact')}
-                            disabled={!canConvert || points < opt}
-                            className={`btn btn-primary h-9 text-[13px] font-semibold text-white ${!canConvert || points < opt ? 'opacity-60 cursor-not-allowed' : ''}`}
-                          >
-                            {converting ? '...' : `${opt} Ticket${opt > 1 ? 's' : ''}`}
-                          </button>
-                        ))}
-                        {convertConfig?.allowAll && (
-                          <button
-                            onClick={() => handleConvert(convertConfig.maxTicketsConvertible || points, 'all')}
-                            disabled={!canConvert}
-                            className={`btn btn-primary h-9 text-[13px] font-semibold text-white ${!canConvert ? 'opacity-60 cursor-not-allowed' : ''}`}
-                          >
-                            {converting ? '...' : (convertConfig.labelAll || 'All Tickets')}
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-400">Not enough points to convert tickets.</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="card flex-1">
-                  <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">{REWARD.MULTIPLIERS}</h3>
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 text-center max-w-[420px]">
-                    {symbols.map((key) => (
-                      <div key={key} className="bg-[var(--card2)] rounded-lg p-2 border border-[var(--card-border)]">
-                        <div className="text-2xl">{symbolToUi(key)}</div>
-                        <div className="text-[11px] text-gray-400 truncate">{key}</div>
-                        <div className="text-xs text-gray-400">x{Number(multiplier[key] ?? 0)}</div>
-                      </div>
-                    ))}
-                  </div>
+          {/* LEFT */}
+          <div className="flex flex-col gap-4">
+            {/* Stats row */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 text-center">
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Wheel Reward</p>
+                <div className="text-xl font-extrabold text-[var(--primary)]">{fmtSol(wheelResult?.value ?? 0)} SOL</div>
+                <div className="mt-2 flex justify-center">
+                  <button
+                    onClick={() => {
+                      if (!wheelResult || wheelResult.value <= 0) return;
+                      openStatusModal('Claim Successful', `You claimed ${fmtSol(wheelResult.value)} SOL from the Lucky Wheel!`, 'success');
+                      setWheelResult(null);
+                    }}
+                    disabled={!wheelResult || wheelResult.value <= 0}
+                    className={`${actionBtnClass} text-xs px-3 py-1.5 ${!wheelResult || wheelResult.value <= 0 ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  >
+                    Claim SOL
+                  </button>
                 </div>
               </div>
 
-              <div className="card h-full">
-                <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">{REWARD.RULES}</h3>
-                <div className="text-xs leading-relaxed text-gray-400 whitespace-pre-wrap break-words">
-                  {normalizeRuleText(rulesText)}
-                </div>
-              </div>
-            </div>
-
-            <div className="card mt-6">
-              <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">{REWARD.HISTORY}</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs sm:text-sm min-w-[360px]">
-                  <thead>
-                    <tr className="text-left text-gray-400">
-                      <th className="py-2 pr-2 sm:pr-4">Time</th>
-                      <th className="py-2 pr-2 sm:pr-4">Bet</th>
-                      <th className="py-2 pr-2 sm:pr-4">Result</th>
-                      <th className="py-2 pr-2 sm:pr-4">Payout</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.length ? (
-                      history.map((h) => (
-                        <tr key={h.id} className="border-t border-[var(--card-border)]">
-                          <td className="py-2 pr-2 sm:pr-4">{h.time}</td>
-                          <td className="py-2 pr-2 sm:pr-4">{h.bet}</td>
-                          <td className="py-2 pr-2 sm:pr-4 font-semibold">{h.result}</td>
-                          <td className="py-2 pr-2 sm:pr-4">{fmtSol(h.payoutSol)} SOL</td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr className="border-t border-[var(--card-border)]">
-                        <td className="py-4 text-gray-400" colSpan={4}>
-                          {REWARD.NO_SPINS}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* ═══ Lucky Wheel Tab ═══ */}
-        {rewardTab === 'wheel' && (
-          <>
-            <div className="card py-10 flex flex-col items-center justify-center">
-              <LuckyWheel
-                tickets={tickets}
-                onSpinComplete={(prize) => {
-                  setWheelResult(prize);
-                  if (prize.value > 0) {
-                    openStatusModal(
-                      'You Won!',
-                      `🎉 Congratulations! You won ${prize.label}! The prize will be added to your claimable balance.`,
-                      'success'
-                    );
-                  } else {
-                    openStatusModal(
-                      'Try Again',
-                      'No luck this time. Spin again for another chance!',
-                      'success'
-                    );
-                  }
-                  // Deduct ticket locally — do NOT touch claimableSol (that belongs to slot machine API)
-                  setRewardInfo(prev => {
-                    if (!prev) return prev;
-                    return {
-                      ...prev,
-                      tickets: Math.max(0, prev.tickets - 1),
-                    };
-                  });
-                }}
-              />
-            </div>
-
-            {/* Wheel prizes info */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-              <div className="card">
-                <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">Prize Table</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {WHEEL_SEGMENTS.filter((s, i, arr) =>
-                    arr.findIndex(x => x.label === s.label) === i
-                  ).map((seg, i) => (
-                    <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-[var(--card2)] border border-[var(--card-border)]">
-                      <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: seg.color }} />
-                      <span className="text-sm text-gray-300 font-semibold">{seg.label}</span>
-                    </div>
-                  ))}
-                </div>
+              <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 text-center">
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">{REWARD.YOUR_TICKETS}</p>
+                <div className="text-xl font-extrabold text-[var(--primary)] mb-1">{tickets}</div>
+                <p className="text-[10px] text-gray-500">Daily Quests & Events</p>
               </div>
 
-              <div className="card">
-                <h3 className="text-lg font-bold mb-3 text-[var(--primary)]">How it Works</h3>
-                <div className="space-y-2 text-sm text-gray-400">
-                  <p>1. Each spin costs <strong className="text-white">1 ticket</strong></p>
-                  <p>2. Click the wheel or the SPIN button to start</p>
-                  <p>3. The wheel spins and lands on a random prize</p>
-                  <p>4. Winnings are added to your claimable SOL balance</p>
-                  <p>5. Click <strong className="text-white">CLAIM</strong> to withdraw to your wallet</p>
-                  <p className="text-[var(--primary)] font-semibold mt-3">Earn tickets from Daily Quests & Trading Volume events!</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Convert points section for wheel tab too */}
-            <div className="card mt-6">
-              <div className="flex flex-col gap-4">
-                <div>
-                  <h3 className="text-lg font-bold text-[var(--primary)]">{REWARD.CONVERT_POINTS}</h3>
-                  <p className="text-sm text-gray-400 mt-1">{REWARD.CURRENT_POINTS}: {points}</p>
-                </div>
-
+              <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4">
+                <h3 className="text-[11px] font-bold text-[var(--primary)] mb-1">{REWARD.CONVERT_POINTS}</h3>
+                <p className="text-[10px] text-gray-400 mb-2">{REWARD.CURRENT_POINTS}: {points}</p>
                 {(convertConfig?.options?.length || convertConfig?.allowAll) ? (
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="flex flex-wrap gap-1.5">
                     {(convertConfig?.options ?? []).map((opt) => (
-                      <button
-                        key={opt}
-                        onClick={() => handleConvert(opt, 'exact')}
-                        disabled={!canConvert || points < opt}
-                        className={`btn btn-primary h-9 text-[13px] font-semibold text-white ${!canConvert || points < opt ? 'opacity-60 cursor-not-allowed' : ''}`}
-                      >
-                        {converting ? '...' : `${opt} Ticket${opt > 1 ? 's' : ''}`}
+                      <button key={opt} onClick={() => handleConvert(opt, 'exact')} disabled={!canConvert || points < opt}
+                        className={`btn btn-primary h-7 px-2 text-[10px] font-semibold text-white flex-1 min-w-0 ${!canConvert || points < opt ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                        {converting ? '…' : `${opt}🎟`}
                       </button>
                     ))}
                     {convertConfig?.allowAll && (
-                      <button
-                        onClick={() => handleConvert(convertConfig.maxTicketsConvertible || points, 'all')}
-                        disabled={!canConvert}
-                        className={`btn btn-primary h-9 text-[13px] font-semibold text-white ${!canConvert ? 'opacity-60 cursor-not-allowed' : ''}`}
-                      >
-                        {converting ? '...' : (convertConfig.labelAll || 'All Tickets')}
+                      <button onClick={() => handleConvert(convertConfig.maxTicketsConvertible || points, 'all')} disabled={!canConvert}
+                        className={`btn btn-primary h-7 px-2 text-[10px] font-semibold text-white flex-1 min-w-0 ${!canConvert ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                        {converting ? '…' : 'All'}
                       </button>
                     )}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-400">Not enough points to convert tickets.</p>
+                  <p className="text-[10px] text-gray-400">Not enough points.</p>
                 )}
               </div>
             </div>
-          </>
-        )}
 
-        {/* ═══ Club Rewards Tab (fake data — comment: replace with BE/API when ready) ═══ */}
-        {rewardTab === 'club' && (
-          <>
-            {/* Club info */}
-            <div className="card mb-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl">🐸</span>
-                  <div>
-                    <div className="text-sm font-bold text-white">PEPE Army</div>
-                    <div className="text-xs text-gray-400">Rewards are automatically distributed to club members</div>
-                  </div>
-                </div>
-                <button
-                  onClick={() => router.push(`/point/${address}?tab=club`)}
-                  className="text-xs font-semibold text-[var(--primary)] hover:underline"
-                >
-                  View Missions &rarr;
-                </button>
-              </div>
-            </div>
-
-            {/* Distribution method info */}
-            <div className="card mb-6 border-l-2 border-l-[var(--primary)]">
-              <div className="flex items-center gap-2 mb-2">
-                <Users size={16} className="text-[var(--primary)]" />
-                <span className="text-sm font-bold text-white">Reward Distribution</span>
-              </div>
-              <p className="text-xs text-gray-400 mb-2">This club distributes rewards by <span className="text-[var(--primary)] font-semibold">Contribution %</span> — members who contribute more to missions earn a larger share.</p>
-              <div className="flex items-center gap-4 text-[10px] text-gray-500">
-                <span>Distribution: Auto</span>
-                <span>|</span>
-                <span>Frequency: Weekly</span>
-                <span>|</span>
-                <span>Next: 4d 12h</span>
-              </div>
-            </div>
-
-            {/* Auto reward catalog — no redeem buttons */}
-            <div className="mb-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Gift size={18} className="text-[var(--primary)]" />
-                <span className="text-sm font-bold text-white">Auto Rewards</span>
-                <span className="ml-auto text-[10px] text-gray-500">Distributed automatically based on contribution</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {[
-                  { name: 'Extra Spin Ticket', desc: 'Bonus slot machine spin ticket', icon: '🎰', threshold: '100 pts', received: true, receivedDate: '2026-03-22' },
-                  { name: 'Lucky Wheel Spin', desc: 'Bonus lucky wheel spin', icon: '🎡', threshold: '150 pts', received: true, receivedDate: '2026-03-20' },
-                  { name: '2x Point Booster', desc: 'Double daily points for 24h', icon: '⚡', threshold: '200 pts', received: false, receivedDate: null },
-                  { name: 'Arena Free Entry', desc: 'Free entry to arena battle', icon: '⚔️', threshold: '300 pts', received: false, receivedDate: null },
-                  { name: 'Club XP Badge', desc: 'Exclusive animated profile badge', icon: '🏅', threshold: '500 pts', received: false, receivedDate: null },
-                  { name: 'SOL Airdrop Entry', desc: 'Monthly 50 SOL raffle entry', icon: '💰', threshold: '800 pts', received: false, receivedDate: null },
-                  { name: 'Exclusive NFT Mint', desc: 'Guaranteed club NFT mint spot', icon: '🎨', threshold: '1,500 pts', received: false, receivedDate: null },
-                  { name: 'Club Treasury Share', desc: 'Share of club treasury SOL', icon: '🏦', threshold: '3,000 pts', received: false, receivedDate: null },
-                ].map((reward, i) => (
-                  <div key={i} className={`card border border-[var(--card-border)] ${reward.received ? 'border-l-2 border-l-green-500' : ''}`}>
-                    <div className="flex items-start gap-3">
-                      <span className="text-2xl">{reward.icon}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-bold text-white">{reward.name}</div>
-                        <p className="text-xs text-gray-400 mt-0.5">{reward.desc}</p>
-                        <div className="flex items-center justify-between mt-3">
-                          <span className="text-xs text-gray-500">Requires {reward.threshold}</span>
-                          {reward.received ? (
-                            <span className="flex items-center gap-1 text-[10px] text-green-400 font-semibold">
-                              <CheckCircle2 size={12} /> Received {reward.receivedDate}
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-gray-500 font-semibold">Pending</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+            {/* Prize Table */}
+            <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4">
+              <h3 className="text-sm font-bold mb-3 text-[var(--primary)]">Prize Table</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {WHEEL_SEGMENTS.filter((s, i, arr) => arr.findIndex(x => x.label === s.label) === i).map((seg, i) => (
+                  <div key={i} className="flex items-center gap-2 p-2 rounded-xl border border-[var(--card-border)]"
+                    style={{ background: (seg as any).color + '22' }}>
+                    <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: seg.color }} />
+                    <span className="text-sm font-semibold" style={{ color: (seg as any).textColor }}>{seg.label}</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Reward History — auto distributed */}
-            <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card2)] p-0 overflow-hidden">
-              <div className="px-4 sm:px-6 py-5">
-                <div className="flex items-center gap-2">
-                  <Swords size={16} className="text-[var(--primary)]" />
-                  <span className="text-sm font-extrabold tracking-wide">Reward History</span>
-                </div>
+            {/* How it Works */}
+            <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4">
+              <h3 className="text-sm font-bold mb-3 text-[var(--primary)]">How it Works</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {['Each spin costs 1 ticket', 'Click the wheel or SPIN button', 'Wheel spins & lands on a prize', 'Winnings added to claimable SOL', 'Click CLAIM to withdraw'].map((step, i) => (
+                  <div key={i} className="flex items-start gap-2.5 p-2.5 rounded-xl bg-[var(--card2)]">
+                    <span className="w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-[10px] font-extrabold text-white mt-0.5"
+                      style={{ background: 'linear-gradient(135deg, var(--primary), var(--accent))' }}>{i + 1}</span>
+                    <span className="text-sm text-gray-400">{step}</span>
+                  </div>
+                ))}
               </div>
-              <div className="border-t border-[var(--card-border)]">
-                <div className="w-full overflow-auto">
-                  <table className="min-w-full text-xs sm:text-sm">
-                    <thead className="bg-[var(--card)]">
-                      <tr className="[&>th]:px-2 [&>th]:sm:px-4 [&>th]:py-3 [&>th]:text-center [&>th]:font-extrabold [&>th]:text-xs">
-                        <th className="min-w-[90px]">DATE</th>
-                        <th className="min-w-[150px]">REWARD</th>
-                        <th className="min-w-[100px]">CONTRIBUTION</th>
-                        <th className="min-w-[80px]">STATUS</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[var(--card-border)]">
-                      {[
-                        { date: '2026-03-22', reward: 'Extra Spin Ticket', contribution: '12.4%', status: 'Delivered' },
-                        { date: '2026-03-20', reward: 'Lucky Wheel Spin', contribution: '8.7%', status: 'Delivered' },
-                        { date: '2026-03-18', reward: '2x Point Booster', contribution: '15.2%', status: 'Processing' },
-                      ].map((r, i) => (
-                        <tr key={i} className="hover:bg-[var(--card-hover)]">
-                          <td className="px-2 sm:px-4 py-3 text-center">{r.date}</td>
-                          <td className="px-2 sm:px-4 py-3 text-center text-gray-300 font-semibold">{r.reward}</td>
-                          <td className="px-2 sm:px-4 py-3 text-center font-bold text-[var(--primary)]">{r.contribution}</td>
-                          <td className="px-2 sm:px-4 py-3 text-center">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              r.status === 'Delivered' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
-                            }`}>
-                              {r.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <p className="text-[var(--primary)] font-semibold text-xs mt-3">Earn tickets from Daily Quests & Trading Volume events!</p>
             </div>
+          </div>
 
-            {/* How it works */}
-            <div className="card mt-6">
-              <div className="flex items-center gap-2 mb-3">
-                <Target size={16} className="text-[var(--primary)]" />
-                <span className="text-sm font-bold text-white">How Club Rewards Work</span>
-              </div>
-              <div className="space-y-2 text-xs text-gray-400">
-                <p>1. Complete club missions to earn Club Mission Points</p>
-                <p>2. Rewards are <span className="text-white font-semibold">automatically distributed</span> to members — no manual claiming needed</p>
-                <p>3. Distribution is based on the method set by the club owner (contribution %, equal split, or rank-based)</p>
-                <p>4. Rewards include spin tickets, boosters, badges, and SOL prizes</p>
-                <p>5. Higher-tier rewards unlock as your club levels up</p>
-              </div>
-            </div>
-          </>
-        )}
+          {/* RIGHT: Wheel */}
+          <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-6 flex flex-col items-center">
+            <h3 className="text-sm font-bold mb-4 text-[var(--primary)] self-start">Lucky Wheel</h3>
+            <LuckyWheel
+              tickets={tickets}
+              onSpinComplete={(prize) => {
+                setWheelResult(prize);
+                if (prize.value > 0) {
+                  openStatusModal('You Won!', `🎉 Congratulations! You won ${prize.label}! The prize will be added to your claimable balance.`, 'success');
+                } else {
+                  openStatusModal('Try Again', 'No luck this time. Spin again for another chance!', 'success');
+                }
+                setRewardInfo(prev => {
+                  if (!prev) return prev;
+                  return { ...prev, tickets: Math.max(0, prev.tickets - 1) };
+                });
+              }}
+            />
+          </div>
+        </div>
 
-        {loading && <p className="mt-4 text-sm text-gray-400">Loading reward data...</p>}
+        {loading && <p className="mt-4 text-sm text-gray-400 text-center">Loading reward data...</p>}
       </div>
-
-      {spinning && (
-        <div
-          className="fixed inset-0 z-[60] bg-black/35 backdrop-blur-[1px] cursor-wait"
-          style={{ pointerEvents: 'auto' }}
-          aria-hidden="true"
-        />
-      )}
 
       <StatusModal
         open={statusModal.open}

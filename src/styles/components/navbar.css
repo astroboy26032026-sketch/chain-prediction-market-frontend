@@ -16,24 +16,8 @@
 .sidebar-link:hover .sidebar-icon{color:var(--primary);transform:scale(1.06);}
 .sidebar-label{font-size:15.5px;line-height:1.25;font-weight:650;letter-spacing:.005em;}
 
-/* Arena nav fire animation */
-.arena-nav-fire{
-  font-size:18px;flex-shrink:0;
-  animation:arenaFirePulse 1.2s ease-in-out infinite alternate;
-}
-.arena-nav-label{
-  animation:arenaTextGlow 2s ease-in-out infinite alternate;
-}
-@keyframes arenaFirePulse{
-  0%{filter:brightness(1) drop-shadow(0 0 1px #ff6b00);transform:scale(1);}
-  100%{filter:brightness(1.4) drop-shadow(0 0 6px #ff4500);transform:scale(1.1);}
-}
-@keyframes arenaTextGlow{
-  0%{color:rgba(243,239,234,0.92);}
-  100%{color:#ff8c42;text-shadow:0 0 6px rgba(255,100,0,0.3);}
-}
 
-.brand-title{font-weight:800;font-size:20px;line-height:1.1;color:var(--primary);}
+.brand-title{font-weight:900;font-size:26px;line-height:1.1;color:var(--primary);letter-spacing:-0.02em;}
 .footer-text{font-size:11px;line-height:1.2;color:rgba(150,150,150,0.8);text-align:center;}
 
 .footer-nav{display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:nowrap;}

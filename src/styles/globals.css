@@ -32,7 +32,7 @@
     @apply relative overflow-hidden px-4 py-2 rounded-lg;
     background-image:linear-gradient(135deg,var(--primary),var(--accent));
     color:var(--on-primary);
-    border:1px solid var(--card-border);
+    border:none;
     box-shadow:var(--shadow-soft);
   }
   .btn-primary:hover{background-image:linear-gradient(135deg,var(--primary-hover),var(--accent-hover));box-shadow:var(--shadow-hover);}
@@ -74,11 +74,14 @@ body {
     radial-gradient(1000px 700px at 85% 12%, rgba(76,139,100,0.16), transparent 60%),
     linear-gradient(180deg, #1B1D1A 0%, #171915 55%, #141613 100%);
   background-blend-mode: screen, screen, normal;
+  background-attachment: fixed;
   color: var(--foreground);
   font-family: 'Nunito', sans-serif;
   line-height: 1.7;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Prevent background flash/transition on palette switch or dark-mode toggle */
+  transition-property: color, border-color, box-shadow !important;
 }
 
 html:not(.dark) body{

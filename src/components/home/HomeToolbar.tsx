@@ -1,29 +1,26 @@
 // HomeToolbar: Sort options, NSFW toggle, Live toggle, Filter button + dropdown
 
 import React, { useState } from 'react';
-import SearchFilter from '@/components/ui/SearchFilter';
 import SortOptions, { SortOption } from '@/components/ui/SortOptions';
 import { Switch } from '@/components/ui/switch';
 import FilterPanel, { PendingFilter } from './FilterPanel';
 import { FILTER_DEFAULTS, ActiveFilter } from '@/utils/filterHelpers';
+import SearchFilter from '@/components/ui/SearchFilter';
 
 interface HomeToolbarProps {
   sort: SortOption;
   includeNsfw: boolean;
-  showNewTokens: boolean;
-  newTokensBufferCount: number;
   activeFilter: ActiveFilter | null;
-  onSearch: (query: string) => void;
   onSort: (option: SortOption) => void;
   onToggleNsfw: () => void;
-  onToggleLive: () => void;
   onApplyFilter: (filter: ActiveFilter) => void;
   onClearFilter: () => void;
+  onSearch: (query: string) => void;
 }
 
 const HomeToolbar: React.FC<HomeToolbarProps> = ({
-  sort, includeNsfw, showNewTokens, newTokensBufferCount, activeFilter,
-  onSearch, onSort, onToggleNsfw, onToggleLive, onApplyFilter, onClearFilter,
+  sort, includeNsfw, activeFilter,
+  onSort, onToggleNsfw, onApplyFilter, onClearFilter, onSearch,
 }) => {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [pending, setPending] = useState<PendingFilter>({
@@ -63,16 +60,14 @@ const HomeToolbar: React.FC<HomeToolbarProps> = ({
 
   return (
     <div className="mb-4">
-      <SearchFilter onSearch={onSearch} />
-
-      <div className="mt-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
         <SortOptions onSort={onSort} currentSort={sort} />
 
-        {/* Hide filter/NSFW/Live when Arena tab is active */}
-        {sort !== 'arena' && (
-          <div className="flex items-center gap-5 justify-center md:justify-end relative">
+        <div className="flex items-center gap-3 justify-center md:justify-end relative flex-wrap">
+          {/* Search bar — same row as tabs */}
+          <SearchFilter onSearch={onSearch} className="w-48 lg:w-56" />
             {/* NSFW toggle */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 ml-1">
               <span className="text-sm">NSFW</span>
               <Switch
                 checked={includeNsfw}
@@ -87,30 +82,6 @@ const HomeToolbar: React.FC<HomeToolbarProps> = ({
                   } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
                 />
               </Switch>
-            </div>
-
-            {/* Live toggle */}
-            <div className="flex items-center gap-2">
-              <span className="text-sm">Live</span>
-              <Switch
-                checked={showNewTokens}
-                onCheckedChange={onToggleLive}
-                className={`${
-                  showNewTokens ? 'bg-[var(--primary)]' : 'bg-[var(--card-border)]'
-                } relative inline-flex h-6 w-11 items-center rounded-full transition-colors`}
-              >
-                <span
-                  className={`${
-                    showNewTokens ? 'translate-x-6' : 'translate-x-1'
-                  } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
-                />
-              </Switch>
-
-              {!showNewTokens && newTokensBufferCount > 0 && (
-                <span className="text-xs text-[var(--primary)]">
-                  {newTokensBufferCount} new {newTokensBufferCount === 1 ? 'token' : 'tokens'}
-                </span>
-              )}
             </div>
 
             {/* Filter Button */}
@@ -135,8 +106,7 @@ const HomeToolbar: React.FC<HomeToolbarProps> = ({
                 onClear={handleClear}
               />
             )}
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

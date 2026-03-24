@@ -9,7 +9,7 @@ import {
   MouseEventParams,
   LineStyle,
 } from 'lightweight-charts';
-import Spinner from '@/components/ui/Spinner';
+import SpaceLoader from '@/components/ui/SpaceLoader';
 import { getTokenPrice } from '@/utils/api.index';
 import { useTokenPriceStream } from '@/hooks/useTokenPriceStream';
 
@@ -632,7 +632,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ tokenInfo }) => {
               <div ref={containerRef} className="w-full h-full" style={{ cursor: drawTool !== 'none' ? 'crosshair' : undefined }} />
               {(loading || data.length < 2) && (
                 <div className="absolute inset-0 flex items-center justify-center bg-[var(--card)]">
-                  {loading ? <Spinner size="medium" /> : (
+                  {loading ? <SpaceLoader size="medium" /> : (
                     <div className="flex flex-col items-center">
                       <p className="text-gray-400 text-sm">Not enough data to display chart</p>
                       {err && <p className="text-xs text-red-400 mt-2">{err}</p>}

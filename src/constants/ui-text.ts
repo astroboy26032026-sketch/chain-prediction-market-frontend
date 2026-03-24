@@ -31,38 +31,29 @@ export const COMMON = {
 ========================= */
 export const NAV = {
   HOME: 'Home',
-  LEADERBOARD: 'Leaderboard',
-  REFERRALS: 'Referrals',
   POINTS: 'Points',
   REWARDS: 'Rewards',
   STAKING: 'Staking',
   CREATE: 'Create Token',
   DASHBOARD: 'Dashboard',
-  PROFILE: 'User Profile',
 } as const;
 
 /* =========================
    SEO
 ========================= */
 export const SEO = {
-  HOME_TITLE: 'PumpFun Clone - Create and Trade Tokens with Bonding Curves',
-  HOME_DESC: 'Launch and trade tokens effortlessly using innovative bonding curve technology. Experience fair, dynamic, and continuous liquidity on PumpFun Clone.',
-  CREATE_TITLE: 'Create Your Own Token - PumpFun Clone',
+  HOME_TITLE: 'CosmoX - Create and Trade Tokens with Bonding Curves',
+  HOME_DESC: 'Launch and trade tokens effortlessly using innovative bonding curve technology. Experience fair, dynamic, and continuous liquidity on CosmoX.',
+  CREATE_TITLE: 'Create Your Own Token - CosmoX',
   CREATE_DESC: 'Create and Trade Memecoins Easily',
-  LEADERBOARD_TITLE: 'Leaderboard',
-  LEADERBOARD_DESC: 'Top 15 trending tokens leaderboard',
-  REFERRALS_TITLE: 'Referrals',
-  REFERRALS_DESC: 'Your referral dashboard',
-  POINTS_TITLE: 'Point System',
+POINTS_TITLE: 'Point System',
   POINTS_DESC: 'Earn points for doing stuff: trade, create, stake have fun!',
-  REWARDS_TITLE: 'Rewards',
+  REWARDS_TITLE: 'Reward',
   REWARDS_DESC: 'Spin to win SOL rewards',
   STAKING_TITLE: 'Staking',
   STAKING_DESC: 'Stake SEED to earn rewards',
   DASHBOARD_TITLE: 'Dashboard',
   DASHBOARD_DESC: 'Your token dashboard',
-  PROFILE_TITLE: 'User Profile',
-  PROFILE_DESC: 'User profile dashboard',
 } as const;
 
 /* =========================
@@ -106,49 +97,6 @@ export const REWARD = {
   NO_SPINS: 'No spins yet.',
 } as const;
 
-/* =========================
-   Referrals Page
-========================= */
-export const REFERRAL = {
-  CLAIM_REWARD: 'CLAIM REWARD',
-  GENERATE_LINK: 'GENERATE LINK',
-  GENERATING: 'GENERATING…',
-  TOTAL_REFERRALS: 'Total Referrals',
-  TOTAL_VOLUME: 'Total Volume',
-  UNCLAIMED_REWARDS: 'Unclaimed Rewards',
-  REFERRAL_LINK: 'REFERRAL LINK',
-  HOW_IT_WORKS: 'How it works?',
-  YOUR_LINK: 'Your referral link:',
-  EMPTY_TABLE: 'Share your referral link to start earning',
-  DATE_JOINED: 'DATE JOINED',
-  WALLET: 'WALLET',
-  TRADING_VOLUME: 'TRADING VOLUME',
-  YOUR_REWARDS: 'YOUR REWARDS',
-} as const;
-
-/* =========================
-   Profile Page
-========================= */
-export const PROFILE = {
-  PORTFOLIO_VALUE: 'Portfolio Value',
-  TOKENS_CREATED: 'Tokens Created',
-  TOTAL_TRADES: 'Total Trades',
-  MEMBER_SINCE: 'Member Since',
-  TAB_PROFILE: 'Profile Info',
-  TAB_HOLDING: 'Holding Tokens',
-  TAB_CREATED: 'Created Tokens',
-  TAB_HISTORY: 'Transaction History',
-  NO_HOLDING: 'No holding tokens.',
-  NO_CREATED: 'No created tokens.',
-  NO_HISTORY: 'No recent activities.',
-} as const;
-
-/* =========================
-   Leaderboard Page
-========================= */
-export const LEADERBOARD = {
-  TOKEN_HEADER: 'token',
-} as const;
 
 /* =========================
    Points Page

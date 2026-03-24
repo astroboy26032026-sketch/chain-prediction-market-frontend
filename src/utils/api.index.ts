@@ -14,8 +14,6 @@ export type { IdempotencyOptions } from './api';
 
 export type { UpdateTokenRequest } from './api';
 
-export type { ProfileInfoResponse, ProfileStatsResponse } from './api';
-
 export type { PointsOverviewResponse, PointsViewResponse, PointsHistoryResponse } from './api';
 
 export type {
@@ -70,14 +68,6 @@ export const newIdempotencyKey = realApi.newIdempotencyKey;
 // ✅ Token metadata update (STUB until BE is ready)
 // =====================
 export const updateToken = (...args: Parameters<typeof realApi.updateToken>) => realApi.updateToken(...args);
-
-// =====================
-// ✅ Profile
-// =====================
-export const getProfileInfo = (...args: Parameters<typeof realApi.getProfileInfo>) => realApi.getProfileInfo(...args);
-
-export const getProfileStats = (...args: Parameters<typeof realApi.getProfileStats>) =>
-  realApi.getProfileStats(...args);
 
 // =====================
 // ✅ Points
@@ -198,27 +188,6 @@ export const getLeaderboardTop = (...args: Parameters<typeof realApi.getLeaderbo
 
 export const getLeaderboardList = (...args: Parameters<typeof realApi.getLeaderboardList>) =>
   realApi.getLeaderboardList(...args);
-
-// =====================
-// ✅ Referrals
-// =====================
-export const getReferralSummary = (...args: Parameters<typeof realApi.getReferralSummary>) =>
-  realApi.getReferralSummary(...args);
-
-export const getReferralLinkInfo = (...args: Parameters<typeof realApi.getReferralLinkInfo>) =>
-  realApi.getReferralLinkInfo(...args);
-
-export const getReferralLink = (...args: Parameters<typeof realApi.getReferralLinkInfo>) =>
-  realApi.getReferralLinkInfo(...args);
-
-export const getReferralList = (...args: Parameters<typeof realApi.getReferralList>) =>
-  realApi.getReferralList(...args);
-
-export const claimReferralRewards = (...args: Parameters<typeof realApi.claimReferralRewards>) =>
-  realApi.claimReferralRewards(...args);
-
-export const trackReferral = (...args: Parameters<typeof realApi.trackReferral>) =>
-  realApi.trackReferral(...args);
 
 // =====================
 // ✅ Dashboard helpers

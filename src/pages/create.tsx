@@ -21,8 +21,6 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   CloudArrowUpIcon,
-  InformationCircleIcon,
-  Cog6ToothIcon,
 } from '@heroicons/react/24/outline';
 
 // PurchaseConfirmationPopup removed — BUY now directly calls runFinalize
@@ -130,76 +128,6 @@ function isExpiredDraftStatus(status?: number) {
 const isNonNegInt = (v: any) => Number.isFinite(Number(v)) && Number(v) >= 0;
 const isNumericString = (v: any) => /^\d+$/.test(String(v ?? '').trim());
 
-// =====================
-// Step Progress Indicator
-// =====================
-const STEP_LABELS = ['Basic Info', 'Advance Info', 'Buy'] as const;
-
-const StepIndicator: React.FC<{ current: Step }> = ({ current }) => (
-  <div className="w-full max-w-xl mx-auto mb-8">
-    {/* Row: circles + connecting lines — lines centered vertically with circles */}
-    <div className="flex items-center justify-center">
-      {STEP_LABELS.map((_, i) => {
-        const num = (i + 1) as Step;
-        const isDone = num < current;
-        const isActive = num === current;
-
-        return (
-          <React.Fragment key={num}>
-            {/* Connecting line before (except first) — same height as circle center */}
-            {i > 0 && (
-              <div
-                className={`flex-1 h-[3px] ${
-                  isDone || isActive ? 'bg-[var(--accent)]' : 'bg-gray-600'
-                }`}
-              />
-            )}
-
-            {/* Circle only */}
-            <div
-              className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm border-2 transition-all shrink-0 ${
-                isDone
-                  ? 'bg-[var(--accent)] border-[var(--accent)] text-white'
-                  : isActive
-                  ? 'bg-[var(--accent)] border-[var(--accent)] text-white shadow-lg shadow-[var(--accent)]/30'
-                  : 'bg-[var(--card2)] border-gray-600 text-gray-400'
-              }`}
-            >
-              {isDone ? (
-                <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-              ) : (
-                num
-              )}
-            </div>
-          </React.Fragment>
-        );
-      })}
-    </div>
-
-    {/* Row: labels below — aligned under each circle */}
-    <div className="flex justify-between mt-2 px-0">
-      {STEP_LABELS.map((label, i) => {
-        const num = (i + 1) as Step;
-        const isDone = num < current;
-        const isActive = num === current;
-
-        return (
-          <span
-            key={num}
-            className={`text-xs font-semibold whitespace-nowrap ${
-              i === 0 ? 'text-left' : i === STEP_LABELS.length - 1 ? 'text-right' : 'text-center'
-            } ${isDone || isActive ? 'text-white' : 'text-gray-500'}`}
-            style={{ width: `${100 / STEP_LABELS.length}%` }}
-          >
-            {label}
-          </span>
-        );
-      })}
-    </div>
-  </div>
-);
 
 const CreateToken: React.FC = () => {
   const router = useRouter();
@@ -258,9 +186,6 @@ const CreateToken: React.FC = () => {
   const [showPreventNavigationModal, setShowPreventNavigationModal] = useState(false);
 
   // ===== Liquidity Settings (gear) =====
-  const [showLiquidity, setShowLiquidity] = useState(false);
-  const [liqMode, setLiqMode] = useState<'PSOL' | 'SOL'>('PSOL');
-  const creatorReward = { sol: 2, points: 69 };
 
   // ===== ✅ Connect wallet modal =====
   const [showConnectWalletModal, setShowConnectWalletModal] = useState(false);
@@ -531,7 +456,7 @@ const CreateToken: React.FC = () => {
 
       setDraft(res);
       toast.success('Draft created!');
-      setStep(2);
+      setStep(3);
     } catch (e: any) {
       console.error('[CreateToken] Draft failed:', e?.response?.status, e?.response?.data, e?.message);
       // Reset key so user can retry with a fresh idempotency key
@@ -769,7 +694,7 @@ const CreateToken: React.FC = () => {
 
   // ===== If user lands on Step2/3 without draft, auto bring back =====
   useEffect(() => {
-    if ((step === 2 || step === 3) && !draft?.draftId) {
+    if (step === 3 && !draft?.draftId) {
       setStep(1);
     }
   }, [step, draft?.draftId]);
@@ -791,266 +716,209 @@ const CreateToken: React.FC = () => {
   return (
     <Layout>
       <SEO
-        title="Create Your Own Token - PumpFun Clone"
+        title="Create Your Own Token - CosmoX"
         description="Launch a coin that is instantly tradable — fair launch"
         image="/seo/create.jpg"
       />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-xl sm:text-2xl font-bold text-orange mb-6 text-center">
-          {step === 1 && 'Create New Token'}
-          {step === 2 && 'Advance Info'}
-          {step === 3 && 'Buy'}
-        </h1>
-
-        {/* Step Progress Indicator */}
-        <StepIndicator current={step} />
-
-        {step === 1 && (
-          <div className="mb-4 flex items-center justify-between">
-            <button
-              type="button"
-              className="btn-secondary flex items-center px-3 py-1.5 rounded-full text-xs sm:text-sm"
-              title="Deployment Cost Info"
-            >
-              <InformationCircleIcon className="h-4 w-4 mr-1" />
-              Deployment Cost Info
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowLiquidity(true)}
-              className="relative inline-flex items-center justify-center h-9 w-9 rounded-full
-                         border-thin bg-[var(--card2)] text-[var(--foreground)]/85
-                         hover:bg-[var(--card-hover)] hover:ring-2 hover:ring-[var(--primary)]/30
-                         transition"
-              title="Liquidity Settings"
-            >
-              <Cog6ToothIcon className="h-5 w-5" />
-            </button>
-          </div>
+        {step === 3 && (
+          <h1 className="text-xl sm:text-2xl font-bold text-orange mb-6 text-center">Buy</h1>
         )}
 
         {/* ==================== STEP 1 – BASIC ==================== */}
         {step === 1 && (
-          <div className="space-y-6 card gradient-border p-4 sm:p-6">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-[10px] sm:text-xs font-medium text-gray-400 mb-1">Token Name</label>
-                <input
-                  value={tokenName}
-                  onChange={(e) => {
-                    setTokenName(e.target.value);
-                    draftKeyRef.current = null;
-                    finalizeKeyRef.current = null;
-                  }}
-                  className="w-full py-2 px-3 bg-[var(--card2)] border-thin rounded-md text-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
-                  placeholder="Enter token name"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] sm:text-xs font-medium text-gray-400 mb-1">Token Symbol</label>
-                <input
-                  value={tokenSymbol}
-                  onChange={(e) => {
-                    setTokenSymbol(normalizeSymbol(e.target.value));
-                    draftKeyRef.current = null;
-                    finalizeKeyRef.current = null;
-                  }}
-                  className="w-full py-2 px-3 bg-[var(--card2)] border-thin rounded-md text-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
-                  placeholder="A-Z0-9, 2-10 chars"
-                />
-                <div className="text-[10px] text-gray-500 mt-1">
-                  Auto: <span className="text-gray-300">{symbolAuto}</span> • Final:{' '}
-                  <span className="text-gray-300">{symbolFinal || '-'}</span>
-                </div>
-                {!SYMBOL_RE.test(symbolFinal) && symbolFinal.length > 0 && (
-                  <div className="text-[10px] text-red-400 mt-1">
-                    Symbol must be uppercase alphanumeric, {SYMBOL_MIN}-{SYMBOL_MAX} characters
-                  </div>
-                )}
-              </div>
+          <div className="rounded-2xl border border-[var(--card-border)] overflow-hidden" style={{ background: 'var(--card)' }}>
+            {/* Modal header */}
+            <div className="px-6 py-4 border-b border-[var(--card-border)] text-center">
+              <h1 className="text-base sm:text-lg font-extrabold tracking-[0.12em] uppercase" style={{ color: 'var(--primary)' }}>
+                Create a New Token
+              </h1>
             </div>
 
-            <div>
-              <label className="block text-[10px] sm:text-xs font-medium text-gray-400 mb-1">Token Description</label>
-              <textarea
-                value={tokenDescription}
-                onChange={(e) => {
-                  setTokenDescription(e.target.value);
-                  draftKeyRef.current = null;
-                  finalizeKeyRef.current = null;
-                }}
-                rows={4}
-                className="w-full py-2 px-3 bg-[var(--card2)] border-thin rounded-md text-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
-                placeholder="Describe your token"
-              />
-            </div>
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp"
+              className="hidden"
+              onChange={onImagePicked}
+              disabled={isUploading}
+            />
 
-            <div className="flex items-center gap-2">
-              <input
-                id="isNsfw"
-                type="checkbox"
-                checked={isNSFW}
-                onChange={(e) => {
-                  setIsNSFW(e.target.checked);
-                  draftKeyRef.current = null;
-                  finalizeKeyRef.current = null;
-                }}
-              />
-              <label htmlFor="isNsfw" className="text-xs text-gray-300">
-                Mark as NSFW
-              </label>
-            </div>
+            {/* 2-column body */}
+            <div className="grid grid-cols-1 sm:grid-cols-[220px_1fr]">
 
-            {/* Token Image */}
-            <div>
-              <label className="block text-[10px] sm:text-xs font-medium text-gray-400 mb-2">Token Image</label>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/gif,image/webp"
-                className="hidden"
-                onChange={onImagePicked}
-                disabled={isUploading}
-              />
-
-              <div
-                className="mt-1 flex justify-center items-center px-4 py-8 border-thin border-dashed rounded-md hover:border-[var(--primary)] transition bg-[var(--card2)]"
-                onDragOver={onDragOver}
-                onDrop={onDrop}
-              >
-                <div className="space-y-2 text-center">
-                  <div className="flex flex-col items-center">
-                    <CloudArrowUpIcon className="mx-auto h-10 w-10 text-gray-400 mb-2" />
-                    <div className="flex flex-col sm:flex-row text-[9px] sm:text-sm text-gray-400 items-center">
-                      <button
-                        type="button"
-                        onClick={openFilePicker}
-                        disabled={isUploading}
-                        className="cursor-pointer btn-secondary rounded-md font-medium
-                                   text-[var(--primary)] hover:text-[var(--primary-hover)]
-                                   transition px-3 py-2 mb-2 sm:mb-0 sm:mr-2"
-                      >
-                        Upload a file
-                      </button>
-                      <p>or drag and drop</p>
+              {/* LEFT: Image preview */}
+              <div className="p-5 border-b sm:border-b-0 sm:border-r border-[var(--card-border)] flex flex-col items-center gap-3">
+                {/* Drag/drop square */}
+                <div
+                  className="w-full aspect-square rounded-xl border-2 border-dashed border-[var(--card-border)] bg-[var(--card2)] flex flex-col items-center justify-center cursor-pointer hover:border-[var(--primary)] transition-colors overflow-hidden relative"
+                  onClick={openFilePicker}
+                  onDragOver={onDragOver}
+                  onDrop={onDrop}
+                >
+                  {tokenImageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={tokenImageUrl} alt="Token preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <>
+                      <CloudArrowUpIcon className="h-10 w-10 text-gray-400 mb-2" />
+                      <p className="text-xs font-bold text-gray-400 text-center uppercase tracking-wide">Drag &amp; Drop Here</p>
+                      <p className="text-[10px] text-gray-500 text-center mt-1 px-2">Upload any picture or gif up to 5 MB</p>
+                    </>
+                  )}
+                  {isUploading && (
+                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                      <span className="text-xs text-white font-semibold">Uploading...</span>
                     </div>
-                    <p className="text-xs text-gray-400 mt-2">PNG, JPG, GIF up to 1MB</p>
-                  </div>
+                  )}
+                </div>
+
+                {/* Token name preview below image */}
+                <div className="text-center w-full">
+                  <p className="font-extrabold text-sm truncate" style={{ color: 'var(--primary)' }}>
+                    {tokenName || 'Token Name'}
+                  </p>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-widest">TITLE</p>
                 </div>
               </div>
 
-              {isUploading && <p className="text-sm text-gray-400 mt-2">Uploading image...</p>}
+              {/* RIGHT: Form fields */}
+              <div className="p-5 flex flex-col gap-4">
 
-              {tokenImageUrl && (
-                <div className="mt-4 flex justify-center">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={tokenImageUrl}
-                    alt="Token preview"
-                    className="h-24 w-24 object-cover rounded-full mx-auto border-2 border-[var(--primary)]"
+                {/* Ticker (Symbol) */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">Ticker</label>
+                  <input
+                    value={tokenSymbol}
+                    onChange={(e) => {
+                      setTokenSymbol(normalizeSymbol(e.target.value));
+                      draftKeyRef.current = null;
+                      finalizeKeyRef.current = null;
+                    }}
+                    className="w-full py-2.5 px-3 bg-[var(--card2)] border border-[var(--card-border)] rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50 placeholder-gray-500"
+                    placeholder="A-Z0-9, 2-10 chars"
+                  />
+                  {!SYMBOL_RE.test(symbolFinal) && symbolFinal.length > 0 && (
+                    <div className="text-[10px] text-red-400 mt-1">
+                      Symbol must be uppercase alphanumeric, {SYMBOL_MIN}–{SYMBOL_MAX} characters
+                    </div>
+                  )}
+                </div>
+
+                {/* Name */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">Name</label>
+                  <input
+                    value={tokenName}
+                    onChange={(e) => {
+                      setTokenName(e.target.value);
+                      draftKeyRef.current = null;
+                      finalizeKeyRef.current = null;
+                    }}
+                    className="w-full py-2.5 px-3 bg-[var(--card2)] border border-[var(--card-border)] rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50 placeholder-gray-500"
+                    placeholder="Enter token name"
                   />
                 </div>
-              )}
-            </div>
 
-            {/* Social */}
-            <div className="border-thin rounded-md overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setIsSocialExpanded((v) => !v)}
-                className="w-full flex justify-between items-center p-3 bg-[var(--card2)] text-white hover:bg-[var(--card-hover)] transition-colors"
-              >
-                <span className="font-medium text-[10px] sm:text-xs">Social Media Links (Optional)</span>
-                {isSocialExpanded ? <ChevronUpIcon className="h-5 w-5" /> : <ChevronDownIcon className="h-5 w-5" />}
-              </button>
+                {/* About (Description) */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">About</label>
+                  <textarea
+                    value={tokenDescription}
+                    onChange={(e) => {
+                      setTokenDescription(e.target.value);
+                      draftKeyRef.current = null;
+                      finalizeKeyRef.current = null;
+                    }}
+                    rows={3}
+                    className="w-full py-2.5 px-3 bg-[var(--card2)] border border-[var(--card-border)] rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50 placeholder-gray-500 resize-none"
+                    placeholder="Describe your token"
+                  />
+                </div>
 
-              {isSocialExpanded && (
-                <div className="p-4 bg-[var(--card)] grid grid-cols-1 sm:grid-cols-2 gap-4 text-[10px] sm:text-xs">
-                  {[
-                    { id: 'website', label: 'Website', value: website, setter: setWebsite },
-                    { id: 'telegram', label: 'Telegram', value: telegram, setter: setTelegram },
-                    { id: 'discord', label: 'Discord', value: discord, setter: setDiscord },
-                    { id: 'twitter', label: 'Twitter', value: twitter, setter: setTwitter },
-                    { id: 'youtube', label: 'YouTube', value: youtube, setter: setYoutube },
-                  ].map((i) => (
-                    <div key={i.id}>
-                      <label className="block text-[10px] sm:text-xs font-medium text-gray-400 mb-1">{i.label}</label>
-                      <input
-                        value={i.value}
-                        onChange={(e) => {
-                          i.setter(e.target.value);
-                          draftKeyRef.current = null;
-                          finalizeKeyRef.current = null;
-                        }}
-                        className="w-full py-2 px-3 bg-[var(--card2)] border-thin rounded-md text-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
-                        placeholder="optional"
-                      />
+                {/* Choose File button row */}
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={openFilePicker}
+                    disabled={isUploading}
+                    className="shrink-0 px-4 py-2 rounded-lg text-xs font-extrabold tracking-wider border border-[var(--card-border)] bg-[var(--card2)] text-white hover:bg-[var(--card-hover)] transition disabled:opacity-50 uppercase"
+                  >
+                    Choose File
+                  </button>
+                  <span className="text-[11px] text-gray-400">Upload any picture or gif up to 5 MB</span>
+                </div>
+
+                {/* Social Links */}
+                <div className="border border-[var(--card-border)] rounded-lg overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setIsSocialExpanded((v) => !v)}
+                    className="w-full flex justify-between items-center px-4 py-2.5 bg-[var(--card2)] text-white hover:bg-[var(--card-hover)] transition-colors"
+                  >
+                    <span className="font-semibold text-xs text-gray-300">Social Links</span>
+                    <span className="text-[10px] text-gray-500 flex items-center gap-1">
+                      (optional) {isSocialExpanded ? <ChevronUpIcon className="h-3.5 w-3.5" /> : <ChevronDownIcon className="h-3.5 w-3.5" />}
+                    </span>
+                  </button>
+
+                  {isSocialExpanded && (
+                    <div className="p-4 bg-[var(--card)] grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {[
+                        { id: 'website', label: 'Website', value: website, setter: setWebsite },
+                        { id: 'telegram', label: 'Telegram', value: telegram, setter: setTelegram },
+                        { id: 'discord', label: 'Discord', value: discord, setter: setDiscord },
+                        { id: 'twitter', label: 'Twitter', value: twitter, setter: setTwitter },
+                        { id: 'youtube', label: 'YouTube', value: youtube, setter: setYoutube },
+                      ].map((i) => (
+                        <div key={i.id}>
+                          <label className="block text-[10px] font-semibold text-gray-400 mb-1">{i.label}</label>
+                          <input
+                            value={i.value}
+                            onChange={(e) => {
+                              i.setter(e.target.value);
+                              draftKeyRef.current = null;
+                              finalizeKeyRef.current = null;
+                            }}
+                            className="w-full py-2 px-3 bg-[var(--card2)] border border-[var(--card-border)] rounded-lg text-white text-xs focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50 placeholder-gray-600"
+                            placeholder="optional"
+                          />
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
-              )}
-            </div>
 
-            <div className="flex">
-              <button
-                className="btn btn-primary w-full py-3 rounded-md disabled:opacity-50"
-                disabled={!canGoNextStep1 || creationStep === 'drafting' || isBusy}
-                onClick={handleCreateDraftAndNext}
-              >
-                {creationStep === 'drafting' ? 'Creating Draft...' : 'Next'}
-              </button>
+                {/* NSFW */}
+                <div className="flex items-center gap-2">
+                  <input
+                    id="isNsfw"
+                    type="checkbox"
+                    checked={isNSFW}
+                    onChange={(e) => {
+                      setIsNSFW(e.target.checked);
+                      draftKeyRef.current = null;
+                      finalizeKeyRef.current = null;
+                    }}
+                  />
+                  <label htmlFor="isNsfw" className="text-xs text-gray-400">Mark as NSFW</label>
+                </div>
+
+                {/* NEXT button */}
+                <button
+                  className="btn btn-primary w-full py-3 rounded-xl disabled:opacity-50 font-extrabold tracking-widest text-sm uppercase mt-1"
+                  disabled={!canGoNextStep1 || creationStep === 'drafting' || isBusy}
+                  onClick={handleCreateDraftAndNext}
+                >
+                  {creationStep === 'drafting' ? 'Creating Draft...' : 'Next'}
+                </button>
+              </div>
             </div>
           </div>
         )}
 
-        {/* ==================== STEP 2 – ADVANCE INFO ==================== */}
-        {/*
-         * NOTE: Curve Settings UI hidden — BE will auto-configure curve settings.
-         * The curve values (decimals, curveType, basePriceLamports, slopeLamports,
-         * bondingCurveSupply, graduateTargetLamports) are still sent in the finalize
-         * API call with their default values to maintain backward compatibility.
-         *
-         * >>> When BE fully removes curve params from API, delete:
-         *   - State variables: decimals, curveType, basePriceLamports, slopeLamports,
-         *     bondingCurveSupply, graduateTargetLamports (lines ~118-124)
-         *   - validateFinalizeInputs() curve checks
-         *   - Curve fields in runFinalize() payload
-         *   - FinalizeTokenRequest type curve fields in api.ts
-         */}
-        {step === 2 && (
-          <div className="space-y-6 card gradient-border p-4 sm:p-6">
-            <div className="rounded-lg border-thin p-6 bg-[var(--card2)] text-center">
-              <div className="text-sm font-semibold text-white mb-2">Advance Info</div>
-              <p className="text-xs text-gray-400">
-                Additional settings will be available here soon. Click Next to continue.
-              </p>
-
-              {draft?.expiresAt && (
-                <div className="mt-4 text-xs text-gray-400">
-                  Draft expires at: <span className="text-gray-200">{draft.expiresAt}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between gap-4">
-              <button className="btn-secondary px-8 py-3 min-w-[160px] rounded-md" disabled={isBusy} onClick={() => setStep(1)}>
-                Back
-              </button>
-
-              <button
-                className="btn btn-primary px-8 py-3 min-w-[180px] rounded-md"
-                disabled={isBusy || !draft?.draftId}
-                onClick={() => setStep(3)}
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* ==================== STEP 3 – BUY ==================== */}
         {step === 3 && (
@@ -1099,7 +967,7 @@ const CreateToken: React.FC = () => {
             </div>
 
             <div className="flex gap-4 pt-2">
-              <button type="button" onClick={() => setStep(2)} disabled={isBusy} className="btn-secondary w-1/2">
+              <button type="button" onClick={() => setStep(1)} disabled={isBusy} className="btn-secondary w-1/2">
                 Back
               </button>
 
@@ -1227,50 +1095,6 @@ const CreateToken: React.FC = () => {
           </Modal>
         )}
 
-        {showLiquidity && (
-          <Modal isOpen={showLiquidity} onClose={() => setShowLiquidity(false)}>
-            <div className="p-4 sm:p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base sm:text-lg font-semibold mt-5 text-[var(--foreground)]">Liquidity</h3>
-                </div>
-
-                <div className="flex items-center bg-[var(--card)] border-thin rounded-full p-1">
-                  {(['PSOL', 'SOL'] as const).map((key) => {
-                    const active = liqMode === key;
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => setLiqMode(key)}
-                        className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition ${
-                          active
-                            ? 'bg-[var(--primary)] text-black'
-                            : 'text-[var(--foreground)]/85 hover:bg-[var(--card2)]'
-                        }`}
-                      >
-                        {key}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <p className="mt-4 text-sm text-[var(--foreground)]/75">
-                pSOL works its magic for everyone — launch with SOL only if you’re strong enough!
-              </p>
-
-              <div className="mt-6 rounded-2xl bg-[var(--card2)] border-thin px-4 py-3 flex items-center justify-between">
-                <div className="text-sm font-medium text-[var(--foreground)]/85">
-                  <span className="opacity-80 mr-1">Creator Reward:</span>
-                  <span className="font-bold">{creatorReward.sol} SOL</span> + {creatorReward.points} points
-                </div>
-                <button onClick={() => setShowLiquidity(false)} className="btn-secondary px-4 py-2 rounded-full">
-                  Done
-                </button>
-              </div>
-            </div>
-          </Modal>
-        )}
 
         {showPreventNavigationModal && (
           <Modal isOpen={showPreventNavigationModal} onClose={() => {}}>

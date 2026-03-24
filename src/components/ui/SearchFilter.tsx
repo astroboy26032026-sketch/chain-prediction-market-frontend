@@ -53,7 +53,7 @@ const SearchFilter = forwardRef<HTMLInputElement, SearchFilterProps>(
     };
 
     return (
-      <div className={['relative flex items-center max-w-md mx-auto mb-6', className].filter(Boolean).join(' ')}>
+      <div className={['relative flex items-center w-full', className].filter(Boolean).join(' ')}>
         <input
           ref={ref}
           type="text"

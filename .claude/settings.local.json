@@ -9,7 +9,15 @@
       "Bash(npx next:*)",
       "Bash(grep -r border-thin c:/Users/Administrator/Desktop/Project/Pump_fun_clone/ --include=*.css --include=*.config.* --include=*.js --include=*.mjs -l)",
       "Bash(timeout 60)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(find /Users/admin/Desktop/All_Project/Pump_Fun_Clone/Pump_fun_clone/src -type f \\\\\\(-name *club* -o -name *war* -o -name *event* \\\\\\))",
+      "Bash(grep -r \"club\\\\|war\\\\|mission\" /Users/admin/Desktop/All_Project/Pump_Fun_Clone/Pump_fun_clone/src/pages/point/[address].tsx)",
+      "Bash(wc -l /Users/admin/Desktop/All_Project/Pump_Fun_Clone/Pump_fun_clone/src/pages/reward/[address].tsx)",
+      "Bash(wc -l /Users/admin/Desktop/All_Project/Pump_Fun_Clone/Pump_fun_clone/src/pages/point/[address].tsx)",
+      "Read(//usr/local/bin/**)",
+      "Read(//Users/admin/.nvm/versions/node/**)",
+      "Bash(/Users/admin/.nvm/versions/node/v18.14.2/bin/node ./node_modules/.bin/tsc --noEmit)",
+      "Bash(find /Users/admin/Desktop/All_Project/Pump_Fun_Clone/Pump_fun_clone/src/pages -type f \\\\\\(-name *.tsx -o -name *.ts \\\\\\))"
     ]
   }
 }

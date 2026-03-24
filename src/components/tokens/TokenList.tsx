@@ -3,7 +3,6 @@ import TokenCard from './TokenCard';
 import { Token, TokenWithLiquidityEvents } from '@/interface/types';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/router';
-import LoadingBar from '@/components/ui/LoadingBar';
 import { SortOption } from '../ui/SortOptions';
 
 /**
@@ -169,7 +168,7 @@ const TokenList: React.FC<TokenListProps> = ({
   return (
     <>
       {/* Grid token */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-7xl mx-auto">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-7xl mx-auto">
         {displayTokens.map((token) => (
           <TokenCard
             key={(token as any).id ?? (token as any).address}
@@ -186,8 +185,40 @@ const TokenList: React.FC<TokenListProps> = ({
 
       {/* Loading overlay khi chuyển trang */}
       {isLoading && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <LoadingBar size="large" />
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center"
+          style={{ background: 'radial-gradient(ellipse at center, rgba(13,16,32,0.97) 0%, rgba(5,8,20,0.99) 100%)' }}
+        >
+          {/* Orbiting rings */}
+          <div className="relative flex items-center justify-center" style={{ width: 120, height: 120 }}>
+            {/* Ring 1 */}
+            <div className="absolute rounded-full border-2 border-transparent"
+              style={{
+                width: 110, height: 110,
+                borderTopColor: 'var(--primary)',
+                borderRightColor: 'var(--primary)',
+                animation: 'spin 1.2s linear infinite',
+              }}
+            />
+            {/* Ring 2 */}
+            <div className="absolute rounded-full border-2 border-transparent"
+              style={{
+                width: 80, height: 80,
+                borderBottomColor: 'var(--accent)',
+                borderLeftColor: 'var(--accent)',
+                animation: 'spin 0.8s linear infinite reverse',
+              }}
+            />
+            {/* Center rocket */}
+            <span style={{ fontSize: 36, lineHeight: 1 }}>🚀</span>
+          </div>
+
+          <p className="mt-5 text-sm font-semibold tracking-widest uppercase"
+            style={{ color: 'var(--primary)', letterSpacing: '0.15em' }}
+          >
+            Launching…
+          </p>
+
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       )}
 

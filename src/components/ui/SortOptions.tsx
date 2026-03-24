@@ -1,133 +1,51 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import React from 'react';
 
-export type SortOption = 'trending' | 'marketcap' | 'new' | 'finalized' | 'arena';
+export type SortOption = 'trending' | 'marketcap' | 'new' | 'finalized';
 
 interface SortOptionsProps {
   onSort: (option: SortOption) => void;
   currentSort: SortOption;
 }
 
-const SortOptions: React.FC<SortOptionsProps> = ({ onSort, currentSort }) => {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const btnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const [indicator, setIndicator] = useState<{ left: number; width: number }>({ left: 0, width: 0 });
+const TABS: { key: SortOption; emoji: string; label: string }[] = [
+  { key: 'trending',  emoji: '🧭', label: 'DISCOVER'  },
+  { key: 'new',       emoji: '✨', label: 'NEW'        },
+  { key: 'finalized', emoji: '🎓', label: 'GRADUATED'  },
+  { key: 'marketcap', emoji: '🔥', label: 'FAVORITES'  },
+];
 
-  const activeKey = currentSort;
+const SortOptions: React.FC<SortOptionsProps> = ({ onSort, currentSort }) => (
+  <div className="flex items-end gap-0 border-b border-[var(--card-border)]">
+    {TABS.map(({ key, emoji, label }) => {
+      const isActive = key === currentSort;
+      return (
+        <button
+          key={key}
+          onClick={() => onSort(key)}
+          className={`
+            relative flex items-center gap-1.5 px-4 py-2.5
+            text-sm font-extrabold tracking-wide
+            transition-colors duration-200 whitespace-nowrap
+            focus:outline-none
+            ${isActive
+              ? 'text-[var(--primary)]'
+              : 'text-[var(--foreground)]/50 hover:text-[var(--foreground)]/80'}
+          `}
+        >
+          <span className="text-base leading-none">{emoji}</span>
+          <span>{label}</span>
 
-  const setBtnRef = useCallback(
-    (key: SortOption) => (node: HTMLButtonElement | null) => {
-      btnRefs.current[key] = node;
-    },
-    []
-  );
-
-  const items = useMemo(
-    () =>
-      [
-        { key: 'trending', label: 'Trending', onClick: () => onSort('trending') },
-        { key: 'arena', label: '🔥 Trending Arena', onClick: () => onSort('arena') },
-        { key: 'marketcap', label: 'Market Cap', onClick: () => onSort('marketcap') },
-        { key: 'new', label: 'New', onClick: () => onSort('new') },
-        { key: 'finalized', label: 'Finalized', onClick: () => onSort('finalized') },
-      ] as const,
-    [onSort]
-  );
-
-  const recalcIndicator = useCallback(() => {
-    const el = btnRefs.current[activeKey];
-    const wrap = containerRef.current;
-    if (!el || !wrap) return;
-
-    const elRect = el.getBoundingClientRect();
-    const wrapRect = wrap.getBoundingClientRect();
-    setIndicator({ left: elRect.left - wrapRect.left, width: elRect.width });
-  }, [activeKey]);
-
-  useEffect(() => {
-    recalcIndicator();
-  }, [recalcIndicator, items.length]);
-
-  useEffect(() => {
-    window.addEventListener('resize', recalcIndicator);
-    return () => window.removeEventListener('resize', recalcIndicator);
-  }, [recalcIndicator]);
-
-  return (
-    <div
-      ref={containerRef}
-      className="
-        relative inline-flex items-center
-        px-1 py-1 rounded-full
-        bg-[rgba(36,40,34,0.65)]/90
-        backdrop-blur-md
-        border border-[rgba(255,255,255,0.06)]
-        shadow-[0_8px_24px_rgba(0,0,0,0.35)]
-        select-none
-      "
-      role="tablist"
-      aria-label="Sort options"
-    >
-      <span
-        className="absolute top-1 bottom-1 rounded-full transition-all duration-300 ease-out will-change-transform"
-        style={{
-          left: indicator.left,
-          width: indicator.width,
-          background: 'linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%)',
-          boxShadow: '0 6px 18px rgba(201,142,107,0.35), inset 0 0 6px rgba(255,255,255,0.12)',
-        }}
-        aria-hidden="true"
-      />
-
-      <div className="relative z-[1] flex gap-1">
-        {items.map((item) => {
-          const isActive = item.key === activeKey;
-          return (
-            <button
-              key={item.key}
-              ref={setBtnRef(item.key)}
-              onClick={item.onClick}
-              role="tab"
-              aria-selected={isActive}
-              className={[
-                'px-4 md:px-5 h-9 md:h-10 rounded-full font-semibold',
-                'transition-colors duration-200',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/70',
-                'text-sm md:text-[15px]',
-                isActive ? 'text-white' : 'text-[rgba(243,239,234,0.82)] hover:text-[var(--primary)]',
-                item.key === 'arena' ? 'arena-sort-tab' : '',
-              ].join(' ')}
-            >
-              {item.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <style jsx>{`
-        div[role='tablist']:hover {
-          box-shadow: 0 10px 28px rgba(201, 142, 107, 0.12), 0 8px 24px rgba(0, 0, 0, 0.35);
-        }
-      `}</style>
-      <style jsx global>{`
-        .arena-sort-tab {
-          animation: arenaTabPulse 1.8s ease-in-out infinite;
-          color: #ff8c42 !important;
-        }
-        @keyframes arenaTabPulse {
-          0%, 100% {
-            text-shadow: 0 0 4px rgba(255,100,0,0.4);
-            transform: scale(1);
-            filter: brightness(1);
-          }
-          50% {
-            text-shadow: 0 0 14px rgba(255,70,0,0.8), 0 0 28px rgba(255,100,0,0.4);
-            transform: scale(1.05);
-            filter: brightness(1.2);
-          }
-        }
-      `}</style>
-    </div>
-  );
-};
+          {/* underline indicator */}
+          {isActive && (
+            <span
+              className="absolute bottom-0 left-0 right-0 h-[3px] rounded-t-full"
+              style={{ background: 'linear-gradient(90deg, var(--primary), var(--accent))' }}
+            />
+          )}
+        </button>
+      );
+    })}
+  </div>
+);
 
 export default SortOptions;
