@@ -36,7 +36,9 @@
 ## Getting Started
 
 ```bash
-# Prerequisites: Node.js >= 20, Phantom/Solflare wallet
+# Prerequisites:
+Node.js >= 20, Phantom/Solflare wallet
+Install backend first : https://github.com/astroboy26032026-sketch/chain-prediction-market-backend
 
 npm install
 npm run dev        # http://localhost:3000
