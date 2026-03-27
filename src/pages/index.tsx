@@ -1,88 +1,74 @@
-// pages/index.tsx — Home page (refactored: hooks + components extracted)
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { useRouter } from 'next/router';
-import Link from 'next/link';
+// pages/index.tsx — Prediction Markets home page
+import React, { useMemo, useState, useCallback } from 'react';
 import Layout from '@/components/layout/Layout';
 import TokenList from '@/components/tokens/TokenList';
 import HowItWorksPopup from '@/components/notifications/HowItWorksPopup';
-import SpaceLoader from '@/components/ui/SpaceLoader';
 import SEO from '@/components/seo/SEO';
-
 import HomeToolbar from '@/components/home/HomeToolbar';
 
-import { useTokenList } from '@/hooks/useTokenList';
-import { useNewTokensStream } from '@/hooks/useNewTokensStream';
-
-import { ActiveFilter, getMcap, getVol24h } from '@/utils/filterHelpers';
 import type { SortOption } from '@/components/ui/SortOptions';
+import type { MarketCategory } from '@/data/markets';
+import { getMarketsByCategory, marketsAsTokens, PREDICTION_MARKETS } from '@/data/markets';
 
-const TOKENS_PER_PAGE = 19;
+const INITIAL_COUNT = 10;
+
+type SortBy = 'volume' | 'ending_soon' | 'newest';
 
 const Home: React.FC = () => {
-  const router = useRouter();
-
-  // UI states
-  const [sort, setSort] = useState<SortOption>('trending');
+  const [category, setCategory] = useState<MarketCategory>('trending');
   const [searchQuery, setSearchQuery] = useState('');
-  const [includeNsfw, setIncludeNsfw] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<ActiveFilter | null>(null);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
-  // Hooks
-  const {
-    tokens, setTokens, hasMore, isLoading, isLoadingMore, error, fetchMore, resetCursor,
-  } = useTokenList({ sort, searchQuery, includeNsfw, activeFilter });
+  const [showAll, setShowAll] = useState(false);
+  const [sortBy, setSortBy] = useState<SortBy>('volume');
 
-  const { showNewTokens, setShowNewTokens, newTokensBuffer } = useNewTokensStream(setTokens);
+  const handleCategory = useCallback((opt: SortOption) => {
+    setCategory(opt);
+    setShowAll(false);
+    setSearchQuery('');
+  }, []);
 
-  // Handlers
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
-    resetCursor();
-  }, [resetCursor]);
+  }, []);
 
-  const handleSort = useCallback((option: SortOption) => {
-    setSort(option);
-    resetCursor();
-    setSearchQuery('');
-  }, [resetCursor]);
+  const allTokens = useMemo(() => {
+    const markets = getMarketsByCategory(category);
 
-  const handleToggleNsfw = useCallback(() => {
-    setIncludeNsfw((v) => !v);
-    resetCursor();
-  }, [resetCursor]);
+    // Sort markets
+    const sorted = [...markets].sort((a, b) => {
+      if (sortBy === 'volume') return b.volume24h - a.volume24h;
+      if (sortBy === 'ending_soon') return new Date(a.expiresAt).getTime() - new Date(b.expiresAt).getTime();
+      if (sortBy === 'newest') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      return 0;
+    });
 
-  const handleApplyFilter = useCallback((filter: ActiveFilter) => {
-    setActiveFilter(filter);
-    resetCursor();
-  }, [resetCursor]);
+    let tokens = marketsAsTokens(sorted);
 
-  const handleClearFilter = useCallback(() => {
-    setActiveFilter(null);
-    resetCursor();
-  }, [resetCursor]);
-
-  // Derived filtered list
-  const filteredTokens = useMemo(() => {
-    let list = tokens?.data ?? [];
-    if (!list.length) return [];
-
-    if (activeFilter) {
-      const { mcapMin, mcapMax, volMin, volMax } = activeFilter;
-      list = list.filter((t: any) => {
-        const mcap = getMcap(t);
-        const vol = getVol24h(t);
-        return mcap >= mcapMin && mcap <= mcapMax && vol >= volMin && vol <= volMax;
-      });
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      tokens = tokens.filter(
+        (t: any) =>
+          t.name?.toLowerCase().includes(q) ||
+          t.symbol?.toLowerCase().includes(q) ||
+          t.description?.toLowerCase().includes(q)
+      );
     }
 
-    return list;
-  }, [tokens, activeFilter]);
+    return tokens;
+  }, [category, searchQuery, sortBy]);
+
+  const displayedTokens = useMemo(
+    () => (showAll ? allTokens : allTokens.slice(0, INITIAL_COUNT)),
+    [allTokens, showAll]
+  );
+
+  const hasMore = !showAll && allTokens.length > INITIAL_COUNT;
 
   return (
     <Layout>
       <SEO
-        title="Create and Trade Memecoins Easily"
-        description="The best platform for launching and trading memecoins. Fair launch, anti-bot, community-driven."
+        title="Prediction Markets — Zugar"
+        description="Trade on prediction markets. Sports, crypto, politics and more."
         image="seo/home.jpg"
       />
 
@@ -91,44 +77,44 @@ const Home: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 xl:px-16">
         <div className="text-center mb-4">
           <HomeToolbar
-            sort={sort}
-            includeNsfw={includeNsfw}
-            activeFilter={activeFilter}
-            onSort={handleSort}
-            onToggleNsfw={handleToggleNsfw}
-            onApplyFilter={handleApplyFilter}
-            onClearFilter={handleClearFilter}
+            sort={category}
+            onSort={handleCategory}
             onSearch={handleSearch}
+            sortBy={sortBy}
+            onSortByChange={setSortBy}
           />
 
-          {/* Token List */}
-          {isLoading ? (
-            <div className="flex justify-center items-center mt-10">
-              <SpaceLoader size="medium" />
-            </div>
-          ) : error ? (
-            <div className="text-center text-[var(--primary)] text-xl mt-10">{error}</div>
-          ) : (tokens?.data?.length ?? 0) > 0 ? (
-            <TokenList
-              tokens={filteredTokens}
-              isEnded={sort === 'finalized'}
-              sortType={sort}
-              itemsPerPage={TOKENS_PER_PAGE}
-              isFullList={false}
-              pagination={{
-                mode: 'cursor',
-                hasMore,
-                isLoadingMore,
-                onLoadMore: fetchMore,
-                autoLoad: false,
-              }}
-            />
+          {displayedTokens.length > 0 ? (
+            <>
+              <TokenList
+                tokens={displayedTokens}
+                isEnded={false}
+                sortType={category}
+                itemsPerPage={displayedTokens.length}
+                isFullList={false}
+                pagination={{
+                  mode: 'page',
+                  currentPage: 1,
+                  totalPages: 1,
+                  onPageChange: () => {},
+                }}
+              />
+              {hasMore && (
+                <button
+                  onClick={() => setShowAll(true)}
+                  className="mt-6 px-6 py-2.5 rounded-lg border border-[var(--card-border)] bg-[var(--card)] hover:bg-[var(--card-hover)] text-sm font-semibold transition-colors"
+                >
+                  Load More
+                </button>
+              )}
+            </>
           ) : (
-            <div className="text-center text-[var(--primary)] text-xs mt-10">No tokens found matching your criteria.</div>
+            <div className="text-center text-gray-400 text-sm mt-10">
+              No markets found.
+            </div>
           )}
         </div>
       </div>
-
     </Layout>
   );
 };

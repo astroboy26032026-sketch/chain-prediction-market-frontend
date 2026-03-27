@@ -119,7 +119,7 @@ export function checkCsrf(req: NextApiRequest, res: NextApiResponse): boolean {
   const allowedOrigins = new Set(
     (
       process.env.CORS_ALLOWED_ORIGINS ||
-      'http://localhost:3000,https://pumpfunclone2025.win,https://dev.pumpfunclone2025.win'
+      'http://localhost:3000,https://zugar.app,https://dev.zugar.app'
     )
       .split(',')
       .map((s) => s.trim())
@@ -198,12 +198,17 @@ const ALLOWED_PROXY_PREFIXES = [
   '/token/',
   '/chats',
   '/chat/',
-'/rewards/',
+  '/rewards/',
+  '/reward/',
   '/points/',
   '/trading/',
   '/user/',
   '/staking/',
   '/leaderboard/',
+  '/ports/',
+  '/wallet/',
+  '/upload-to-ipfs',
+  '/health',
 ];
 
 /** Validate that a proxy path is in the allowed list */

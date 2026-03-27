@@ -1,8 +1,7 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { Component, ErrorInfo, type ReactNode } from 'react';
 
 interface Props {
   children: ReactNode;
-  fallback?: ReactNode;
 }
 
 interface State {
@@ -26,8 +25,6 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
-      if (this.props.fallback) return this.props.fallback;
-
       return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-8">
           <h2 className="text-2xl font-bold mb-4">Something went wrong</h2>

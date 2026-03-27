@@ -1,6 +1,7 @@
 import React from 'react';
+import type { MarketCategory } from '@/data/markets';
 
-export type SortOption = 'trending' | 'marketcap' | 'new' | 'finalized';
+export type SortOption = MarketCategory;
 
 interface SortOptionsProps {
   onSort: (option: SortOption) => void;
@@ -8,10 +9,11 @@ interface SortOptionsProps {
 }
 
 const TABS: { key: SortOption; emoji: string; label: string }[] = [
-  { key: 'trending',  emoji: '🧭', label: 'DISCOVER'  },
-  { key: 'new',       emoji: '✨', label: 'NEW'        },
-  { key: 'finalized', emoji: '🎓', label: 'GRADUATED'  },
-  { key: 'marketcap', emoji: '🔥', label: 'FAVORITES'  },
+  { key: 'trending', emoji: '🔥', label: 'Trending' },
+  { key: 'sports',   emoji: '⚽', label: 'Sports'   },
+  { key: 'crypto',   emoji: '₿',  label: 'Crypto'   },
+  { key: 'trump',    emoji: '🇺🇸', label: 'Trump'    },
+  { key: 'others',   emoji: '🌐', label: 'Others'   },
 ];
 
 const SortOptions: React.FC<SortOptionsProps> = ({ onSort, currentSort }) => (
@@ -35,7 +37,6 @@ const SortOptions: React.FC<SortOptionsProps> = ({ onSort, currentSort }) => (
           <span className="text-base leading-none">{emoji}</span>
           <span>{label}</span>
 
-          {/* underline indicator */}
           {isActive && (
             <span
               className="absolute bottom-0 left-0 right-0 h-[3px] rounded-t-full"

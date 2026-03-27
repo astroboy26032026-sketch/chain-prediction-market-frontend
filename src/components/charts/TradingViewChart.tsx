@@ -1,4 +1,4 @@
-// src/components/charts/TradingViewChart.tsx
+// src/components/charts/TradingViewChart.tsx — Prediction Market dual-line chart
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createChart,
@@ -12,262 +12,163 @@ import {
 import SpaceLoader from '@/components/ui/SpaceLoader';
 import { getTokenPrice } from '@/utils/api.index';
 import { useTokenPriceStream } from '@/hooks/useTokenPriceStream';
+import type { PredictionMarket } from '@/data/markets';
 
 /* ═══════════════════ TYPES ═══════════════════ */
 
 type Timeframe = '1m' | '5m' | '15m' | '1h' | '4h' | '1d';
-type ChartType = 'candle' | 'line' | 'area';
-type Indicator = 'MA7' | 'MA25' | 'EMA9' | 'BOLL' | 'RSI' | 'MACD';
-type DrawingTool = 'none' | 'hline' | 'trendline';
-
-interface OhlcvPoint {
-  time: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
+type DisplayTF = '1H' | '6H' | '1D' | '1W' | '1M' | 'All';
 
 interface TradingViewChartProps {
   liquidityEvents?: any;
   tokenInfo: any;
+  market?: PredictionMarket;
 }
 
 /* ═══════════════════ CONSTANTS ═══════════════════ */
 
-const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
-const DEFAULT_TF: Timeframe = '5m';
+// Map display timeframes to API timeframes
+const TF_MAP: Record<DisplayTF, Timeframe> = {
+  '1H': '1m',
+  '6H': '5m',
+  '1D': '15m',
+  '1W': '1h',
+  '1M': '4h',
+  'All': '1d',
+};
+
+const DISPLAY_TFS: DisplayTF[] = ['1H', '6H', '1D', '1W', '1M', 'All'];
+const DEFAULT_TF: DisplayTF = '1D';
 const CHART_H = 520;
 const CHART_H_SM = 380;
-const RSI_H = 100;
-const MACD_H = 100;
-const SIDEBAR_W = 40;
 const AUTO_REFRESH_MS = 15_000;
 
 const TF_MIN: Record<Timeframe, number> = {
   '1m': 1, '5m': 5, '15m': 15, '1h': 60, '4h': 240, '1d': 1440,
 };
 
-const UP = '#26a69a';
-const DN = '#ef5350';
+const OUTCOME_A_COLOR = '#3b82f6'; // blue
+const OUTCOME_B_COLOR = '#ef4444'; // red/rose
 
-/** Read a CSS custom property from :root (returns hex string for lightweight-charts) */
+/** Read a CSS custom property from :root */
 function cssVar(name: string, fallback: string): string {
   if (typeof document === 'undefined') return fallback;
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return v || fallback;
 }
 
-/** Lazily resolved theme colours — call inside useEffect / render so DOM is ready */
 function getThemeColors() {
   return {
     bg:         cssVar('--card', '#222521'),
     bgAlt:      cssVar('--card2', '#2A2E29'),
     border:     cssVar('--card-border', '#3C322C'),
     text:       cssVar('--foreground', '#F3EFEA'),
-    textMuted:  cssVar('--foreground', '#F3EFEA') + '99', // 60 % alpha fallback
+    textMuted:  cssVar('--foreground', '#F3EFEA') + '99',
     gridLine:   cssVar('--card2', '#2A2E29'),
     crosshair:  cssVar('--card-border', '#3C322C'),
   };
 }
 
-/* ═══════════════════ MATH HELPERS ═══════════════════ */
+/* ═══════════════════ HELPERS ═══════════════════ */
 
-function fmtPrice(p: number): string {
-  const a = Math.abs(p);
-  if (a >= 1) return p.toFixed(4);
-  if (a >= 0.1) return p.toFixed(5);
-  if (a >= 0.01) return p.toFixed(6);
-  if (a >= 0.001) return p.toFixed(7);
-  return p.toFixed(8);
+interface PricePoint {
+  time: number;
+  value: number; // outcome A percentage (0-100)
 }
 
-
-function enhanceSmall(data: OhlcvPoint[]): OhlcvPoint[] {
-  const min = 1e-9;
-  return data.map((d) => {
-    if (Math.abs(d.open - d.close) < min) {
-      const mid = (d.open + d.close) / 2, adj = min / 2;
-      return { ...d, open: mid - adj, close: mid + adj, high: Math.max(d.high, mid + adj), low: Math.min(d.low, mid - adj) };
-    }
-    return d;
-  });
-}
-
-function buildOhlcv(points: Array<{ timestamp: string; price: number }>, tfMin: number): OhlcvPoint[] {
+function buildPricePoints(
+  points: Array<{ timestamp: string; price: number }>,
+  tfMin: number
+): PricePoint[] {
   if (!points?.length) return [];
   const sorted = [...points].sort((a, b) => +new Date(a.timestamp) - +new Date(b.timestamp));
   const bucket = tfMin * 60;
   const map = new Map<number, number[]>();
+
   for (const pt of sorted) {
     const ts = Math.floor(+new Date(pt.timestamp) / 1000);
     const key = Math.floor(ts / bucket) * bucket;
     if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push(Number(pt.price));
+    // Convert price to percentage (0-100 range)
+    let pct = Number(pt.price);
+    if (pct > 0 && pct < 1) pct = pct * 100; // if price is 0.xx, treat as percentage
+    if (pct > 100) pct = Math.min(pct / 10, 99); // cap at 99
+    if (pct <= 0) pct = 50; // default
+    map.get(key)!.push(pct);
   }
-  const out: OhlcvPoint[] = [];
-  let prevClose: number | null = null;
+
+  const out: PricePoint[] = [];
   for (const key of [...map.keys()].sort((a, b) => a - b)) {
-    const pr = map.get(key)!;
-    // Use previous candle's close as this candle's open (creates visible body even with 1 price per bucket)
-    const o = prevClose ?? pr[0];
-    const c = pr[pr.length - 1];
-    const h = Math.max(o, ...pr);
-    const l = Math.min(o, ...pr);
-    out.push({ time: key, open: o, high: h, low: l, close: c, volume: pr.length * Math.abs(h - l || c * 0.001) });
-    prevClose = c;
+    const prices = map.get(key)!;
+    const avg = prices.reduce((s, v) => s + v, 0) / prices.length;
+    out.push({ time: key, value: Math.min(Math.max(avg, 1), 99) });
   }
-  if (out.length === 1) out.push({ ...out[0], time: out[0].time + bucket });
-  return enhanceSmall(out);
-}
 
-function calcMA(d: OhlcvPoint[], p: number) {
-  const r: Array<{ time: number; value: number }> = [];
-  for (let i = p - 1; i < d.length; i++) {
-    let s = 0; for (let j = i - p + 1; j <= i; j++) s += d[j].close;
-    r.push({ time: d[i].time, value: s / p });
+  if (out.length === 1) {
+    out.push({ ...out[0], time: out[0].time + bucket });
   }
-  return r;
-}
 
-function calcEMA(d: OhlcvPoint[], p: number) {
-  if (!d.length) return [];
-  const k = 2 / (p + 1);
-  const r: Array<{ time: number; value: number }> = [];
-  let e = d[0].close; r.push({ time: d[0].time, value: e });
-  for (let i = 1; i < d.length; i++) { e = d[i].close * k + e * (1 - k); r.push({ time: d[i].time, value: e }); }
-  return r;
-}
-
-function calcBoll(d: OhlcvPoint[], p = 20, m = 2) {
-  const up: Array<{ time: number; value: number }> = [], mid: Array<{ time: number; value: number }> = [], lo: Array<{ time: number; value: number }> = [];
-  for (let i = p - 1; i < d.length; i++) {
-    let s = 0; for (let j = i - p + 1; j <= i; j++) s += d[j].close;
-    const avg = s / p; let v = 0; for (let j = i - p + 1; j <= i; j++) v += (d[j].close - avg) ** 2;
-    const std = Math.sqrt(v / p);
-    mid.push({ time: d[i].time, value: avg }); up.push({ time: d[i].time, value: avg + m * std }); lo.push({ time: d[i].time, value: avg - m * std });
-  }
-  return { upper: up, mid, lower: lo };
-}
-
-function calcRSI(d: OhlcvPoint[], p = 14) {
-  const r: Array<{ time: number; value: number }> = [];
-  if (d.length < p + 1) return r;
-  let g = 0, l = 0;
-  for (let i = 1; i <= p; i++) { const df = d[i].close - d[i - 1].close; if (df > 0) g += df; else l -= df; }
-  let ag = g / p, al = l / p;
-  r.push({ time: d[p].time, value: al === 0 ? 100 : 100 - 100 / (1 + ag / al) });
-  for (let i = p + 1; i < d.length; i++) {
-    const df = d[i].close - d[i - 1].close;
-    ag = (ag * (p - 1) + (df > 0 ? df : 0)) / p;
-    al = (al * (p - 1) + (df < 0 ? -df : 0)) / p;
-    r.push({ time: d[i].time, value: al === 0 ? 100 : 100 - 100 / (1 + ag / al) });
-  }
-  return r;
-}
-
-function calcMACD(d: OhlcvPoint[]) {
-  const e12 = calcEMA(d, 12), e26 = calcEMA(d, 26);
-  if (!e26.length) return { macd: [], signal: [], histogram: [] as Array<{ time: number; value: number; color: string }> };
-  const e26m = new Map(e26.map((x) => [x.time, x.value]));
-  const ml: Array<{ time: number; value: number }> = [];
-  for (const x of e12) { const v = e26m.get(x.time); if (v !== undefined) ml.push({ time: x.time, value: x.value - v }); }
-  const k = 2 / 10, sig: Array<{ time: number; value: number }> = [];
-  if (ml.length) { let e = ml[0].value; sig.push({ time: ml[0].time, value: e }); for (let i = 1; i < ml.length; i++) { e = ml[i].value * k + e * (1 - k); sig.push({ time: ml[i].time, value: e }); } }
-  const sm = new Map(sig.map((x) => [x.time, x.value]));
-  const hist: Array<{ time: number; value: number; color: string }> = [];
-  for (const x of ml) { const s = sm.get(x.time) ?? 0; const df = x.value - s; hist.push({ time: x.time, value: df, color: df >= 0 ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)' }); }
-  return { macd: ml, signal: sig, histogram: hist };
-}
-
-function createSub(el: HTMLDivElement, h: number, w: number): IChartApi {
-  return createChart(el, {
-    width: w, height: h,
-    layout: { background: { color: 'transparent' }, textColor: '#d7e1ec' },
-    grid: { vertLines: { color: 'rgba(255,255,255,0.03)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
-    rightPriceScale: { borderColor: 'rgba(255,255,255,0.14)', scaleMargins: { top: 0.1, bottom: 0.1 } },
-    timeScale: { visible: false, borderColor: 'rgba(255,255,255,0.14)' },
-    crosshair: { mode: CrosshairMode.Normal, vertLine: { visible: false, labelVisible: false }, horzLine: { style: LineStyle.Dashed, width: 1, color: 'rgba(255,255,255,0.15)', labelVisible: true } },
-  });
+  return out;
 }
 
 /* ═══════════════════ COMPONENT ═══════════════════ */
 
-const TradingViewChart: React.FC<TradingViewChartProps> = ({ tokenInfo }) => {
+const TradingViewChart: React.FC<TradingViewChartProps> = ({ tokenInfo, market }) => {
   const tokenAddress = tokenInfo?.address as string | undefined;
-  const tokenName = tokenInfo?.name || '';
-  const tokenSymbol = tokenInfo?.symbol || '';
+  const tokenName = market?.outcomeA || tokenInfo?.name || tokenInfo?.symbol || 'YES';
+  const outcomeB = market?.outcomeB || 'NO';
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const rsiContainerRef = useRef<HTMLDivElement>(null);
-  const macdContainerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const chartRef = useRef<IChartApi | null>(null);
-  const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const lineRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const areaRef = useRef<ISeriesApi<'Area'> | null>(null);
-  const volumeRef = useRef<ISeriesApi<'Histogram'> | null>(null);
-  const ma7Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ma25Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ema9Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const bollUpRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const bollMidRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const bollLoRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const areaARef = useRef<ISeriesApi<'Area'> | null>(null);
+  const areaBRef = useRef<ISeriesApi<'Area'> | null>(null);
 
-  const rsiChartRef = useRef<IChartApi | null>(null);
-  const rsiRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const macdChartRef = useRef<IChartApi | null>(null);
-  const macdLRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const macdSRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const macdHRef = useRef<ISeriesApi<'Histogram'> | null>(null);
-
-  const hLinesRef = useRef<ISeriesApi<'Line'>[]>([]);
-  const trendLinesRef = useRef<ISeriesApi<'Line'>[]>([]);
-  const trendClickRef = useRef<{ time: Time; value: number } | null>(null);
-
-  const [tf, setTf] = useState<Timeframe>(DEFAULT_TF);
-  const [chartType, setChartType] = useState<ChartType>('candle');
-  const [data, setData] = useState<OhlcvPoint[]>([]);
+  const [displayTf, setDisplayTf] = useState<DisplayTF>(DEFAULT_TF);
+  const tf = TF_MAP[displayTf];
+  const [data, setData] = useState<PricePoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [indicators, setIndicators] = useState<Set<Indicator>>(new Set());
-  const [legend, setLegend] = useState<OhlcvPoint | null>(null);
   const [isFS, setIsFS] = useState(false);
-  const [drawTool, setDrawTool] = useState<DrawingTool>('none');
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [priceMode, setPriceMode] = useState<'price' | 'mcap'>('price');
   const [chartH, setChartH] = useState(CHART_H);
-  const [utcTime, setUtcTime] = useState('');
+  const [hoverValues, setHoverValues] = useState<{ a: number; b: number } | null>(null);
   const reqIdRef = useRef(0);
 
-  // responsive
+  // Responsive
   useEffect(() => {
     const u = () => setChartH(window.innerWidth < 640 ? CHART_H_SM : CHART_H);
     u(); window.addEventListener('resize', u); return () => window.removeEventListener('resize', u);
   }, []);
 
-  // UTC clock
-  useEffect(() => {
-    const tick = () => {
-      const d = new Date();
-      setUtcTime(d.toISOString().slice(11, 19) + ' UTC');
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, []);
+  // Current values
+  const lastA = data.length > 0 ? Math.round(data[data.length - 1].value) : 50;
+  const lastB = 100 - lastA;
+  const displayA = hoverValues ? Math.round(hoverValues.a) : lastA;
+  const displayB = hoverValues ? Math.round(hoverValues.b) : lastB;
 
   /* ─── fetch ─── */
   const fetchChart = useCallback(async (silent = false) => {
+    // Use mock chart data from prediction market if available
+    if (market?.chartData?.length) {
+      const myReq = ++reqIdRef.current;
+      if (!silent) setLoading(true);
+      // Simulate async
+      await new Promise((r) => setTimeout(r, 200));
+      if (myReq !== reqIdRef.current) return;
+      setData(buildPricePoints(market.chartData, TF_MIN[tf]));
+      if (!silent) setLoading(false);
+      return;
+    }
+
     if (!tokenAddress) return;
     const myReq = ++reqIdRef.current;
     if (!silent) { setLoading(true); setErr(null); }
     try {
       const res = await getTokenPrice(tokenAddress, tf);
       if (myReq !== reqIdRef.current) return;
-      setData(buildOhlcv(res?.chart ?? [], TF_MIN[tf]));
+      setData(buildPricePoints(res?.chart ?? [], TF_MIN[tf]));
     } catch (e) {
       console.error('getTokenPrice failed:', e);
       if (myReq !== reqIdRef.current) return;
@@ -276,7 +177,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ tokenInfo }) => {
       if (myReq !== reqIdRef.current) return;
       if (!silent) setLoading(false);
     }
-  }, [tokenAddress, tf]);
+  }, [tokenAddress, tf, market]);
 
   useEffect(() => { fetchChart(); }, [fetchChart]);
   useEffect(() => {
@@ -287,24 +188,22 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ tokenInfo }) => {
     return () => clearInterval(id);
   }, [autoRefresh, fetchChart, tokenAddress]);
 
-  /* ─── WebSocket real-time price stream ─── */
+  /* ─── WebSocket real-time ─── */
   useTokenPriceStream(tokenAddress, (tick) => {
-    const candle = candleRef.current;
-    const vol = volumeRef.current;
-    if (!candle || !vol) return;
+    const areaA = areaARef.current;
+    const areaB = areaBRef.current;
+    if (!areaA || !areaB) return;
 
     const ts = Math.floor(new Date(tick.timestamp).getTime() / 1000) as Time;
-    const p = tick.price;
+    let p = tick.price;
+    if (p > 0 && p < 1) p = p * 100;
+    p = Math.min(Math.max(p, 1), 99);
 
-    // Update last candle in real-time (lightweight-charts merges by time)
-    candle.update({ time: ts, open: p, high: p, low: p, close: p });
-
-    if (tick.volume != null) {
-      vol.update({ time: ts, value: tick.volume, color: 'rgba(38,166,154,0.25)' });
-    }
+    areaA.update({ time: ts, value: p });
+    areaB.update({ time: ts, value: 100 - p });
   });
 
-  /* ─── create main chart ─── */
+  /* ─── create chart ─── */
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -313,161 +212,117 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ tokenInfo }) => {
       const w = containerRef.current.clientWidth || 600;
       const tc = getThemeColors();
       const chart = createChart(containerRef.current, {
-        width: w, height: chartH,
+        width: w,
+        height: chartH,
         layout: { background: { color: tc.bg }, textColor: tc.textMuted },
-        grid: { vertLines: { color: tc.gridLine }, horzLines: { color: tc.gridLine } },
-        rightPriceScale: { borderColor: tc.border, visible: true, borderVisible: true, alignLabels: true, entireTextOnly: true, scaleMargins: { top: 0.08, bottom: 0.2 } },
-        timeScale: { borderColor: tc.border, timeVisible: true, secondsVisible: false },
-        crosshair: { mode: CrosshairMode.Normal, vertLine: { labelVisible: true, style: LineStyle.Solid, width: 1, color: tc.crosshair }, horzLine: { labelVisible: true, style: LineStyle.Solid, width: 1, color: tc.crosshair } },
+        grid: {
+          vertLines: { color: tc.gridLine },
+          horzLines: { color: tc.gridLine },
+        },
+        rightPriceScale: {
+          borderColor: tc.border,
+          visible: true,
+          borderVisible: true,
+          alignLabels: true,
+          entireTextOnly: true,
+          scaleMargins: { top: 0.05, bottom: 0.05 },
+        },
+        timeScale: {
+          borderColor: tc.border,
+          timeVisible: true,
+          secondsVisible: false,
+        },
+        crosshair: {
+          mode: CrosshairMode.Normal,
+          vertLine: { labelVisible: true, style: LineStyle.Solid, width: 1, color: tc.crosshair },
+          horzLine: { labelVisible: true, style: LineStyle.Solid, width: 1, color: tc.crosshair },
+        },
       });
 
-      const pf = { type: 'custom' as const, formatter: fmtPrice, minMove: 1e-9 };
+      // Percentage formatter
+      const pctFormat = {
+        type: 'custom' as const,
+        formatter: (price: number) => `${price.toFixed(1)}%`,
+        minMove: 0.1,
+      };
 
-      const candle = chart.addCandlestickSeries({ upColor: UP, downColor: DN, borderVisible: false, wickUpColor: UP, wickDownColor: DN });
-      candle.applyOptions({ priceFormat: pf });
-      const line = chart.addLineSeries({ color: UP, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, visible: false });
-      line.applyOptions({ priceFormat: pf });
-      const area = chart.addAreaSeries({ topColor: 'rgba(38,166,154,0.3)', bottomColor: 'rgba(38,166,154,0.01)', lineColor: UP, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, visible: false });
-      area.applyOptions({ priceFormat: pf });
-      const vol = chart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: '' });
-      vol.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+      // Outcome A (YES) — blue area
+      const areaA = chart.addAreaSeries({
+        topColor: 'rgba(59, 130, 246, 0.25)',
+        bottomColor: 'rgba(59, 130, 246, 0.02)',
+        lineColor: OUTCOME_A_COLOR,
+        lineWidth: 2,
+        priceLineVisible: true,
+        lastValueVisible: true,
+        priceLineColor: OUTCOME_A_COLOR,
+      });
+      areaA.applyOptions({ priceFormat: pctFormat });
 
-      const ma7 = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-      const ma25 = chart.addLineSeries({ color: '#8b5cf6', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-      const ema9 = chart.addLineSeries({ color: '#3b82f6', lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-      const bUp = chart.addLineSeries({ color: '#e879f9', lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-      const bMid = chart.addLineSeries({ color: '#e879f9', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-      const bLo = chart.addLineSeries({ color: '#e879f9', lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+      // Outcome B (NO) — red area
+      const areaB = chart.addAreaSeries({
+        topColor: 'rgba(239, 68, 68, 0.15)',
+        bottomColor: 'rgba(239, 68, 68, 0.01)',
+        lineColor: OUTCOME_B_COLOR,
+        lineWidth: 2,
+        priceLineVisible: true,
+        lastValueVisible: true,
+        priceLineColor: OUTCOME_B_COLOR,
+      });
+      areaB.applyOptions({ priceFormat: pctFormat });
 
-      chartRef.current = chart; candleRef.current = candle; lineRef.current = line; areaRef.current = area;
-      volumeRef.current = vol; ma7Ref.current = ma7; ma25Ref.current = ma25; ema9Ref.current = ema9;
-      bollUpRef.current = bUp; bollMidRef.current = bMid; bollLoRef.current = bLo;
+      chartRef.current = chart;
+      areaARef.current = areaA;
+      areaBRef.current = areaB;
 
+      // Crosshair hover
       chart.subscribeCrosshairMove((param: MouseEventParams) => {
-        if (!param.time || !param.seriesData) { setLegend(null); return; }
-        const cd = param.seriesData.get(candle) as any;
-        if (cd?.open != null) {
-          const vd = param.seriesData.get(vol) as any;
-          setLegend({ time: param.time as number, open: cd.open, high: cd.high, low: cd.low, close: cd.close, volume: vd?.value ?? 0 });
-        } else {
-          const ld = (param.seriesData.get(line) ?? param.seriesData.get(area)) as any;
-          if (ld?.value != null) setLegend({ time: param.time as number, open: ld.value, high: ld.value, low: ld.value, close: ld.value, volume: 0 });
+        if (!param.time || !param.seriesData) {
+          setHoverValues(null);
+          return;
         }
-      });
-
-      chart.subscribeClick((param: MouseEventParams) => {
-        if (!param.time || !param.point) return;
-        const price = candle.coordinateToPrice(param.point.y);
-        if (price == null) return;
-        if (drawTool === 'hline') {
-          const hl = chart.addLineSeries({ color: '#fbbf24', lineWidth: 1, lineStyle: LineStyle.LargeDashed, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false });
-          hl.applyOptions({ priceFormat: { type: 'custom' as const, formatter: fmtPrice, minMove: 1e-9 } });
-          const tr = chart.timeScale().getVisibleRange();
-          if (tr) hl.setData([{ time: tr.from as Time, value: price as number }, { time: tr.to as Time, value: price as number }]);
-          hLinesRef.current.push(hl);
-        }
-        if (drawTool === 'trendline') {
-          if (!trendClickRef.current) {
-            trendClickRef.current = { time: param.time as Time, value: price as number };
-          } else {
-            const tl = chart.addLineSeries({ color: '#60a5fa', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-            tl.setData([
-              { time: trendClickRef.current.time, value: trendClickRef.current.value },
-              { time: param.time as Time, value: price as number },
-            ]);
-            trendLinesRef.current.push(tl);
-            trendClickRef.current = null;
-          }
+        const dA = param.seriesData.get(areaA) as any;
+        if (dA?.value != null) {
+          setHoverValues({ a: dA.value, b: 100 - dA.value });
         }
       });
     });
 
     return () => {
       cancelAnimationFrame(raf);
-      chartRef.current?.remove(); chartRef.current = null;
-      candleRef.current = null; lineRef.current = null; areaRef.current = null; volumeRef.current = null;
-      ma7Ref.current = null; ma25Ref.current = null; ema9Ref.current = null;
-      bollUpRef.current = null; bollMidRef.current = null; bollLoRef.current = null;
-      hLinesRef.current = []; trendLinesRef.current = [];
+      chartRef.current?.remove();
+      chartRef.current = null;
+      areaARef.current = null;
+      areaBRef.current = null;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /* ─── RSI sub ─── */
-  useEffect(() => {
-    if (!indicators.has('RSI')) { rsiChartRef.current?.remove(); rsiChartRef.current = null; rsiRef.current = null; return; }
-    const el = rsiContainerRef.current; if (!el || rsiChartRef.current) return;
-    const w = el.clientWidth || 600;
-    const ch = createSub(el, RSI_H, w);
-    const s = ch.addLineSeries({ color: '#f59e0b', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false });
-    const ob = ch.addLineSeries({ color: 'rgba(239,83,80,0.3)', lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-    const os = ch.addLineSeries({ color: 'rgba(38,166,154,0.3)', lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-    if (data.length >= 2) {
-      ob.setData([{ time: data[0].time as Time, value: 70 }, { time: data[data.length - 1].time as Time, value: 70 }]);
-      os.setData([{ time: data[0].time as Time, value: 30 }, { time: data[data.length - 1].time as Time, value: 30 }]);
-    }
-    rsiChartRef.current = ch; rsiRef.current = s;
-    return () => { ch.remove(); rsiChartRef.current = null; rsiRef.current = null; };
-  }, [indicators.has('RSI'), data.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /* ─── MACD sub ─── */
-  useEffect(() => {
-    if (!indicators.has('MACD')) { macdChartRef.current?.remove(); macdChartRef.current = null; macdLRef.current = null; macdSRef.current = null; macdHRef.current = null; return; }
-    const el = macdContainerRef.current; if (!el || macdChartRef.current) return;
-    const w = el.clientWidth || 600;
-    const ch = createSub(el, MACD_H, w);
-    const ml = ch.addLineSeries({ color: '#3b82f6', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-    const sg = ch.addLineSeries({ color: '#f59e0b', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-    const ht = ch.addHistogramSeries({ priceFormat: { type: 'price', precision: 10, minMove: 1e-10 }, priceScaleId: '' });
-    ht.priceScale().applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
-    macdChartRef.current = ch; macdLRef.current = ml; macdSRef.current = sg; macdHRef.current = ht;
-    return () => { ch.remove(); macdChartRef.current = null; macdLRef.current = null; macdSRef.current = null; macdHRef.current = null; };
-  }, [indicators.has('MACD')]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { chartRef.current?.applyOptions({ height: chartH }); }, [chartH]);
 
   /* ─── update data ─── */
   useEffect(() => {
-    const chart = chartRef.current, candle = candleRef.current, line = lineRef.current, area = areaRef.current, vol = volumeRef.current;
-    if (!chart || !candle || !line || !area || !vol) return;
+    const chart = chartRef.current;
+    const areaA = areaARef.current;
+    const areaB = areaBRef.current;
+    if (!chart || !areaA || !areaB) return;
     if (data.length < 2) return;
-    const sorted = [...data].sort((a, b) => a.time - b.time);
-    const td = sorted.map((d) => ({ time: d.time as Time, open: d.open, high: d.high, low: d.low, close: d.close }));
-    const ld = sorted.map((d) => ({ time: d.time as Time, value: d.close }));
-    candle.applyOptions({ visible: chartType === 'candle' }); line.applyOptions({ visible: chartType === 'line' }); area.applyOptions({ visible: chartType === 'area' });
-    candle.setData(td); line.setData(ld); area.setData(ld);
-    vol.setData(sorted.map((d) => ({ time: d.time as Time, value: d.volume, color: d.close >= d.open ? 'rgba(38,166,154,0.25)' : 'rgba(239,83,80,0.25)' })));
-    const tt = (a: Array<{ time: number; value: number }>) => a.map((x) => ({ time: x.time as Time, value: x.value }));
-    ma7Ref.current?.setData(indicators.has('MA7') ? tt(calcMA(sorted, 7)) : []);
-    ma25Ref.current?.setData(indicators.has('MA25') ? tt(calcMA(sorted, 25)) : []);
-    ema9Ref.current?.setData(indicators.has('EMA9') ? tt(calcEMA(sorted, 9)) : []);
-    if (indicators.has('BOLL')) { const b = calcBoll(sorted); bollUpRef.current?.setData(tt(b.upper)); bollMidRef.current?.setData(tt(b.mid)); bollLoRef.current?.setData(tt(b.lower)); }
-    else { bollUpRef.current?.setData([]); bollMidRef.current?.setData([]); bollLoRef.current?.setData([]); }
-    if (indicators.has('RSI') && rsiRef.current) { rsiRef.current.setData(tt(calcRSI(sorted))); rsiChartRef.current?.timeScale().fitContent(); }
-    if (indicators.has('MACD') && macdLRef.current && macdSRef.current && macdHRef.current) {
-      const m = calcMACD(sorted);
-      macdLRef.current.setData(tt(m.macd)); macdSRef.current.setData(tt(m.signal));
-      macdHRef.current.setData(m.histogram.map((x) => ({ time: x.time as Time, value: x.value, color: x.color })));
-      macdChartRef.current?.timeScale().fitContent();
-    }
-    chart.timeScale().fitContent();
-  }, [data, indicators, chartType]);
 
-  /* ─── sync time ─── */
-  useEffect(() => {
-    const main = chartRef.current; if (!main) return;
-    const subs = [rsiChartRef.current, macdChartRef.current].filter(Boolean) as IChartApi[];
-    if (!subs.length) return;
-    const h = () => { const r = main.timeScale().getVisibleLogicalRange(); if (r) subs.forEach((s) => s.timeScale().setVisibleLogicalRange(r)); };
-    main.timeScale().subscribeVisibleLogicalRangeChange(h);
-    return () => main.timeScale().unsubscribeVisibleLogicalRangeChange(h);
-  }, [indicators]);
+    const sorted = [...data].sort((a, b) => a.time - b.time);
+
+    const dataA = sorted.map((d) => ({ time: d.time as Time, value: d.value }));
+    const dataB = sorted.map((d) => ({ time: d.time as Time, value: 100 - d.value }));
+
+    areaA.setData(dataA);
+    areaB.setData(dataB);
+
+    chart.timeScale().fitContent();
+  }, [data]);
 
   /* ─── resize ─── */
   useEffect(() => {
     const el = containerRef.current; if (!el) return;
     const ro = new ResizeObserver(() => {
       const w = containerRef.current?.clientWidth; if (!w || w <= 0) return;
-      chartRef.current?.applyOptions({ width: w }); rsiChartRef.current?.applyOptions({ width: w }); macdChartRef.current?.applyOptions({ width: w });
+      chartRef.current?.applyOptions({ width: w });
     });
     ro.observe(el); return () => ro.disconnect();
   }, []);
@@ -480,70 +335,38 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ tokenInfo }) => {
   }, []);
   useEffect(() => { const h = () => setIsFS(!!document.fullscreenElement); document.addEventListener('fullscreenchange', h); return () => document.removeEventListener('fullscreenchange', h); }, []);
 
-  const clearDrawings = useCallback(() => {
-    const c = chartRef.current; if (!c) return;
-    for (const s of hLinesRef.current) try { c.removeSeries(s); } catch {}
-    for (const s of trendLinesRef.current) try { c.removeSeries(s); } catch {}
-    hLinesRef.current = []; trendLinesRef.current = []; trendClickRef.current = null;
-  }, []);
-
-  const toggleInd = (i: Indicator) => setIndicators((p) => { const n = new Set(p); if (n.has(i)) n.delete(i); else n.add(i); return n; });
-
-  const last = data.length >= 2 ? data[data.length - 1] : null;
-  const prev = data.length >= 2 ? data[data.length - 2] : null;
-  const pct = last && prev && prev.close > 0 ? ((last.close - prev.close) / prev.close) * 100 : null;
-  const dl = legend || last;
-
-  const IND_LIST: { key: Indicator; label: string; color: string }[] = [
-    { key: 'MA7', label: 'MA 7', color: '#f59e0b' }, { key: 'MA25', label: 'MA 25', color: '#8b5cf6' },
-    { key: 'EMA9', label: 'EMA 9', color: '#3b82f6' }, { key: 'BOLL', label: 'BOLL', color: '#e879f9' },
-    { key: 'RSI', label: 'RSI', color: '#f59e0b' }, { key: 'MACD', label: 'MACD', color: '#3b82f6' },
-  ];
-
   /* ═════ RENDER ═════ */
   return (
     <div ref={wrapperRef} className={`w-full rounded-lg overflow-hidden ${isFS ? 'fixed inset-0 z-50 bg-[var(--card)]' : ''}`}>
 
       {/* ══ TOP HEADER BAR ══ */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--card2)] border-b border-[var(--card-border)] text-xs">
+      <div className="flex items-center justify-between px-3 py-2 bg-[var(--card2)] border-b border-[var(--card-border)] text-xs">
+        {/* Outcome legend badges */}
         <div className="flex items-center gap-3">
-          {/* Timeframe selector */}
-          <span className="text-white font-semibold">{tf}</span>
-
-          {/* Chart type icons */}
-          <button type="button" onClick={() => setChartType('candle')} title="Candlestick"
-            className={`p-1 rounded ${chartType === 'candle' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="7" y="1" width="2" height="14" rx="0.5"/><rect x="5" y="4" width="6" height="8" rx="1" fill="none" stroke="currentColor" strokeWidth="1.2"/></svg>
-          </button>
-          <button type="button" onClick={() => setChartType('line')} title="Line"
-            className={`p-1 rounded ${chartType === 'line' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="1,12 5,6 9,9 15,3"/></svg>
-          </button>
-          <button type="button" onClick={() => setChartType('area')} title="Area"
-            className={`p-1 rounded ${chartType === 'area' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" opacity="0.3"><polygon points="1,12 5,6 9,9 15,3 15,14 1,14"/><polyline points="1,12 5,6 9,9 15,3" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="1"/></svg>
-          </button>
-
-          <span className="text-[var(--card-border)]">|</span>
-
-          {/* Price / MarketCap toggle */}
-          <button type="button" onClick={() => setPriceMode('price')}
-            className={`px-1 ${priceMode === 'price' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
-            SOL/USD
-          </button>
-          <button type="button" onClick={() => setPriceMode('mcap')}
-            className={`px-1 ${priceMode === 'mcap' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
-            MarketCap/Price
-          </button>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-blue-500/40 bg-blue-500/10">
+            <span className="w-2 h-2 rounded-full bg-blue-500" />
+            <span className="font-semibold text-blue-400">{tokenName} {displayA}%</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-rose-500/30 bg-rose-500/5">
+            <span className="w-2 h-2 rounded-full bg-rose-500" />
+            <span className="font-medium text-rose-400">{outcomeB} {displayB}%</span>
+          </div>
         </div>
 
+        {/* Timeframe + controls */}
         <div className="flex items-center gap-2">
-          {/* Indicators dropdown area */}
-          {IND_LIST.map(({ key, label, color }) => (
-            <button key={key} type="button" onClick={() => toggleInd(key)}
-              className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${indicators.has(key) ? '' : 'text-gray-500 hover:text-gray-300'}`}
-              style={indicators.has(key) ? { color, textDecoration: 'underline' } : undefined}>
-              {label}
+          {DISPLAY_TFS.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setDisplayTf(t)}
+              className={`px-2 py-0.5 rounded transition-colors font-medium ${
+                t === displayTf
+                  ? 'text-white bg-[var(--primary)]/30'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              {t}
             </button>
           ))}
 
@@ -551,12 +374,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ tokenInfo }) => {
 
           {/* Auto refresh */}
           <button type="button" onClick={() => setAutoRefresh(!autoRefresh)} title={autoRefresh ? 'Live (15s)' : 'Paused'}
-            className={`w-2 h-2 rounded-full ${autoRefresh ? 'bg-[#26a69a] animate-pulse' : 'bg-gray-600'}`} />
-
-          {/* Screenshot placeholder */}
-          <button type="button" title="Screenshot" className="text-gray-500 hover:text-gray-300 p-1">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2"><rect x="1" y="3" width="12" height="9" rx="1.5"/><circle cx="7" cy="7.5" r="2.5"/></svg>
-          </button>
+            className={`w-2 h-2 rounded-full ${autoRefresh ? 'bg-green-400 animate-pulse' : 'bg-gray-600'}`} />
 
           {/* Fullscreen */}
           <button type="button" onClick={toggleFS} title="Fullscreen" className="text-gray-500 hover:text-gray-300 p-1">
@@ -567,118 +385,43 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ tokenInfo }) => {
         </div>
       </div>
 
-      {/* ══ OHLCV LEGEND (overlay on chart) ══ */}
-      <div className="relative">
-        {dl && data.length >= 2 && (
-          <div className="absolute top-2 left-12 z-10 flex items-center gap-2 text-[11px] font-mono pointer-events-none">
-            <span className="text-gray-300 font-semibold">{tokenName || tokenSymbol} · {tf}</span>
-            <span className="text-gray-500">O</span><span className="text-white">{fmtPrice(dl.open)}</span>
-            <span className="text-gray-500">H</span><span className="text-white">{fmtPrice(dl.high)}</span>
-            <span className="text-gray-500">L</span><span className="text-white">{fmtPrice(dl.low)}</span>
-            <span className="text-gray-500">C</span>
-            <span className={dl.close >= dl.open ? 'text-[#26a69a]' : 'text-[#ef5350]'}>{fmtPrice(dl.close)}</span>
-            {pct !== null && (
-              <span className={pct >= 0 ? 'text-[#26a69a]' : 'text-[#ef5350]'}>
-                ({pct >= 0 ? '+' : ''}{pct.toFixed(2)}%)
-              </span>
+      {/* ══ CHART STATS BAR ══ */}
+      {market && (
+        <div className="flex items-center gap-4 px-3 py-1.5 bg-[var(--card)] border-b border-[var(--card-border)] text-[11px]">
+          <div className="flex items-center gap-1">
+            <span className="text-gray-500">Vol 24h:</span>
+            <span className="font-semibold text-gray-300">${market.volume24h >= 1000 ? `${(market.volume24h / 1000).toFixed(1)}K` : market.volume24h}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-gray-500">Liquidity:</span>
+            <span className="font-semibold text-gray-300">${market.liquidity >= 1000 ? `${(market.liquidity / 1000).toFixed(1)}K` : market.liquidity}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-gray-500">Total Vol:</span>
+            <span className="font-semibold text-gray-300">${market.totalVolume >= 1000 ? `${(market.totalVolume / 1000).toFixed(1)}K` : market.totalVolume}</span>
+          </div>
+        </div>
+      )}
+
+      {/* ══ CHART CONTAINER ══ */}
+      <div className="relative" style={{ height: chartH }}>
+        <div ref={containerRef} className="w-full h-full" />
+        {(loading || data.length < 2) && (
+          <div className="absolute inset-0 flex items-center justify-center bg-[var(--card)]">
+            {loading ? <SpaceLoader size="medium" /> : (
+              <div className="flex flex-col items-center">
+                <p className="text-gray-400 text-sm">Not enough data to display chart</p>
+                {err && <p className="text-xs text-red-400 mt-2">{err}</p>}
+              </div>
             )}
           </div>
         )}
-
-        {/* ══ MAIN AREA: Sidebar + Chart ══ */}
-        <div className="flex">
-          {/* LEFT SIDEBAR */}
-          <div className="flex flex-col items-center py-2 gap-1 bg-[var(--card2)] border-r border-[var(--card-border)] shrink-0 hidden sm:flex" style={{ width: SIDEBAR_W }}>
-            {/* Cursor */}
-            <button type="button" onClick={() => { setDrawTool('none'); trendClickRef.current = null; }}
-              title="Cursor" className={`w-7 h-7 flex items-center justify-center rounded text-sm ${drawTool === 'none' ? 'bg-[var(--card-hover)] text-white' : 'text-gray-500 hover:text-gray-300'}`}>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M2,1 L2,11 L5,8 L8,13 L10,12 L7,7 L11,7 Z"/></svg>
-            </button>
-
-            {/* Trendline */}
-            <button type="button" onClick={() => setDrawTool(drawTool === 'trendline' ? 'none' : 'trendline')}
-              title="Trend Line" className={`w-7 h-7 flex items-center justify-center rounded text-sm ${drawTool === 'trendline' ? 'bg-[var(--card-hover)] text-blue-400' : 'text-gray-500 hover:text-gray-300'}`}>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="2" y1="12" x2="12" y2="2"/></svg>
-            </button>
-
-            {/* Horizontal line */}
-            <button type="button" onClick={() => setDrawTool(drawTool === 'hline' ? 'none' : 'hline')}
-              title="Horizontal Line" className={`w-7 h-7 flex items-center justify-center rounded text-sm ${drawTool === 'hline' ? 'bg-[var(--card-hover)] text-yellow-400' : 'text-gray-500 hover:text-gray-300'}`}>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="1" y1="7" x2="13" y2="7"/></svg>
-            </button>
-
-            <div className="w-5 border-t border-[var(--card-border)] my-1" />
-
-            {/* Eraser */}
-            <button type="button" onClick={clearDrawings}
-              title="Clear Drawings" className="w-7 h-7 flex items-center justify-center rounded text-sm text-gray-500 hover:text-red-400">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M2,12 L12,2 M12,12 L2,2"/></svg>
-            </button>
-
-            <div className="flex-1" />
-
-            {/* Zoom in/out */}
-            <button type="button" onClick={() => chartRef.current?.timeScale().fitContent()}
-              title="Fit" className="w-7 h-7 flex items-center justify-center rounded text-sm text-gray-500 hover:text-gray-300">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <circle cx="6" cy="6" r="4.5"/><line x1="9.5" y1="9.5" x2="13" y2="13"/>
-              </svg>
-            </button>
-          </div>
-
-          {/* CHART CONTAINER */}
-          <div className="flex-1 flex flex-col min-w-0">
-            <div className="relative" style={{ height: chartH }}>
-              <div ref={containerRef} className="w-full h-full" style={{ cursor: drawTool !== 'none' ? 'crosshair' : undefined }} />
-              {(loading || data.length < 2) && (
-                <div className="absolute inset-0 flex items-center justify-center bg-[var(--card)]">
-                  {loading ? <SpaceLoader size="medium" /> : (
-                    <div className="flex flex-col items-center">
-                      <p className="text-gray-400 text-sm">Not enough data to display chart</p>
-                      {err && <p className="text-xs text-red-400 mt-2">{err}</p>}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* RSI */}
-            {indicators.has('RSI') && (
-              <div className="border-t border-[var(--card-border)]">
-                <div className="text-[10px] text-gray-600 px-2 py-0.5 bg-[var(--card)]">RSI 14</div>
-                <div ref={rsiContainerRef} className="w-full" style={{ height: RSI_H }} />
-              </div>
-            )}
-
-            {/* MACD */}
-            {indicators.has('MACD') && (
-              <div className="border-t border-[var(--card-border)]">
-                <div className="text-[10px] text-gray-600 px-2 py-0.5 bg-[var(--card)]">MACD 12, 26, 9</div>
-                <div ref={macdContainerRef} className="w-full" style={{ height: MACD_H }} />
-              </div>
-            )}
-          </div>
-        </div>
       </div>
 
-      {/* ══ BOTTOM BAR ══ */}
-      <div className="flex items-center justify-between px-3 py-1 bg-[var(--card2)] border-t border-[var(--card-border)] text-[11px]">
-        <div className="flex items-center gap-1">
-          {TIMEFRAMES.map((t) => (
-            <button key={t} type="button" onClick={() => setTf(t)}
-              className={`px-2 py-0.5 rounded transition-colors ${t === tf ? 'text-white bg-[var(--card-hover)]' : 'text-gray-500 hover:text-gray-300'}`}>
-              {t}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-3 text-gray-500">
-          <span className={autoRefresh ? 'text-[#ef5350]' : 'text-gray-600'}>{utcTime}</span>
-          <span className="text-gray-600">|</span>
-          <button type="button" className="text-gray-500 hover:text-white">%</button>
-          <button type="button" className="text-gray-500 hover:text-white">log</button>
-          <button type="button" className="text-gray-500 hover:text-white">auto</button>
-        </div>
+      {/* ══ FOOTER ══ */}
+      <div className="flex items-center justify-between px-3 py-1 bg-[var(--card2)] border-t border-[var(--card-border)] text-[10px] text-gray-500">
+        <span>Click a label above to highlight</span>
+        <span>Powered by Lightweight Charts</span>
       </div>
 
       {err && !loading && <div className="text-xs text-red-400 mt-2 px-3">{err}</div>}

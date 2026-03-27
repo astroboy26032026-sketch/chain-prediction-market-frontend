@@ -12,8 +12,6 @@ import * as realApi from './api';
 // =====================
 export type { IdempotencyOptions } from './api';
 
-export type { UpdateTokenRequest } from './api';
-
 export type { PointsOverviewResponse, PointsViewResponse, PointsHistoryResponse } from './api';
 
 export type {
@@ -45,9 +43,6 @@ export type {
   FinalizeTokenResponse,
 } from './api';
 
-export type { TokenCategory, TokenSearchFilters } from './api';
-
-export type { LeaderboardTopItem, LeaderboardListItem, LeaderboardListResponse } from './api';
 
 // =====================
 // ✅ AUTH helpers
@@ -63,11 +58,6 @@ export const setAuthToken = realApi.setAuthToken;
 // ✅ Idempotency helpers
 // =====================
 export const newIdempotencyKey = realApi.newIdempotencyKey;
-
-// =====================
-// ✅ Token metadata update (STUB until BE is ready)
-// =====================
-export const updateToken = (...args: Parameters<typeof realApi.updateToken>) => realApi.updateToken(...args);
 
 // =====================
 // ✅ Points
@@ -163,40 +153,3 @@ export const previewInitialBuy = (...args: Parameters<typeof realApi.previewInit
 export const finalizeTokenCreation = (...args: Parameters<typeof realApi.finalizeTokenCreation>) =>
   realApi.finalizeTokenCreation(...args);
 
-// =====================
-// ✅ Legacy exports still used by FE
-// =====================
-export const getAllTokens = (...args: Parameters<typeof realApi.getAllTokens>) => realApi.getAllTokens(...args);
-
-export const getAllTokensWithoutLiquidity = (...args: Parameters<typeof realApi.getAllTokensWithoutLiquidity>) =>
-  realApi.getAllTokensWithoutLiquidity(...args);
-
-export const getTotalVolume = (...args: Parameters<typeof realApi.getTotalVolume>) => realApi.getTotalVolume(...args);
-
-export const getVolumeRange = (...args: Parameters<typeof realApi.getVolumeRange>) => realApi.getVolumeRange(...args);
-
-export const getTotalTokenCount = (...args: Parameters<typeof realApi.getTotalTokenCount>) =>
-  realApi.getTotalTokenCount(...args);
-
-export const getRecentTokens = (...args: Parameters<typeof realApi.getRecentTokens>) =>
-  realApi.getRecentTokens(...args);
-
-export const searchTokens = (...args: Parameters<typeof realApi.searchTokens>) => realApi.searchTokens(...args);
-
-export const getLeaderboardTop = (...args: Parameters<typeof realApi.getLeaderboardTop>) =>
-  realApi.getLeaderboardTop(...args);
-
-export const getLeaderboardList = (...args: Parameters<typeof realApi.getLeaderboardList>) =>
-  realApi.getLeaderboardList(...args);
-
-// =====================
-// ✅ Dashboard helpers
-// =====================
-export const getTokensByCreator = (...args: Parameters<typeof realApi.getTokensByCreator>) =>
-  realApi.getTokensByCreator(...args);
-
-export const getAllTokenAddresses = (...args: Parameters<typeof realApi.getAllTokenAddresses>) =>
-  realApi.getAllTokenAddresses(...args);
-
-export const getTransactionsByAddress = (...args: Parameters<typeof realApi.getTransactionsByAddress>) =>
-  realApi.getTransactionsByAddress(...args);

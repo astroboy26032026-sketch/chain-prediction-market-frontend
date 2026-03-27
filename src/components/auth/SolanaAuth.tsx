@@ -1,9 +1,10 @@
 // src/components/auth/SolanaAuth.tsx
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { Connection, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { toast } from 'react-toastify';
+import { toastSuccess, toastError } from '@/utils/customToast';
 
 import { useAuth } from '@/components/providers/AuthProvider';
 
@@ -72,9 +73,9 @@ export default function SolanaAuth({ compact = false }: { compact?: boolean }) {
   const onCopy = async () => {
     try {
       await navigator.clipboard.writeText(walletAddress);
-      toast.success('Copied');
+      toastSuccess('Copied');
     } catch {
-      toast.error('Copy failed');
+      toastError('Copy failed');
     }
   };
 
@@ -83,13 +84,13 @@ export default function SolanaAuth({ compact = false }: { compact?: boolean }) {
       // ✅ đúng yêu cầu: "xoá Sign out" -> dùng modal disconnect
       // signOut() sẽ gọi /auth/logout + clear token + disconnect wallet (theo AuthProvider bạn đã sửa)
       await signOut();
-      toast.info('Disconnected');
+      toastSuccess('Disconnected');
     } catch (e: any) {
       // fallback nếu signOut lỗi thì vẫn disconnect wallet
       try {
         await disconnect();
       } catch {}
-      toast.error(e?.message || 'Disconnect failed');
+      toastError(e?.message || 'Disconnect failed');
     } finally {
       setOpenAccount(false);
     }
@@ -106,16 +107,9 @@ export default function SolanaAuth({ compact = false }: { compact?: boolean }) {
         <span>{label}</span>
       </button>
 
-      {/* Status line — hidden in compact mode */}
-      {!compact && (
-        <div className="text-[12px] opacity-80">
-          <span className="font-semibold">Auth:</span>{' '}
-          {loading ? 'Loading...' : authenticated ? 'Authenticated' : 'Not authenticated'}
-        </div>
-      )}
 
-      {/* ✅ Account modal (disconnect) */}
-      {openAccount && (
+      {/* ✅ Account modal (disconnect) — portal to body so backdrop-filter parents don't trap it */}
+      {openAccount && createPortal(
         <div className="fixed inset-0 z-[999] flex items-center justify-center">
           {/* overlay */}
           <div
@@ -126,7 +120,7 @@ export default function SolanaAuth({ compact = false }: { compact?: boolean }) {
           {/* modal — dark space theme */}
           <div
             className="relative w-[340px] max-w-[92vw] rounded-2xl border border-white/10 shadow-2xl overflow-hidden"
-            style={{ background: 'linear-gradient(160deg, #0f1420 0%, #141827 100%)' }}
+            style={{ background: 'linear-gradient(160deg, #2A1024 0%, #351530 100%)' }}
           >
             <button
               onClick={() => setOpenAccount(false)}
@@ -142,7 +136,7 @@ export default function SolanaAuth({ compact = false }: { compact?: boolean }) {
                 className="h-16 w-16 rounded-full flex items-center justify-center text-3xl border-2 border-white/10"
                 style={{ background: 'linear-gradient(135deg, var(--primary), var(--accent))' }}
               >
-                🚀
+                🍭
               </div>
 
               <div className="text-base font-extrabold text-white tracking-wide">
@@ -171,7 +165,8 @@ export default function SolanaAuth({ compact = false }: { compact?: boolean }) {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

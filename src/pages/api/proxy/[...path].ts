@@ -14,7 +14,7 @@ const getBackendBaseUrl = () => {
   return (
     process.env.API_BASE_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
-    'https://dev.pumpfunclone2025.win'
+    'https://dev.zugar.app'
   ).replace(/\/+$/, '');
 };
 
@@ -24,7 +24,7 @@ function setCors(req: NextApiRequest, res: NextApiResponse) {
   const allowList = new Set<string>(
     (
       process.env.CORS_ALLOWED_ORIGINS ||
-      'http://localhost:3000,https://pumpfunclone2025.win,https://dev.pumpfunclone2025.win'
+      'http://localhost:3000,https://zugar.app,https://dev.zugar.app'
     )
       .split(',')
       .map((s) => s.trim())

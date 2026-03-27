@@ -47,8 +47,8 @@ const SpaceLoader: React.FC<SpaceLoaderProps> = ({
             animation: 'space-spin 0.8s linear infinite reverse',
           }}
         />
-        {/* Rocket center */}
-        <span style={{ fontSize: rocket, lineHeight: 1 }}>🚀</span>
+        {/* Candy center */}
+        <span style={{ fontSize: rocket, lineHeight: 1 }} className="animate-[candy-bounce_1.5s_ease-in-out_infinite]">🍭</span>
       </div>
 
       {label !== '' && (
@@ -60,7 +60,7 @@ const SpaceLoader: React.FC<SpaceLoaderProps> = ({
             letterSpacing: '0.15em',
           }}
         >
-          {label ?? 'Launching…'}
+          {label ?? 'Loading…'}
         </p>
       )}
 

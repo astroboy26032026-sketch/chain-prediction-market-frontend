@@ -1,8 +1,7 @@
 // src/pages/_app.tsx
 import '@/styles/globals.css';
-import '@/styles/components/marquee.css';
+import '@/styles/components/custom-toast.css';
 import '@/styles/pages/home.css';
-import '@/styles/pages/stake.css';
 import type { AppProps } from 'next/app';
 
 import React, { useMemo } from 'react';

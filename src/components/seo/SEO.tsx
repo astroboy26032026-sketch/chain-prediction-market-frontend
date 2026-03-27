@@ -13,32 +13,39 @@ interface SEOProps {
   };
 }
 
+const SITE_NAME = 'Zugar';
+const DEFAULT_DESCRIPTION = 'Trade on prediction markets — sports, crypto, politics and more.';
+
 const SEO: React.FC<SEOProps> = ({ title, description, image, token }) => {
   const router = useRouter();
-  const domain = process.env.NEXT_PUBLIC_DOMAIN || 'https://pumpfunclone2025.win';
+  const domain = process.env.NEXT_PUBLIC_DOMAIN || 'https://zugar.app';
 
   const seo = {
-    title: token ? `${token.name} (${token.symbol}) - CosmoX` : title || 'CosmoX - Explore and Trade Tokens',
-    description: token?.description || description || 'Explore, create, and trade tokens on the CosmoX platform',
-    image: token?.logo || image || `${domain}/default-og-image.jpg`,
+    title: token
+      ? `${token.name} — ${SITE_NAME}`
+      : title || `${SITE_NAME} — Prediction Markets`,
+    description: token?.description || description || DEFAULT_DESCRIPTION,
+    image: token?.logo || image || `${domain}/logo.png`,
     url: `${domain}${router.asPath}`,
   };
 
   const jsonLd = token
     ? {
         '@context': 'https://schema.org',
-        '@type': 'Product',
+        '@type': 'Event',
         name: token.name,
         description: token.description,
         image: token.logo,
         url: seo.url,
+        organizer: { '@type': 'Organization', name: SITE_NAME, url: domain },
       }
     : {
         '@context': 'https://schema.org',
         '@type': 'WebApplication',
-        name: 'CosmoX',
+        name: SITE_NAME,
         description: seo.description,
         url: domain,
+        applicationCategory: 'FinanceApplication',
       };
 
   return (
@@ -51,7 +58,7 @@ const SEO: React.FC<SEOProps> = ({ title, description, image, token }) => {
       <meta property="og:image" content={seo.image} />
       <meta property="og:url" content={seo.url} />
       <meta property="og:type" content="website" />
-      <meta property="og:site_name" content="CosmoX" />
+      <meta property="og:site_name" content={SITE_NAME} />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content={seo.title} />
       <meta name="twitter:description" content={seo.description} />

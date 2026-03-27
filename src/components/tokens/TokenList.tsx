@@ -83,16 +83,6 @@ const TokenList: React.FC<TokenListProps> = ({
   const displayTokens = useMemo(() => {
     const sortedTokens = [...tokens];
 
-    // Sort theo liquidity (marketcap proxy) — giữ logic cũ
-    if (sortType === 'marketcap') {
-      sortedTokens.sort((a, b) => {
-        const liquidityA = liquidityData[(a as any).address] || BigInt(0);
-        const liquidityB = liquidityData[(b as any).address] || BigInt(0);
-        if (liquidityA === liquidityB) return 0;
-        return liquidityB > liquidityA ? 1 : -1;
-      });
-    }
-
     if (mode === 'page' && isFullList) {
       const p = (pagination as PagePaginationProps).currentPage ?? 1;
       const startIndex = (p - 1) * itemsPerPage;
@@ -101,7 +91,7 @@ const TokenList: React.FC<TokenListProps> = ({
     }
 
     return sortedTokens;
-  }, [tokens, sortType, liquidityData, itemsPerPage, isFullList, mode, pagination]);
+  }, [tokens, itemsPerPage, isFullList, mode, pagination]);
 
   // =====================
   // Cursor infinite scroll support
@@ -186,7 +176,7 @@ const TokenList: React.FC<TokenListProps> = ({
       {/* Loading overlay khi chuyển trang */}
       {isLoading && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center"
-          style={{ background: 'radial-gradient(ellipse at center, rgba(13,16,32,0.97) 0%, rgba(5,8,20,0.99) 100%)' }}
+          style={{ background: 'radial-gradient(ellipse at center, rgba(18,8,16,0.97) 0%, rgba(14,6,8,0.99) 100%)' }}
         >
           {/* Orbiting rings */}
           <div className="relative flex items-center justify-center" style={{ width: 120, height: 120 }}>
@@ -208,14 +198,14 @@ const TokenList: React.FC<TokenListProps> = ({
                 animation: 'spin 0.8s linear infinite reverse',
               }}
             />
-            {/* Center rocket */}
-            <span style={{ fontSize: 36, lineHeight: 1 }}>🚀</span>
+            {/* Center candy */}
+            <span style={{ fontSize: 36, lineHeight: 1 }} className="animate-[candy-bounce_1.5s_ease-in-out_infinite]">🍭</span>
           </div>
 
           <p className="mt-5 text-sm font-semibold tracking-widest uppercase"
             style={{ color: 'var(--primary)', letterSpacing: '0.15em' }}
           >
-            Launching…
+            Loading…
           </p>
 
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

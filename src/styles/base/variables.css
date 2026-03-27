@@ -118,19 +118,21 @@ html:not(.dark)[data-palette="canopy"], body:not(.dark)[data-palette="canopy"]{
   --navbar-bg:#F4FBFA;
 }
 html.dark[data-palette="galaxy"], body.dark[data-palette="galaxy"]{
-  --primary:#7C6FFF; --primary-hover:#6558EE;
-  --accent:#40BFFF;  --accent-hover:#5ECFFF;
-  --navbar-border: rgba(124,111,255,0.45);
-  --navbar-bg:#0D1020;
-  --background:#0A0C18;
-  --card:#11142A;
-  --card2:#161932;
-  --card-hover:#1C2040;
-  --card-border:#2A2F5A;
+  --primary:#F472B6; --primary-hover:#EC4899;
+  --accent:#FB7185;  --accent-hover:#FDA4AF;
+  --primary-rgb:244,114,182;
+  --accent-rgb:251,113,133;
+  --navbar-border: rgba(244,114,182,0.35);
+  --navbar-bg:#1A0A14;
+  --background:#120810;
+  --card:#2A1024;
+  --card2:#351530;
+  --card-hover:#3E1C38;
+  --card-border:#52264A;
 }
 html:not(.dark)[data-palette="galaxy"], body:not(.dark)[data-palette="galaxy"]{
-  --primary:#5B4FD8; --primary-hover:#4A3FC7;
-  --accent:#2998E8;  --accent-hover:#3AAAF5;
-  --navbar-border: rgba(91,79,216,0.30);
-  --navbar-bg:#F0F2FF;
+  --primary:#EC4899; --primary-hover:#DB2777;
+  --accent:#F472B6;  --accent-hover:#F9A8D4;
+  --navbar-border: rgba(236,72,153,0.30);
+  --navbar-bg:#FFF0F6;
 }

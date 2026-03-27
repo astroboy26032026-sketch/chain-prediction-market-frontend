@@ -1,0 +1,188 @@
+/* ===================================
+   Custom Toast – Card Style (Success / Error)
+   =================================== */
+
+/* Center toast container in the middle of viewport */
+.Toastify__toast-container--top-center {
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  width: auto !important;
+  max-width: 320px !important;
+}
+
+/* Override react-toastify wrapper */
+.Toastify__toast--custom-card {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  min-height: auto !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+}
+
+.Toastify__toast--custom-card .Toastify__toast-body {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.Toastify__toast--custom-card .Toastify__close-button {
+  display: none !important;
+}
+
+.Toastify__toast--custom-card .Toastify__progress-bar {
+  display: none !important;
+}
+
+/* Card */
+.custom-toast-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+
+  background: #fff;
+  border-radius: 20px;
+  padding: 28px 24px 20px;
+  min-width: 220px;
+  max-width: 260px;
+  margin: 0 auto;
+
+  box-shadow:
+    0 10px 40px rgba(0, 0, 0, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* Icon wrapper */
+.custom-toast-icon-wrap {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 16px;
+  opacity: 0;
+  transform: scale(0.3);
+  transition: opacity 0.4s ease, transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.custom-toast-icon-wrap.pop-in {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Circle icon */
+.custom-toast-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+  margin: 4px auto 0;
+}
+
+.custom-toast-icon.icon-success {
+  background: #4ADE80;
+  border: 3px solid #22C55E;
+  color: #15803D;
+}
+
+.custom-toast-icon.icon-error {
+  background: #FDA4AF;
+  border: 3px solid #F87171;
+  color: #991B1B;
+}
+
+/* Check / X stroke animation */
+.toast-check-path {
+  stroke-dasharray: 30;
+  stroke-dashoffset: 30;
+  animation: draw-check 0.5s ease 0.4s forwards;
+}
+
+.toast-x-path {
+  stroke-dasharray: 34;
+  stroke-dashoffset: 34;
+  animation: draw-check 0.4s ease 0.4s forwards;
+}
+
+@keyframes draw-check {
+  to { stroke-dashoffset: 0; }
+}
+
+/* Decorative dots */
+.toast-dot {
+  position: absolute;
+  border-radius: 50%;
+  z-index: 0;
+}
+
+.dot-green { background: #86EFAC; }
+.dot-pink  { background: #FECDD3; }
+
+.dot-1 { width: 10px; height: 10px; top: 2px;  left: 4px; }
+.dot-2 { width: 7px;  height: 7px;  top: 8px;  right: 0;  }
+.dot-3 { width: 6px;  height: 6px;  bottom: 6px; left: 0;  }
+.dot-4 { width: 8px;  height: 8px;  top: 0;    right: 8px; }
+
+.custom-toast-icon-wrap.pop-in .dot-1 { animation: dot-float 1.5s ease-in-out infinite alternate; }
+.custom-toast-icon-wrap.pop-in .dot-2 { animation: dot-float 1.8s ease-in-out 0.2s infinite alternate; }
+.custom-toast-icon-wrap.pop-in .dot-3 { animation: dot-float 1.6s ease-in-out 0.4s infinite alternate; }
+.custom-toast-icon-wrap.pop-in .dot-4 { animation: dot-float 2s ease-in-out 0.1s infinite alternate; }
+
+@keyframes dot-float {
+  from { transform: translate(0, 0); }
+  to   { transform: translate(2px, -3px); }
+}
+
+/* Title */
+.custom-toast-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1F2937;
+  margin-bottom: 4px;
+}
+
+/* Message */
+.custom-toast-message {
+  font-size: 13px;
+  color: #9CA3AF;
+  line-height: 1.4;
+  margin-bottom: 18px;
+  max-width: 200px;
+}
+
+/* Button */
+.custom-toast-btn {
+  width: 100%;
+  padding: 10px 0;
+  border: none;
+  border-radius: 24px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.2s ease, transform 0.15s ease;
+  letter-spacing: 0.3px;
+}
+
+.custom-toast-btn:hover {
+  filter: brightness(1.08);
+  transform: scale(1.02);
+}
+
+.custom-toast-btn:active {
+  transform: scale(0.97);
+}
+
+.custom-toast-btn.btn-success {
+  background: linear-gradient(135deg, #4ADE80, #86EFAC);
+  color: #15803D;
+  box-shadow: 0 4px 14px rgba(74, 222, 128, 0.35);
+}
+
+.custom-toast-btn.btn-error {
+  background: linear-gradient(135deg, #F87171, #FDA4AF);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(248, 113, 113, 0.35);
+}

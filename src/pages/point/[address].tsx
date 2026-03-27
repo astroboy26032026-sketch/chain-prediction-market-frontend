@@ -1,435 +1,266 @@
-// src/pages/point/[address].tsx
+// src/pages/point/[address].tsx — Points page (fetches from Zugar API)
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '@/components/layout/Layout';
 import SEO from '@/components/seo/SEO';
-import { COMMON, SEO as SEO_TEXT, POINTS } from '@/constants/ui-text';
-
-import { getPointsOverview, getPointsHistory } from '@/utils/api.index';
-import type { PointsHistoryItem, PointsOverviewResponse } from '@/interface/types';
+import { ExternalLink } from 'lucide-react';
+import { getZugarPointsLeaderboard, type ZugarLeaderboardEntry } from '@/utils/zugarApi';
 
 /* =========================
-   Tier config (Points -> Tickets)
+   Fallback Data
 ========================= */
-type TierConfig = {
-  tier: number;
-  minPoints: number;
-  tickets: number;
-};
-
-const TIER_CONFIG: TierConfig[] = [
-  { tier: 1, minPoints: 0, tickets: 0 },
-  { tier: 2, minPoints: 500, tickets: 1 },
-  { tier: 3, minPoints: 2000, tickets: 3 },
-  { tier: 4, minPoints: 10000, tickets: 5 },
-  { tier: 5, minPoints: 50000, tickets: 10 },
+const MOCK_HOW_TO_EARN = [
+  {
+    title: 'Invite & Earn Points',
+    description: [
+      'Generate your referral code',
+      'Invite your friends to join via your referral code',
+      'Earn points based on your referees trading volume',
+    ],
+    badge: 'Live',
+    image: '/chats/noimg.svg',
+    learnMore: '#',
+    featured: true,
+  },
+  {
+    title: 'Trading Rewards',
+    description: ['Earn points when you trade on active markets. Higher-quality trading activity earns more points.'],
+    badge: 'Live',
+    image: '/chats/noimg.svg',
+    learnMore: '#',
+  },
+  {
+    title: 'Liquidity Rewards',
+    description: ['Earn points for helping keep markets easy to trade. Keep liquidity near the market price on both outcomes.'],
+    badge: 'Live',
+    image: '/chats/noimg.svg',
+    learnMore: '#',
+  },
+  {
+    title: 'Open Interest',
+    description: ['Earn points for holding active positions over time. Longer commitment signals stronger conviction, and earns more.'],
+    badge: 'Live',
+    image: '/chats/noimg.svg',
+    learnMore: '#',
+  },
 ];
 
-const clamp = (n: number, a: number, b: number) => Math.min(b, Math.max(a, n));
+const FALLBACK_LEADERBOARD: ZugarLeaderboardEntry[] = [
+  { rank: 1, user: 'baibai', avatar: '🦊', points: 8930 },
+  { rank: 2, user: 'ref_o1fht038', avatar: '🐱', points: 5540 },
+  { rank: 3, user: 'earndrops', avatar: '🐻', points: 4670 },
+  { rank: 4, user: 'userb0opxx', avatar: '🐸', points: 4470 },
+  { rank: 5, user: 'useryc04kh', avatar: '🦁', points: 4400 },
+  { rank: 6, user: 'userrcn0bt', avatar: '🐯', points: 4250 },
+  { rank: 7, user: 'user6lOzwm', avatar: '🐨', points: 3730 },
+  { rank: 8, user: 'userkpklzi', avatar: '🐼', points: 3730 },
+  { rank: 9, user: '8899888', avatar: '🐵', points: 3560 },
+  { rank: 10, user: 'usergh7yhr', avatar: '🦄', points: 3540 },
+];
 
-const getTierByPoints = (points: number): TierConfig => {
-  const p = Number(points ?? 0);
-  let current = TIER_CONFIG[0];
-  for (const t of TIER_CONFIG) if (p >= t.minPoints) current = t;
-  return current;
-};
-
-const getNextTierConfig = (tier: number): TierConfig | null => {
-  const idx = TIER_CONFIG.findIndex((x) => x.tier === tier);
-  if (idx < 0) return null;
-  return idx === TIER_CONFIG.length - 1 ? null : TIER_CONFIG[idx + 1];
-};
-
-/* =========================
-   UI Tier label (space theme)
-========================= */
-type PlantTier = 'SEED' | 'SPROUT' | 'SAPLING' | 'TREE' | 'BIG_TREE';
-
-const TIER_PLANT_BY_NUM: Record<number, PlantTier> = {
-  1: 'SEED',
-  2: 'SPROUT',
-  3: 'SAPLING',
-  4: 'TREE',
-  5: 'BIG_TREE',
-};
-
-const TIER_EMOJI: Record<PlantTier, string> = {
-  SEED: '☄️',
-  SPROUT: '🌙',
-  SAPLING: '🪐',
-  TREE: '⭐',
-  BIG_TREE: '🌌',
-};
-
-const TIER_LABEL: Record<PlantTier, string> = {
-  SEED: 'Comet',
-  SPROUT: 'Moon',
-  SAPLING: 'Planet',
-  TREE: 'Star',
-  BIG_TREE: 'Galaxy',
-};
-
-const TierBadge: React.FC<{ tierNum: number }> = ({ tierNum }) => {
-  const plant = TIER_PLANT_BY_NUM[tierNum] ?? 'SEED';
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-xl leading-none">{TIER_EMOJI[plant]}</span>
-      <span className="font-extrabold tracking-wide">
-        Tier {tierNum} · {TIER_LABEL[plant]}
-      </span>
-    </div>
-  );
-};
-
-/* =========================
-   Helpers
-========================= */
-const fmtNum = (n: number) => Number(n ?? 0).toLocaleString();
-
-const fmtDate = (iso: string) =>
-  new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-  });
-
-/* =========================
-   Types for page state
-========================= */
-type TierProgress = {
-  currentTier: TierConfig;
-  nextTier: TierConfig | null;
-
-  points: number;
-  tickets: number;
-
-  progressPercent: number;
-  remainingPointsToNext: number | null;
-
-  rangeStartPoints: number;
-  rangeEndPoints: number | null;
-
-  pointsIntoRange: number;
-  rangeSize: number;
-};
-
-type HistoryRow = {
-  dateISO: string;
-  type: string;
-  points: number;
-};
-
-function buildTierProgress(points: number, tickets: number): TierProgress {
-  const currentTier = getTierByPoints(points);
-  const nextTier = getNextTierConfig(currentTier.tier);
-
-  const rangeStartPoints = currentTier.minPoints;
-  const rangeEndPoints = nextTier?.minPoints ?? null;
-
-  const pointsIntoRange = Math.max(0, points - rangeStartPoints);
-  const rangeSize = rangeEndPoints == null ? 0 : Math.max(1, rangeEndPoints - rangeStartPoints);
-
-  const progressPercent = rangeEndPoints == null ? 100 : clamp((pointsIntoRange / rangeSize) * 100, 0, 100);
-  const remainingPointsToNext = rangeEndPoints == null ? null : Math.max(0, rangeEndPoints - points);
-
-  return {
-    currentTier,
-    nextTier,
-    points,
-    tickets,
-    progressPercent,
-    remainingPointsToNext,
-    rangeStartPoints,
-    rangeEndPoints,
-    pointsIntoRange,
-    rangeSize,
-  };
-}
+const fmtK = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(2)}K` : n.toLocaleString());
 
 /* =========================
    Page
 ========================= */
-const HISTORY_STEP = 10;
-
 const PointsPage: React.FC = () => {
   const router = useRouter();
   const walletAddress = useMemo(() => {
     const v = router.query.address;
-    return typeof v === 'string' ? v : '';
+    return typeof v === 'string' ? v.trim() : '';
   }, [router.query.address]);
 
-  const [overview, setOverview] = useState<PointsOverviewResponse | null>(null);
-  const [tierProg, setTierProg] = useState<TierProgress | null>(null);
-  const [rows, setRows] = useState<HistoryRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [visibleCount, setVisibleCount] = useState(HISTORY_STEP);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [leaderboard, setLeaderboard] = useState<ZugarLeaderboardEntry[]>(FALLBACK_LEADERBOARD);
+  const [totalPages, setTotalPages] = useState(20);
 
+  // Fetch leaderboard from Zugar API when page changes
   useEffect(() => {
-    if (!router.isReady) return;
+    getZugarPointsLeaderboard(currentPage)
+      .then((res) => {
+        setLeaderboard(res.entries);
+        setTotalPages(res.totalPages);
+      })
+      .catch(() => setLeaderboard(FALLBACK_LEADERBOARD));
+  }, [currentPage]);
 
-    (async () => {
-      setLoading(true);
-      setVisibleCount(HISTORY_STEP);
-
-      try {
-        if (!walletAddress) {
-          const tp = buildTierProgress(0, 0);
-          setOverview({ points: 0, tickets: 0 });
-          setTierProg(tp);
-          setRows([]);
-          return;
-        }
-
-        const [ov, hs] = await Promise.all([getPointsOverview(walletAddress), getPointsHistory(walletAddress)]);
-        setOverview(ov);
-
-        const points = Number(ov?.points ?? 0);
-        const tickets = Number(ov?.tickets ?? 0);
-        setTierProg(buildTierProgress(points, tickets));
-
-        const items: PointsHistoryItem[] = Array.isArray(hs?.items) ? hs.items : [];
-        const mapped = items
-          .map((x) => ({
-            dateISO: String(x.timestamp ?? ''),
-            type: String(x.type ?? ''),
-            points: Number(x.points ?? 0),
-          }))
-          .filter((r) => !!r.dateISO);
-
-        setRows(mapped);
-      } catch {
-        const tp = buildTierProgress(0, 0);
-        setOverview({ points: 0, tickets: 0 });
-        setTierProg(tp);
-        setRows([]);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [router.isReady, walletAddress]);
-
-  const nextTierLabel = useMemo(() => {
-    if (!tierProg?.nextTier) return null;
-    const plant = TIER_PLANT_BY_NUM[tierProg.nextTier.tier] ?? 'SEED';
-    return `Tier ${tierProg.nextTier.tier} · ${TIER_LABEL[plant]}`;
-  }, [tierProg?.nextTier]);
-
-  const visibleRows = useMemo(() => rows.slice(0, visibleCount), [rows, visibleCount]);
-  const hasMoreRows = visibleCount < rows.length;
-
-  const plant = TIER_PLANT_BY_NUM[tierProg?.currentTier.tier ?? 1] ?? 'SEED';
+  const pageRange = useMemo(() => {
+    const pages: (number | '...')[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) pages.push('...');
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (currentPage < totalPages - 2) pages.push('...');
+      pages.push(totalPages);
+    }
+    return pages;
+  }, [currentPage, totalPages]);
 
   return (
     <Layout>
-      <SEO title="Fuel" description={SEO_TEXT.POINTS_DESC} />
+      <SEO title="Candy Points" description="Earn sweet points from trading, referrals, and more." />
 
-      <div className="min-h-screen flex flex-col items-center py-8 sm:py-10">
-        <div className="w-full max-w-5xl px-4 sm:px-6">
+      <div className="min-h-screen flex flex-col items-center">
 
-          {/* Page heading */}
-          <div className="mb-6 text-center">
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Fuel</h1>
-            <p className="mt-1 text-sm opacity-60">Earn points from quests, trading, and events!</p>
-          </div>
+        <div className="w-full max-w-5xl px-4 sm:px-6 py-8">
 
-          {/* ── Two-column layout ── */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
+          {/* Page Title */}
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-center mb-6">🍭 Sweet Point</h1>
 
-          {/* ── LEFT COLUMN: Cards ── */}
-          <div className="flex flex-col gap-3">
-
-          {/* ── Card 1: Points Earned ── */}
-          <div className="rounded-2xl border border-[var(--card-border)] overflow-hidden"
-            style={{ background: 'linear-gradient(135deg, rgba(var(--primary-rgb,124,111,255),0.18) 0%, rgba(var(--accent-rgb,80,200,200),0.10) 100%)' }}
-          >
-            <div className="px-5 pt-4 pb-1">
-              <span className="text-[10px] font-extrabold tracking-[0.18em] uppercase opacity-60">Points Earned</span>
-            </div>
-            <div className="px-5 pb-4">
-              <div className="flex items-end justify-between gap-4">
-                <div>
-                  <div className="flex items-baseline gap-2 mt-1">
-                    <span className="text-4xl font-extrabold tracking-tight" style={{ color: 'var(--primary)' }}>
-                      {tierProg ? fmtNum(tierProg.points) : '—'}
-                    </span>
-                    <span className="text-sm opacity-60 font-semibold">pts</span>
-                  </div>
-                  <div className="mt-2 flex items-center gap-2 flex-wrap">
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full"
-                      style={{ background: 'var(--primary)', color: '#fff' }}
-                    >
-                      {TIER_EMOJI[plant]} {TIER_LABEL[plant]}
-                    </span>
-                    <span className="text-xs opacity-60">Tier {tierProg?.currentTier.tier ?? 1} · current level</span>
-                  </div>
-                </div>
-                <button
-                  onClick={() => router.push(`/reward/${walletAddress}`)}
-                  className="flex items-center gap-1 text-sm font-bold whitespace-nowrap"
-                  style={{ color: 'var(--primary)' }}
-                >
-                  Go to Rewards <span className="text-base">›</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* ── Card 2: Tier Status ── */}
-          <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]">
-            <div className="px-5 pt-4 pb-1">
-              <span className="text-[10px] font-extrabold tracking-[0.18em] uppercase opacity-60">Tier Status</span>
-            </div>
-            <div className="px-5 pb-5">
-              <div className="flex items-start justify-between gap-3 mt-2">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl"
-                    style={{ background: 'rgba(var(--primary-rgb,124,111,255),0.12)' }}
-                  >
-                    {TIER_EMOJI[plant]}
-                  </div>
-                  <div>
-                    <div className="font-extrabold text-sm">
-                      {TIER_LABEL[plant]} · Tier {tierProg?.currentTier.tier ?? 1}
-                    </div>
-                    <div className="text-xs opacity-60 mt-0.5">
-                      {tierProg?.nextTier && tierProg.remainingPointsToNext != null
-                        ? `${fmtNum(tierProg.remainingPointsToNext)} pts away from ${nextTierLabel}`
-                        : 'Max tier reached 🎉'}
-                    </div>
-                  </div>
-                </div>
-                <div className="text-right shrink-0">
-                  {tierProg?.nextTier ? (
-                    <div className="text-xs opacity-50">Next: {fmtNum(tierProg.nextTier.minPoints)} pts</div>
-                  ) : (
-                    <div className="text-xs opacity-50">Max tier</div>
-                  )}
-                </div>
-              </div>
-              <div className="mt-4 h-2 rounded-full overflow-hidden bg-[var(--card2)] border border-[var(--card-border)]">
-                <div className="h-full rounded-full transition-all duration-500"
-                  style={{ width: `${tierProg?.progressPercent ?? 0}%`, background: 'linear-gradient(90deg, var(--primary), var(--accent))' }}
-                />
-              </div>
-              <div className="mt-3 flex items-center gap-2 flex-wrap">
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1 rounded-full border border-[var(--card-border)] bg-[var(--card2)]">
-                  ⭐ {tierProg ? fmtNum(tierProg.pointsIntoRange) : 0} pts in tier
-                </span>
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1 rounded-full border border-[var(--card-border)] bg-[var(--card2)]">
-                  🎟️ {overview ? fmtNum(overview.tickets) : 0} Tickets
-                </span>
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1 rounded-full border border-[var(--card-border)] bg-[var(--card2)]">
-                  🎁 {tierProg ? fmtNum(tierProg.currentTier.tickets) : 0} tickets/tier
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* ── Card 3: Spin to Win ── */}
-          <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]">
-            <div className="px-5 pt-4 pb-1">
-              <span className="text-[10px] font-extrabold tracking-[0.18em] uppercase opacity-60">Spin to Win</span>
-            </div>
-            <div className="px-5 pb-5">
-              <div className="flex items-start justify-between gap-3 mt-2">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl"
-                    style={{ background: 'rgba(var(--accent-rgb,80,200,200),0.12)' }}
-                  >
-                    🚀
-                  </div>
-                  <div>
-                    <div className="font-extrabold text-sm">Spin &amp; Win Rewards</div>
-                    <div className="text-xs opacity-60 mt-0.5">Convert points → tickets → spin for SOL!</div>
-                  </div>
-                </div>
-                <button
-                  onClick={() => router.push(`/reward/${walletAddress}`)}
-                  className="flex items-center gap-1 text-sm font-bold whitespace-nowrap"
-                  style={{ color: 'var(--primary)' }}
-                >
-                  Spin Now <span className="text-base">›</span>
-                </button>
-              </div>
-              <div className="mt-4 rounded-xl p-3 border border-[var(--card-border)]"
-                style={{ background: 'rgba(var(--primary-rgb,124,111,255),0.07)' }}
+          {/* ── Connect Wallet CTA ── */}
+          <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-6 mb-8 flex flex-col sm:flex-row items-center gap-6">
+            <div className="flex-1">
+              <h2 className="text-xl font-bold mb-1">Connect your wallet, predict, refer and earn candy points</h2>
+              <p className="text-sm text-gray-400">Collect sweet points every week, don&apos;t miss out</p>
+              <button
+                onClick={() => router.push(`/referral/${walletAddress || 'connect'}`)}
+                className="mt-4 px-5 py-2.5 rounded-lg font-semibold text-sm text-white transition-all hover:opacity-90"
+                style={{ background: 'linear-gradient(135deg, var(--primary), var(--accent))' }}
               >
-                <div className="text-[10px] font-extrabold tracking-[0.15em] uppercase opacity-60 mb-2">Your Tickets</div>
-                <p className="text-xs opacity-70 mb-3">
-                  Use your tickets to spin the cosmic wheel and win SOL prizes. More points = higher tier = more tickets per spin!
-                </p>
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1 rounded-full"
-                  style={{ background: 'var(--primary)', color: '#fff' }}
-                >
-                  🎟️ {overview ? fmtNum(overview.tickets) : 0} Tickets Available
+                Connect wallet to generate Referral Code
+              </button>
+            </div>
+            <div className="text-6xl">🍬</div>
+          </div>
+
+          {/* ── How to Earn Points ── */}
+          <h2 className="text-xl font-bold mb-4">🍭 How to earn candy points</h2>
+
+          {/* Featured card */}
+          {MOCK_HOW_TO_EARN.filter((c) => c.featured).map((card, i) => (
+            <div key={i} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 mb-4 flex flex-col sm:flex-row gap-5">
+              <div className="w-full sm:w-48 h-32 rounded-xl bg-[var(--card2)] flex items-center justify-center text-5xl relative overflow-hidden">
+                <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-[10px] font-bold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                  {card.badge}
                 </span>
+                🍭
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold mb-2">{card.title}</h3>
+                <div className="space-y-1">
+                  {card.description.map((step, j) => (
+                    <p key={j} className="text-sm text-gray-400">
+                      <span className="text-[var(--primary)] font-bold mr-1">Step {j + 1}</span>
+                      {step}
+                    </p>
+                  ))}
+                </div>
+                <a href={card.learnMore} className="inline-flex items-center gap-1 text-sm text-[var(--primary)] font-semibold mt-3 hover:opacity-80">
+                  Learn more <ExternalLink size={12} />
+                </a>
               </div>
             </div>
+          ))}
+
+          {/* Smaller cards grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+            {MOCK_HOW_TO_EARN.filter((c) => !c.featured).map((card, i) => (
+              <div key={i} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4">
+                <div className="w-full h-28 rounded-xl bg-[var(--card2)] flex items-center justify-center text-4xl mb-3 relative">
+                  <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-[10px] font-bold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                    {card.badge}
+                  </span>
+                  {i === 0 ? '🍬' : i === 1 ? '🍩' : '🎀'}
+                </div>
+                <h3 className="text-sm font-bold mb-1">{card.title}</h3>
+                <p className="text-xs text-gray-400 mb-2">{card.description[0]}</p>
+                <a href={card.learnMore} className="inline-flex items-center gap-1 text-xs text-[var(--primary)] font-semibold hover:opacity-80">
+                  Learn more <ExternalLink size={11} />
+                </a>
+              </div>
+            ))}
           </div>
 
-          </div>{/* end left column */}
-
-          {/* ── RIGHT COLUMN: History ── */}
+          {/* ── Points Leaderboard ── */}
           <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] overflow-hidden">
-            <div className="px-5 pt-4 pb-3 border-b border-[var(--card-border)]">
-              <span className="text-[10px] font-extrabold tracking-[0.18em] uppercase opacity-60">{POINTS.POINT_HISTORY}</span>
+            <div className="px-5 pt-5 pb-3">
+              <h3 className="text-lg font-bold">Points Leaderboard</h3>
             </div>
 
-            <div className="w-full overflow-auto">
-              <table className="min-w-full text-xs sm:text-sm">
-                <thead>
-                  <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:text-center [&>th]:font-extrabold [&>th]:text-[10px] [&>th]:tracking-widest [&>th]:uppercase [&>th]:opacity-50 bg-[var(--card2)]">
-                    <th>Date</th>
-                    <th>Type</th>
-                    <th>Points</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--card-border)]">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={3} className="px-4 py-8 text-center opacity-50 text-sm">Loading…</td>
-                    </tr>
-                  ) : rows.length === 0 ? (
-                    <tr>
-                      <td colSpan={3} className="px-4 py-10 text-center opacity-50 text-sm">
-                        {"You'll see your point history here"}
-                      </td>
-                    </tr>
-                  ) : (
-                    visibleRows.map((r, idx) => (
-                      <tr key={`${r.dateISO}-${idx}`} className="hover:bg-[var(--card-hover)] transition-colors">
-                        <td className="px-4 py-3 text-center opacity-70">{fmtDate(r.dateISO)}</td>
-                        <td className="px-4 py-3 text-center">{r.type || '—'}</td>
-                        <td className="px-4 py-3 text-center font-extrabold" style={{ color: 'var(--primary)' }}>
-                          +{fmtNum(r.points)}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+            {/* Header */}
+            <div className="grid grid-cols-[60px_1fr_100px] px-5 py-2 text-xs font-semibold text-gray-400 border-b border-[var(--card-border)]">
+              <span>Rank</span>
+              <span>User</span>
+              <span className="text-right">Points</span>
             </div>
 
-            {!loading && hasMoreRows && (
-              <div className="flex justify-center py-4 border-t border-[var(--card-border)]">
-                <button
-                  type="button"
-                  onClick={() => setVisibleCount((prev) => Math.min(prev + HISTORY_STEP, rows.length))}
-                  className="px-5 py-2.5 rounded-xl border border-[var(--card-border)] bg-[var(--card2)] text-sm font-semibold hover:opacity-80 transition-opacity"
-                >
-                  Load more
-                </button>
+            {/* Rows */}
+            {leaderboard.map((entry) => (
+              <div
+                key={entry.rank}
+                className="grid grid-cols-[60px_1fr_100px] px-5 py-3 items-center hover:bg-[var(--card-hover)] transition-colors border-b border-[var(--card-border)] last:border-b-0"
+              >
+                <span className={`font-bold text-sm ${entry.rank <= 3 ? 'text-[var(--primary)]' : 'text-gray-400'}`}>
+                  {entry.rank}
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-full bg-[var(--card2)] flex items-center justify-center text-sm">
+                    {entry.avatar}
+                  </span>
+                  <span className="text-sm font-medium">{entry.user}</span>
+                </div>
+                <span className="text-right text-sm font-semibold text-[var(--primary)]">{fmtK(entry.points)}</span>
               </div>
-            )}
+            ))}
 
-            {!loading && rows.length === 0 && (
-              <div className="px-5 py-5 text-center text-sm opacity-60">
-                {POINTS.EMPTY_ENCOURAGE}
-              </div>
-            )}
+            {/* Pagination */}
+            <div className="flex items-center justify-center gap-1 py-4 border-t border-[var(--card-border)]">
+              <button
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(1)}
+                className="w-8 h-8 rounded-lg text-xs font-semibold text-gray-400 hover:bg-[var(--card2)] disabled:opacity-30 transition-colors"
+              >
+                &laquo;
+              </button>
+              <button
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                className="w-8 h-8 rounded-lg text-xs font-semibold text-gray-400 hover:bg-[var(--card2)] disabled:opacity-30 transition-colors"
+              >
+                &lsaquo;
+              </button>
+
+              {pageRange.map((p, idx) =>
+                p === '...' ? (
+                  <span key={`dots-${idx}`} className="w-8 h-8 flex items-center justify-center text-xs text-gray-500">...</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setCurrentPage(p as number)}
+                    className={`w-8 h-8 rounded-lg text-xs font-semibold transition-colors ${
+                      currentPage === p
+                        ? 'text-white'
+                        : 'text-gray-400 hover:bg-[var(--card2)]'
+                    }`}
+                    style={currentPage === p ? { background: 'linear-gradient(135deg, var(--primary), var(--accent))' } : undefined}
+                  >
+                    {p}
+                  </button>
+                )
+              )}
+
+              <button
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                className="w-8 h-8 rounded-lg text-xs font-semibold text-gray-400 hover:bg-[var(--card2)] disabled:opacity-30 transition-colors"
+              >
+                &rsaquo;
+              </button>
+              <button
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(totalPages)}
+                className="w-8 h-8 rounded-lg text-xs font-semibold text-gray-400 hover:bg-[var(--card2)] disabled:opacity-30 transition-colors"
+              >
+                &raquo;
+              </button>
+            </div>
           </div>
-
-          </div>{/* end grid */}
 
         </div>
       </div>

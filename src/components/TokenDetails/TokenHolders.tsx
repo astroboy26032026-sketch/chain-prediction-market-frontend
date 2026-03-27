@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ChevronLeftIcon, ChevronRightIcon, ExternalLinkIcon } from 'lucide-react';
+import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import { TokenHolder } from '@/interface/types';
 import { shortenAddress } from '@/utils/blockchainUtils';
 import { TOKEN } from '@/constants/ui-text';
@@ -8,7 +8,6 @@ interface TokenHoldersProps {
   tokenHolders: TokenHolder[];
   currentPage: number;
   totalPages: number;
-  tokenSymbol: string;
   creatorAddress: string;
   tokenAddress: string;
   onPageChange: (page: number) => void;
@@ -21,6 +20,11 @@ const fmtCompact = (n: number): string => {
   if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
   if (n >= 1e3) return `${(n / 1e3).toFixed(2)}K`;
   return n.toLocaleString();
+};
+
+const fmtUsd = (n: number): string => {
+  if (!Number.isFinite(n) || n === 0) return '$0';
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 2 }).format(n);
 };
 
 const TokenHolders: React.FC<TokenHoldersProps> = ({
@@ -59,21 +63,6 @@ const TokenHolders: React.FC<TokenHoldersProps> = ({
     });
   }, [safeHolders]);
 
-  // Stats
-  const totalHolders = sortedHolders.length;
-
-  const top10Conc = useMemo(() => {
-    const top10 = sortedHolders.slice(0, 10);
-    const sum = top10.reduce((acc, h) => acc + Number(h.percentShare ?? 0), 0);
-    return sum;
-  }, [sortedHolders]);
-
-  const avgHolding = useMemo(() => {
-    if (!sortedHolders.length) return 0;
-    const total = sortedHolders.reduce((acc, h) => acc + Number((h as any).balance ?? 0), 0);
-    return total / sortedHolders.length;
-  }, [sortedHolders]);
-
   // Pagination (local)
   const holdersPerPage = 10;
   const actualTotalPages = Math.max(1, Math.ceil(sortedHolders.length / holdersPerPage));
@@ -81,94 +70,46 @@ const TokenHolders: React.FC<TokenHoldersProps> = ({
   const startIndex = (safeCurrentPage - 1) * holdersPerPage;
   const paginatedHolders = sortedHolders.slice(startIndex, startIndex + holdersPerPage);
 
-  // Badge logic
-  const getBadges = (addr: string, rank: number) => {
-    const addrLower = addr.toLowerCase();
-    const isCreator = !!creatorAddrLower && addrLower === creatorAddrLower;
-    const badges: Array<{ emoji: string; label: string }> = [];
-
-    if (isCreator) badges.push({ emoji: '👑', label: 'Creator' });
-    if (rank <= 2 && !isCreator) badges.push({ emoji: '🐋', label: 'Whale' });
-
-    // Diamond Hands: check if holder has high balance relative to others
-    const balance = sortedHolders.find(h => (h.walletAddress || h.address || '').toLowerCase() === addrLower);
-    if (balance) {
-      const pct = Number(balance.percentShare ?? 0);
-      if (pct >= 3 && !isCreator && rank > 2) badges.push({ emoji: '💎', label: 'Diamond Hands' });
-    }
-
-    return badges;
-  };
-
   return (
     <div className="w-full">
-      {/* Stats cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-        <div className="bg-[var(--card2)] rounded-lg p-3 border border-[var(--card-border)]">
-          <div className="text-[11px] text-gray-500 mb-1">Total Holders</div>
-          <div className="text-sm font-semibold text-[var(--primary)]">{totalHolders > 0 ? totalHolders.toLocaleString() : '—'}</div>
-        </div>
-        <div className="bg-[var(--card2)] rounded-lg p-3 border border-[var(--card-border)]">
-          <div className="text-[11px] text-gray-500 mb-1">Top 10 Conc.</div>
-          <div className="text-sm font-semibold text-[var(--primary)]">{top10Conc > 0 ? `${top10Conc.toFixed(1)}%` : '—'}</div>
-        </div>
-        <div className="bg-[var(--card2)] rounded-lg p-3 border border-[var(--card-border)]">
-          <div className="text-[11px] text-gray-500 mb-1">Avg Holding</div>
-          <div className="text-sm font-semibold text-[var(--primary)]">{avgHolding > 0 ? fmtCompact(avgHolding) : '—'}</div>
-        </div>
-        <div className="bg-[var(--card2)] rounded-lg p-3 border border-[var(--card-border)]">
-          <div className="text-[11px] text-gray-500 mb-1">New (24h)</div>
-          <div className="text-sm font-semibold text-[var(--primary)]">—</div>
-        </div>
-      </div>
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-left min-w-[420px]">
+        <table className="w-full text-left min-w-[360px]">
           <thead>
-            <tr>
-              <th className="px-3 py-2.5 text-xs text-gray-500 font-medium">Rank</th>
-              <th className="px-3 py-2.5 text-xs text-gray-500 font-medium">Holder</th>
-              <th className="px-3 py-2.5 text-xs text-gray-500 font-medium text-right">Balance</th>
-              <th className="px-3 py-2.5 text-xs text-gray-500 font-medium text-right">% Supply</th>
+            <tr className="bg-[var(--card2)] border-thin">
+              <th className="px-2 sm:px-4 py-2 text-xs text-gray-400">Wallet</th>
+              <th className="px-2 sm:px-4 py-2 text-xs text-gray-400 text-right">Amount</th>
+              <th className="px-2 sm:px-4 py-2 text-xs text-gray-400 text-right">USD Value</th>
             </tr>
           </thead>
 
           <tbody>
             {paginatedHolders.map((holder, index) => {
               const addr = (holder.walletAddress || holder.address || '').trim();
-              const globalRank = startIndex + index + 1;
               const balance = Number((holder as any).balance ?? 0);
-              const pct = Number(holder.percentShare ?? 0);
-              const badges = getBadges(addr, globalRank);
-
+              const usdValue = Number((holder as any).usdValue ?? (holder as any).balanceUsd ?? 0);
               return (
                 <tr
                   key={`${addr}-${index}`}
-                  className="hover:bg-[var(--card-hover)] transition-colors"
+                  className="border-b border-[var(--card-hover)] hover:bg-[var(--card-hover)] transition-colors"
                 >
-                  <td className="px-3 py-2.5 text-sm text-gray-400">{globalRank}</td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <a
-                        href={`${solscanBase}/account/${addr}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-gray-300 hover:text-[var(--primary)] text-sm transition-colors"
-                        title={addr}
-                      >
-                        {shortenAddress(addr)}
-                      </a>
-                      {badges.map((b, i) => (
-                        <span key={i} className="text-sm" title={b.label}>{b.emoji}</span>
-                      ))}
-                    </div>
+                  <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm">
+                    <a
+                      href={`${solscanBase}/account/${addr}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-gray-400 hover:text-[var(--primary)] transition-colors"
+                      title={addr}
+                    >
+                      {shortenAddress(addr)}
+                    </a>
                   </td>
-                  <td className="px-3 py-2.5 text-sm text-gray-300 text-right">
-                    {Number.isFinite(balance) ? balance.toLocaleString() : '—'}
+                  <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-gray-300 text-right font-medium">
+                    {fmtCompact(balance)}
                   </td>
-                  <td className="px-3 py-2.5 text-sm text-gray-300 text-right">
-                    {pct > 0 ? `${pct.toFixed(1)}%` : '—'}
+                  <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-gray-300 text-right">
+                    {usdValue > 0 ? fmtUsd(usdValue) : '—'}
                   </td>
                 </tr>
               );

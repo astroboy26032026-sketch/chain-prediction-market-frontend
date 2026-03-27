@@ -1,9 +1,9 @@
-// src/components/layout/Navbar.tsx
+// src/components/layout/Navbar.tsx — Horizontal top navigation bar
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
-import { toast } from 'react-toastify';
+import { toastError } from '@/utils/customToast';
 import { Menu, X } from 'lucide-react';
 
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -16,8 +16,27 @@ const SolanaAuth = dynamic(() => import('@/components/auth/SolanaAuth'), {
 /* =========================
    Palette setup
 ========================= */
-type Palette = 'seed' | 'sprout' | 'bud' | 'bloom' | 'canopy' | 'galaxy';
-const PALETTES: Palette[] = ['seed', 'sprout', 'bud', 'bloom', 'canopy', 'galaxy'];
+type Palette = 'galaxy';
+
+const applyTheme = (theme: 'light' | 'dark') => {
+  const root = document.documentElement;
+  const body = document.body;
+  root.classList.toggle('dark', theme === 'dark');
+  body.classList.toggle('dark', theme === 'dark');
+  root.setAttribute('data-theme', theme);
+  body.setAttribute('data-theme', theme);
+  localStorage.setItem('theme', theme);
+};
+
+const getInitialPalette = (): Palette => 'galaxy';
+
+const applyPalette = (p: Palette) => {
+  const root = document.documentElement;
+  const body = document.body;
+  root.setAttribute('data-palette', p);
+  body.setAttribute('data-palette', p);
+  localStorage.setItem('palette', p);
+};
 
 /* =========================
    SVG brand icons
@@ -35,47 +54,10 @@ const XIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
 );
 
 /* =========================
-   Theme + Palette logic
-========================= */
-const getInitialTheme = (): 'light' | 'dark' => {
-  if (typeof window === 'undefined') return 'dark';
-  const saved = localStorage.getItem('theme');
-  if (saved === 'dark' || saved === 'light') return saved as 'light' | 'dark';
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'dark';
-};
-
-const applyTheme = (theme: 'light' | 'dark') => {
-  const root = document.documentElement;
-  const body = document.body;
-  root.classList.toggle('dark', theme === 'dark');
-  body.classList.toggle('dark', theme === 'dark');
-  root.setAttribute('data-theme', theme);
-  body.setAttribute('data-theme', theme);
-  localStorage.setItem('theme', theme);
-};
-
-const getInitialPalette = (): Palette => {
-  if (typeof window === 'undefined') return 'seed';
-  const saved = localStorage.getItem('palette') as Palette | null;
-  return saved && PALETTES.includes(saved) ? saved : 'seed';
-};
-
-const applyPalette = (p: Palette) => {
-  const root = document.documentElement;
-  const body = document.body;
-  root.setAttribute('data-palette', p);
-  body.setAttribute('data-palette', p);
-  localStorage.setItem('palette', p);
-};
-
-/* =========================
    NavLink
 ========================= */
 const NavLink: React.FC<{ href: string; children: React.ReactNode; exact?: boolean; onClick?: () => void }> = ({
-  href,
-  children,
-  exact = false,
-  onClick,
+  href, children, exact = false, onClick,
 }) => {
   const router = useRouter();
   const isActive = useMemo(() => {
@@ -84,123 +66,31 @@ const NavLink: React.FC<{ href: string; children: React.ReactNode; exact?: boole
   }, [router.asPath, href, exact]);
 
   return (
-    <Link href={href} className={`sidebar-link ${isActive ? 'sidebar-link--active' : ''}`} onClick={onClick}>
+    <Link
+      href={href}
+      className={`topbar-link px-5 py-3 rounded-xl text-base font-bold transition-colors ${
+        isActive ? 'text-[var(--primary)] bg-[var(--primary)]/10' : 'text-gray-300 hover:text-white hover:bg-white/5'
+      }`}
+      onClick={onClick}
+    >
       {children}
     </Link>
   );
 };
 
 /* =========================
-   Sidebar content (shared between desktop & mobile)
-========================= */
-const SidebarContent: React.FC<{
-  palette: Palette;
-  onPaletteChange: (p: Palette) => void;
-  onPointClick: () => void;
-  onRewardClick: () => void;
-  onCreateClick: () => void;
-  onNavClick?: () => void;
-}> = ({
-  palette, onPaletteChange,
-  onPointClick, onRewardClick, onCreateClick, onNavClick,
-}) => (
-  <>
-    <div>
-      {/* Menu */}
-      <div className="flex flex-col gap-2 sidebar-menu">
-        <NavLink href="/events" onClick={onNavClick}>
-          <span className="text-lg leading-none">🌌</span>
-          <span className="sidebar-label">Promote</span>
-        </NavLink>
-
-        <button onClick={() => { onPointClick(); onNavClick?.(); }} className="sidebar-link">
-          <span className="text-lg leading-none">⭐</span>
-          <span className="sidebar-label">Point System</span>
-        </button>
-
-        <button onClick={() => { onRewardClick(); onNavClick?.(); }} className="sidebar-link">
-          <span className="text-lg leading-none">🎁</span>
-          <span className="sidebar-label">Rewards</span>
-        </button>
-
-        <NavLink href="/stake" onClick={onNavClick}>
-          <span className="text-lg leading-none">🪐</span>
-          <span className="sidebar-label">Stake</span>
-        </NavLink>
-
-        <button
-          onClick={() => { onCreateClick(); onNavClick?.(); }}
-          className="btn btn-primary w-full font-semibold mt-4 flex items-center justify-center gap-2"
-        >
-          <span>Create Token</span>
-        </button>
-
-        {/* Solana Wallet + Auth */}
-        <div className="mt-3">
-          <SolanaAuth />
-        </div>
-
-        {/* Palette */}
-        <div className="mt-4 p-3 rounded-xl border border-[var(--navbar-border)] bg-[var(--card)] bg-opacity-70 backdrop-blur-md">
-          <div className="flex items-center justify-between">
-            <span className="text-xs opacity-80">Palette</span>
-            <div className="palette-dots">
-              {PALETTES.map((p) => (
-                <button
-                  key={p}
-                  aria-label={`Use ${p} palette`}
-                  className={`palette-dot palette-dot--${p} ${palette === p ? 'is-active' : ''}`}
-                  onClick={() => onPaletteChange(p)}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    {/* Footer */}
-    <div className="mt-auto pt-4 border-t border-[var(--navbar-border)]">
-      <div className="flex flex-col items-center gap-2">
-        <div className="social-links">
-          <a href="https://t.me/your_channel" target="_blank" rel="noopener noreferrer" className="social-link">
-            <TelegramIcon />
-          </a>
-          <a href="https://twitter.com/your_handle" target="_blank" rel="noopener noreferrer" className="social-link">
-            <XIcon />
-          </a>
-        </div>
-
-        <div className="footer-nav flex-wrap">
-          <Link href="/about" className="footer-nav-link" onClick={onNavClick}>
-            Docs & How it Works
-          </Link>
-          <Link href="/FAQ" className="footer-nav-link" onClick={onNavClick}>
-            FAQ
-          </Link>
-        </div>
-
-        <p className="footer-text">© {new Date().getFullYear()} CosmoX</p>
-      </div>
-    </div>
-  </>
-);
-
-/* =========================
-   Navbar Component
+   Navbar Component — horizontal top bar
 ========================= */
 const Navbar: React.FC = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const router = useRouter();
 
-  // Close mobile menu on route change
   useEffect(() => {
     const close = () => setMobileOpen(false);
     router.events.on('routeChangeComplete', close);
     return () => router.events.off('routeChangeComplete', close);
   }, [router.events]);
 
-  // Prevent body scroll when mobile menu open
   useEffect(() => {
     document.body.style.overflow = mobileOpen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
@@ -209,79 +99,121 @@ const Navbar: React.FC = () => {
   const { publicKey } = useWallet();
   const address = publicKey?.toBase58();
 
-  const [palette, setPalette] = useState<Palette>('seed');
-
   useEffect(() => {
     applyTheme('dark');
-    const p = getInitialPalette();
-    applyPalette(p);
-    setPalette(p);
+    applyPalette(getInitialPalette());
   }, []);
 
-  const sharedProps = {
-    palette,
-    onPaletteChange: (p: Palette) => { setPalette(p); applyPalette(p); },
-    onPointClick: () => {
-      if (!address) return toast.error('Please connect your wallet first');
-      router.push(`/point/${address}`);
-    },
-    onRewardClick: () => {
-      if (!address) return toast.error('Please connect your wallet first');
-      router.push(`/reward/${address}`);
-    },
-    onCreateClick: () => router.push('/create'),
+  const goPoint = () => {
+    if (!address) return toastError('Please connect your wallet first');
+    router.push(`/point/${address}`);
   };
+  const goReward = () => {
+    if (!address) return toastError('Please connect your wallet first');
+    router.push(`/reward/${address}`);
+  };
+  const goReferral = () => {
+    if (!address) return toastError('Please connect your wallet first');
+    router.push(`/referral/${address}`);
+  };
+
+  const navItems = (onNav?: () => void) => (
+    <>
+      <NavLink href="/events" onClick={onNav}>
+        <span className="flex items-center gap-1.5">
+          <span className="text-base leading-none">🍬</span>
+          <span>Promote</span>
+        </span>
+      </NavLink>
+      <button onClick={() => { goPoint(); onNav?.(); }} className="topbar-link px-5 py-3 rounded-xl text-base font-bold text-gray-300 hover:text-white hover:bg-white/5 transition-colors">
+        <span className="flex items-center gap-1.5">
+          <span className="text-base leading-none">🍭</span>
+          <span>Sweet Point</span>
+        </span>
+      </button>
+      <button onClick={() => { goReward(); onNav?.(); }} className="topbar-link px-5 py-3 rounded-xl text-base font-bold text-gray-300 hover:text-white hover:bg-white/5 transition-colors">
+        <span className="flex items-center gap-1.5">
+          <span className="text-base leading-none">🎀</span>
+          <span>Rewards</span>
+        </span>
+      </button>
+      <button onClick={() => { goReferral(); onNav?.(); }} className="topbar-link px-5 py-3 rounded-xl text-base font-bold text-gray-300 hover:text-white hover:bg-white/5 transition-colors">
+        <span className="flex items-center gap-1.5">
+          <span className="text-base leading-none">🍡</span>
+          <span>Referral</span>
+        </span>
+      </button>
+    </>
+  );
 
   return (
     <>
-      {/* ===== MOBILE TOP BAR ===== */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 h-14 bg-[var(--navbar-bg)] border-b border-[var(--navbar-border)] backdrop-blur-md safe-area-top">
-        <Link href="/" className="flex items-center gap-2 shrink-0">
-          <Image src="/logo.png" alt="Logo" width={44} height={44} className="rounded-lg" priority />
-          <span className="brand-title" style={{ fontSize: '20px' }}>CosmoX</span>
-        </Link>
-        <button
-          onClick={() => setMobileOpen((v) => !v)}
-          className="p-2 rounded-lg hover:bg-[var(--card-hover)] transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
-          aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
-        >
-          {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-        </button>
-      </div>
+      {/* ===== TOP BAR (all screens) ===== */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-[var(--navbar-bg)] border-b border-[var(--navbar-border)] backdrop-blur-md safe-area-top">
+        <div className="max-w-7xl mx-auto flex items-center justify-between px-4 h-24">
+          {/* Logo */}
+          <Link href="/" className="flex items-center gap-3 shrink-0 group">
+            <Image src="/logo.png" alt="Zugar" width={64} height={64}
+              className="rounded-xl drop-shadow-lg transition-transform duration-500 group-hover:rotate-[20deg] group-hover:scale-110 animate-[candy-bounce_3s_ease-in-out_infinite]"
+              priority />
+            <span className="brand-title text-3xl font-black tracking-tight bg-gradient-to-r from-pink-400 to-rose-400 bg-clip-text text-transparent">Zugar</span>
+          </Link>
 
-      {/* ===== MOBILE SIDEBAR OVERLAY ===== */}
+          {/* Desktop nav items */}
+          <nav className="hidden md:flex items-center gap-1">
+            {navItems()}
+          </nav>
+
+          {/* Right side: socials + wallet */}
+          <div className="hidden md:flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <a href="https://t.me/your_channel" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white transition-colors">
+                <TelegramIcon width={18} height={18} />
+              </a>
+              <a href="https://twitter.com/your_handle" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white transition-colors">
+                <XIcon width={18} height={18} />
+              </a>
+            </div>
+            <SolanaAuth />
+          </div>
+
+          {/* Mobile hamburger */}
+          <button
+            onClick={() => setMobileOpen((v) => !v)}
+            className="md:hidden p-2 rounded-lg hover:bg-[var(--card-hover)] transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+          >
+            {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+        </div>
+      </header>
+
+      {/* ===== MOBILE DROPDOWN MENU ===== */}
       {mobileOpen && (
         <div className="md:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setMobileOpen(false)} />
       )}
       <nav
         className={`
-          md:hidden fixed top-14 left-0 bottom-0 z-40 w-[280px] max-w-[85vw]
-          overflow-y-auto flex flex-col justify-between px-4 py-4
-          bg-[var(--navbar-bg)] border-r border-[var(--navbar-border)]
-          transition-transform duration-300 ease-in-out
-          ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
+          md:hidden fixed top-24 left-0 right-0 z-40
+          bg-[var(--navbar-bg)] border-b border-[var(--navbar-border)]
+          transition-all duration-300 ease-in-out overflow-hidden
+          ${mobileOpen ? 'max-h-[400px] opacity-100' : 'max-h-0 opacity-0'}
         `}
       >
-        <SidebarContent {...sharedProps} onNavClick={() => setMobileOpen(false)} />
-      </nav>
-
-      {/* ===== DESKTOP SIDEBAR ===== */}
-      <nav className="hidden md:flex navbar app-navbar fixed left-0 top-0 z-40 h-screen w-[248px] flex-col justify-between px-4 py-6">
-        {/* Desktop keeps logo */}
-        <div>
-          <Link href="/" className="flex items-center gap-2 mb-6 group">
-            <Image
-              src="/logo.png"
-              alt="CosmoX Logo"
-              width={96}
-              height={96}
-              className="rounded-xl logo-bounce shadow-lg"
-              priority
-            />
-            <span className="brand-title">CosmoX</span>
-          </Link>
+        <div className="flex flex-col gap-1 p-4">
+          {navItems(() => setMobileOpen(false))}
+          <div className="mt-3 pt-3 border-t border-[var(--navbar-border)]">
+            <SolanaAuth />
+          </div>
+          <div className="flex items-center gap-3 mt-3">
+            <a href="https://t.me/your_channel" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white transition-colors">
+              <TelegramIcon width={18} height={18} />
+            </a>
+            <a href="https://twitter.com/your_handle" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white transition-colors">
+              <XIcon width={18} height={18} />
+            </a>
+          </div>
         </div>
-        <SidebarContent {...sharedProps} />
       </nav>
     </>
   );

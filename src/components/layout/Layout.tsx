@@ -8,8 +8,7 @@ interface LayoutProps {
 }
 
 /**
- * Layout with fixed LEFT sidebar.
- * The main content automatically shifts right to leave space.
+ * Layout with fixed TOP navigation bar.
  */
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   return (
@@ -24,11 +23,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
       <LiveNotifications />
 
-      {/* Fixed LEFT SIDEBAR */}
+      {/* Fixed TOP NAV */}
       <Navbar />
 
-      {/* MAIN CONTENT (shifted right) */}
-      <main className="flex-grow w-full pt-[72px] md:pt-8 pb-8 px-4 sm:px-6 lg:px-8 md:pl-[280px] lg:pl-[320px] xl:pl-[340px]">
+      {/* MAIN CONTENT (below top bar) */}
+      <main className="flex-grow w-full pt-32 pb-8 px-4 sm:px-6 lg:px-8">
         {children}
       </main>
 

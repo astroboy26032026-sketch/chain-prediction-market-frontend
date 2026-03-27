@@ -1,75 +1,79 @@
-# Pump Clone
+# Zugar - Solana Token Trading Platform
 
-## Table of Contents
+> Decentralized token trading platform built on **Solana** with real-time pricing, wallet integration, and prediction markets.
 
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-  - [Running the Application](#running-the-application)
-- [Architecture Overview](#architecture-overview)
-- [Environment Variables](#environment-variables)
-- [Available Scripts](#available-scripts)
-- [Dependencies](#dependencies)
+## Demo
 
+### Home Page
+![Home Page](docs/screenshots/home-page.png)
+
+### Trading
+![Trading](docs/screenshots/trading.png)
+
+### Candy Reward
+![Candy Reward](docs/screenshots/candy-reward.png)
+
+### Sweet Points
+![Sweet Points](docs/screenshots/sweet-points.png)
+
+### Referrals
+![Referrals](docs/screenshots/referrals.png)
+
+### Promote
+![Promote](docs/screenshots/promote.png)
+
+## Tech Stack
+
+| Layer | Tech |
+|-------|------|
+| Framework | Next.js 14, TypeScript |
+| Blockchain | Solana Web3.js, Wallet Adapter (Phantom, Solflare) |
+| Charts | Lightweight Charts (TradingView engine) |
+| Styling | TailwindCSS + CSS Variables |
+| Real-time | WebSocket (auto-reconnect, exponential backoff) |
+| HTTP | Axios with retry, proxy, idempotency |
 
 ## Getting Started
 
-### Prerequisites
+```bash
+# Prerequisites: Node.js >= 20, Phantom/Solflare wallet
 
-- Node.js (version 20 or later)
-- Yarn package manager
-
-### Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/Quan359100/Pump_fun_clone.git
-   ```
-
-2. Install dependencies:
-   ```bash
-   yarn install
-   ```
-
-### Running the Application
-
-1. Set up your environment variables (see [Environment Variables](#environment-variables) section).
-
-2. Start the development server:
-   ```bash
-   yarn dev
-   ```
-
-3. Open your browser and navigate to `http://localhost:3000`.
-
-## Architecture Overview
-
-Built using the following technologies and frameworks:
-
-- Next.js: React framework for server-side rendering and static site generation
-- React: JavaScript library for building user interfaces
-- Tailwind CSS: Utility-first CSS framework for styling
-- Ethers.js: Library for interacting with Ethereum
-- RainbowKit: Ethereum wallet connection library
-- Wagmi: React hooks for EVM chains
-- lightweight-charts: Charting libraries for data visualization
-
-The application follows a component-based architecture, with reusable UI components and hooks for managing state and interactions with the blockchain.
-
-## Environment Variables
-
-Create a `.env.local` file in the root directory with the following variables:
-
+npm install
+npm run dev        # http://localhost:3000
 ```
-NEXT_PUBLIC_BLOCKSCOUT_URL=
-NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS=
-NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS_OLD=
-NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS_OLD1=
-NEXT_PUBLIC_DEX_TARGET=
-NEXT_PUBLIC_DOMAIN=
-NEXT_PUBLIC_WS_BASE_URL=
-UPLOADTHING_TOKEN=
+
+### Environment (.env.local)
+
+```env
+NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
+NEXT_PUBLIC_API_BASE_URL=https://dev.zugar.app
+NEXT_PUBLIC_WS_BASE_URL=wss://dev.zugar.app
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
-NEXT_PUBLIC_USE_MOCK=true
+NEXT_PUBLIC_DOMAIN=zugar.app
 ```
-NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS_OLD & NEXT_PUBLIC_BONDING_CURVE_MANAGER_ADDRESS_OLD1 are for compatibility with old contracts
+
+## Project Structure
+
+```
+src/
+├── components/          # UI components (auth, charts, layout, token, notifications)
+├── hooks/               # useSwapTrading, useTokenDetail, useTokenPriceStream
+├── pages/               # Next.js pages + API routes
+├── utils/               # API client, auth, security, helpers
+├── interface/           # TypeScript types
+├── data/                # Mock markets & events data
+├── constants/           # UI text constants
+└── styles/              # TailwindCSS + CSS variables
+```
+
+## Security
+
+- API proxy with rate limiting (120 req/min), CSRF protection, path whitelist
+- CSP headers, HSTS, X-Frame-Options: DENY
+- Idempotency keys for trade deduplication
+- Input sanitization (XSS), Solana address validation
+- Zero private key handling (all signing in wallet extension)
+
+## Documentation
+
+See [TECHNICAL.md](TECHNICAL.md) for detailed technical documentation (architecture, data flows, interview prep).

@@ -17,7 +17,7 @@ const absProxy = (path: string) =>
 
 // ---- token storage (unified) ----
 // ✅ IMPORTANT: unify with src/utils/api.ts
-const TOKEN_KEY = 'pf_token';
+const TOKEN_KEY = 'cx_token';
 
 export function setToken(token?: string) {
   if (typeof window === 'undefined') return;

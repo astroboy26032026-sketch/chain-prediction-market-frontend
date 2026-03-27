@@ -1,4 +1,4 @@
-// src/components/TokenDetails/TokenInfo.tsx
+// src/components/TokenDetails/TokenInfo.tsx — Prediction Market Info Header
 import React, { useEffect, useMemo } from 'react';
 import {
   ExternalLinkIcon,
@@ -10,68 +10,24 @@ import {
   MessageCircle as Discord,
 } from 'lucide-react';
 import Image from 'next/image';
-import { toast } from 'react-toastify';
-
-import Link from 'next/link';
+import { toastSuccess, toastError } from '@/utils/customToast';
 import { formatTimestamp, shortenAddress, formatAddressV2 } from '@/utils/blockchainUtils';
 import type { Token } from '@/interface/types';
+import type { PredictionMarket } from '@/data/markets';
 
-// =====================
-// Types
-// =====================
 interface TokenInfoProps {
-  tokenInfo: Token & {
-    // compat fields (nếu BE trả khác)
-    creatorAddress?: string;
-    website?: string;
-    twitter?: string;
-    telegram?: string;
-    discord?: string;
-    youtube?: string;
-    logo?: string;
-    createdAt?: string | number;
-    description?: string;
-    symbol?: string;
-    name?: string;
-
-    // address compat
-    address?: string;
-    tokenAddress?: string;
-    mint?: string;
-
-    // optional: nếu BE có trả current price (base coin)
-    price?: number | string;
-    currentPrice?: number | string;
-    priceUsd?: number | string;
-
-    // extra stats
-    marketCap?: number;
-    mcapUsd?: number;
-    marketcapUsd?: number;
-    marketCapUsd?: number;
-    volume24h?: number;
-    vol24h?: number;
-    vol24hUsd?: number;
-    volume24hUsd?: number;
-    holders?: number;
-    holderCount?: number;
-    liquidity?: number;
-    totalSupply?: number | string;
-    supply?: number | string;
-    progressDex?: number;
-  };
+  tokenInfo: Token & Record<string, any>;
   showHeader?: boolean;
   refreshTrigger?: number;
-  liquidityEvents?: any; // [] | {events: []} | {liquidityEvents: []} | null
+  liquidityEvents?: any;
+  market?: PredictionMarket;
 }
 
-const fmtNum = (n: number, digits = 4) => {
-  const v = Number(n);
-  if (!Number.isFinite(v)) return '0';
-  return v.toLocaleString(undefined, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: digits,
-  });
+const fmtUSD = (v: number) => {
+  if (!Number.isFinite(v) || v === 0) return '$0';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 2,
+  }).format(v);
 };
 
 const ensureHttp = (url?: string) => {
@@ -85,41 +41,40 @@ const ensureHttp = (url?: string) => {
 const getTokenAddressAny = (t: any) =>
   String(t?.address ?? t?.tokenAddress ?? t?.mint ?? t?.token ?? '').trim();
 
-// Bạn có thể đổi sang explorer khác nếu muốn
 const explorerAddressUrl = (addr: string) => `https://solscan.io/account/${addr}`;
 
 const TokenInfo: React.FC<TokenInfoProps> = ({
   tokenInfo,
   showHeader = false,
   refreshTrigger = 0,
+  market,
 }) => {
-  // giữ state để UI/UX không đổi (nếu nơi khác đang set refreshTrigger)
-  useEffect(() => {
-    // nothing required — liquidityEvents / tokenInfo sẽ tự update từ parent
-  }, [refreshTrigger]);
+  useEffect(() => {}, [refreshTrigger]);
 
-  const progressPct = useMemo(() => {
-    // Only use progressDex from API — no guessing
+  // Use market data if available
+  const chancePercent = market?.outcomeAPercent ?? (() => {
     const apiProg = Number(tokenInfo?.progressDex ?? 0);
-    if (Number.isFinite(apiProg) && apiProg > 0) return Math.min(apiProg, 100);
-    return 0;
-  }, [tokenInfo?.progressDex]);
+    if (Number.isFinite(apiProg) && apiProg > 0) return Math.min(Math.round(apiProg), 99);
+    return 50;
+  })();
 
-  const truncateDescription = (description: string, maxLength: number = 120) => {
-    if (!description) return '';
-    if (description.length <= maxLength) return description;
-    return `${description.slice(0, maxLength)}...`;
-  };
+  const volumeValue = market?.volume24h ?? (Number(tokenInfo?.volume24h ?? tokenInfo?.vol24hUsd ?? 0) || 0);
+  const outcomeA = market?.outcomeA || 'Yes';
+  const outcomeB = market?.outcomeB || 'No';
 
-  // market stats — try multiple field names
-  const marketCapValue = Number(tokenInfo?.marketCap ?? tokenInfo?.mcapUsd ?? tokenInfo?.marketcapUsd ?? tokenInfo?.marketCapUsd ?? 0) || 0;
-  const holdersValue = Number(tokenInfo?.holders ?? tokenInfo?.holderCount ?? 0) || 0;
-  const liquidityValue = Number(tokenInfo?.liquidity ?? 0) || 0;
-  const totalSupplyValue = Number(tokenInfo?.totalSupply ?? tokenInfo?.supply ?? 0) || 0;
+  const expiryDate = useMemo(() => {
+    if (market?.expiresAt) {
+      return new Date(market.expiresAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+    if (!tokenInfo?.createdAt) return '';
+    const created = new Date(tokenInfo.createdAt as string);
+    const expiry = new Date(created.getTime() + 30 * 24 * 60 * 60 * 1000);
+    return expiry.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }, [market, tokenInfo?.createdAt]);
 
-  const addr = useMemo(() => getTokenAddressAny(tokenInfo), [tokenInfo]);
+  const addr = useMemo(() => market?.address || getTokenAddressAny(tokenInfo), [market, tokenInfo]);
   const logo = tokenInfo?.logo || '/chats/noimg.svg';
-  const name = tokenInfo?.name || tokenInfo?.symbol || 'Token';
+  const name = market?.question || tokenInfo?.name || tokenInfo?.symbol || 'Market';
 
   const socials = useMemo(
     () => ({
@@ -132,209 +87,130 @@ const TokenInfo: React.FC<TokenInfoProps> = ({
     [tokenInfo?.website, tokenInfo?.twitter, tokenInfo?.telegram, tokenInfo?.discord, tokenInfo?.youtube]
   );
 
-  const TokenDetails = () => (
+  const SocialLinks: React.FC<{ size?: number }> = ({ size = 18 }) => (
+    <div className="flex gap-3">
+      {socials.website && <a href={socials.website} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]"><Globe size={size} /></a>}
+      {socials.twitter && <a href={socials.twitter} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]"><Twitter size={size} /></a>}
+      {socials.telegram && <a href={socials.telegram} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]"><Telegram size={size} /></a>}
+      {socials.discord && <a href={socials.discord} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]"><Discord size={size} /></a>}
+      {socials.youtube && <a href={socials.youtube} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]"><Youtube size={size} /></a>}
+    </div>
+  );
+
+  const StatsRow: React.FC = () => (
+    <div className="flex items-center gap-3 text-xs text-gray-400">
+      <span className="flex items-center gap-1">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        {fmtUSD(volumeValue)} Vol.
+      </span>
+      <span className="flex items-center gap-1">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        {expiryDate}
+      </span>
+      <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 font-semibold text-[10px] flex items-center gap-1">
+        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+        LIVE
+      </span>
+    </div>
+  );
+
+  const MarketDetails = () => (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
-        <InfoItem
-          label="Contract"
-          value={addr ? formatAddressV2(addr) : '—'}
-          link={addr ? explorerAddressUrl(addr) : undefined}
-          isExternal={true}
-          copyValue={addr || undefined}
-        />
-        <InfoItem
-          label="Deployer"
-          value={tokenInfo?.creatorAddress ? shortenAddress(tokenInfo.creatorAddress) : '—'}
-          link={tokenInfo?.creatorAddress ? explorerAddressUrl(tokenInfo.creatorAddress) : undefined}
-          isExternal={true}
-          copyValue={tokenInfo?.creatorAddress}
-        />
+        <InfoItem label="Volume (24h)" value={fmtUSD(volumeValue)} />
+        <InfoItem label="Liquidity" value={fmtUSD(market?.liquidity ?? Number(tokenInfo?.marketCap ?? 0))} />
       </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <InfoItem
-          label="Created"
-          value={tokenInfo?.createdAt ? formatTimestamp(tokenInfo.createdAt as any) : '—'}
-        />
-        <InfoItem
-          label="Market Cap"
-          value={marketCapValue > 0 ? `$${fmtNum(marketCapValue, 2)}` : '—'}
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <InfoItem
-          label="Liquidity"
-          value={liquidityValue > 0 ? `$${fmtNum(liquidityValue, 2)}` : '—'}
-        />
-        <InfoItem
-          label="Total Supply"
-          value={totalSupplyValue > 0 ? fmtNum(totalSupplyValue, 0) : '—'}
-        />
-      </div>
-
     </div>
   );
 
   if (showHeader) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-5">
         {/* Mobile Header */}
         <div className="lg:hidden flex flex-col">
-          <div className="w-full h-[200px] mb-4 bg-[var(--card2)] rounded-b-xl overflow-hidden relative">
-            <Image src={logo} alt={name} fill className="object-cover" sizes="100vw" priority={false} />
-          </div>
-
           <div className="px-4">
-            <div className="text-center mb-3">
-              <h1 className="text-2xl font-bold text-white">{name}</h1>
-              {tokenInfo?.symbol && <p className="text-xs text-gray-400 mt-1">{tokenInfo.symbol}</p>}
+            <div className="flex items-start gap-3 mb-4">
+              <div className="relative w-12 h-12 min-w-[48px] rounded-lg overflow-hidden bg-[var(--card2)]">
+                <Image src={logo} alt={name} fill className="object-cover" sizes="48px" />
+              </div>
+              <div className="flex-1">
+                <h1 className="text-xl font-bold text-white leading-tight">{name}</h1>
+              </div>
             </div>
-
-            <p className="text-sm text-gray-400 text-center mb-4">
-              {truncateDescription(tokenInfo?.description || '')}
-            </p>
-
-            <div className="flex justify-center gap-4 mb-6">
-              {socials.website && (
-                <a href={socials.website} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)] transition-colors">
-                  <Globe size={24} />
-                </a>
-              )}
-              {socials.twitter && (
-                <a href={socials.twitter} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)] transition-colors">
-                  <Twitter size={24} />
-                </a>
-              )}
-              {socials.telegram && (
-                <a href={socials.telegram} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)] transition-colors">
-                  <Telegram size={24} />
-                </a>
-              )}
-              {socials.discord && (
-                <a href={socials.discord} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)] transition-colors">
-                  <Discord size={24} />
-                </a>
-              )}
-              {socials.youtube && (
-                <a href={socials.youtube} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)] transition-colors">
-                  <Youtube size={24} />
-                </a>
-              )}
+            <div className="flex items-center gap-4 mb-3">
+              <div className="text-4xl font-black text-white">{chancePercent}%</div>
+              <div className="text-sm text-gray-400">Chance</div>
             </div>
+            <div className="mb-4"><StatsRow /></div>
+            <div className="mb-4"><SocialLinks size={20} /></div>
           </div>
         </div>
 
         {/* Desktop Header */}
         <div className="hidden lg:block">
           <div className="flex items-start gap-4">
-            <div className="relative w-24 h-24">
-              <Image src={logo} alt={name} fill className="rounded-lg object-cover" sizes="96px" />
+            <div className="relative w-14 h-14 min-w-[56px] rounded-lg overflow-hidden">
+              <Image src={logo} alt={name} fill className="object-cover" sizes="56px" />
             </div>
-
             <div className="flex-1">
-              <div className="flex items-start gap-2">
-                <div>
-                  <h1 className="text-xl font-bold text-white">{name}</h1>
-                  {tokenInfo?.symbol && <p className="text-xs text-gray-400 mt-1">{tokenInfo.symbol}</p>}
+              <h1 className="text-xl font-bold text-white leading-tight">{name}</h1>
+              <div className="flex items-center gap-4 mt-3">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-3xl font-black text-white">{chancePercent}%</span>
+                  <span className="text-sm text-gray-400">Chance</span>
                 </div>
+                <div className="ml-4"><StatsRow /></div>
               </div>
-
-              <p className="text-sm text-gray-400 mt-2">{truncateDescription(tokenInfo?.description || '')}</p>
-
-              <div className="flex gap-3 mt-4">
-                {socials.website && (
-                  <a href={socials.website} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]">
-                    <Globe size={20} />
-                  </a>
-                )}
-                {socials.twitter && (
-                  <a href={socials.twitter} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]">
-                    <Twitter size={20} />
-                  </a>
-                )}
-                {socials.telegram && (
-                  <a href={socials.telegram} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]">
-                    <Telegram size={20} />
-                  </a>
-                )}
-                {socials.discord && (
-                  <a href={socials.discord} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]">
-                    <Discord size={20} />
-                  </a>
-                )}
-                {socials.youtube && (
-                  <a href={socials.youtube} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[var(--primary)]">
-                    <Youtube size={20} />
-                  </a>
-                )}
-              </div>
+              <div className="mt-3"><SocialLinks /></div>
             </div>
           </div>
         </div>
 
-        {/* Progress to DEX — always show, 0% if no data, progress bar only when > 0 */}
+        {/* Outcome probability bar */}
         <div className="bg-[var(--card2)] p-4 rounded-lg border-thin">
-          <div className="flex justify-between text-sm mb-2">
-            <span className="text-gray-300 font-medium">Progress to DEX</span>
-            <span className="text-white">
-              {progressPct % 1 === 0 ? `${progressPct}%` : `${progressPct.toFixed(2)}%`}
-            </span>
-          </div>
-          {progressPct > 0 && (
-            <div className="w-full bg-[var(--card-boarder)] rounded-full h-2.5 overflow-hidden">
-              <div
-                className="bg-[var(--primary)] h-2.5 rounded-full transition-all duration-500"
-                style={{ width: `${progressPct}%` }}
-              />
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-sm bg-blue-500" />
+              <span className="text-sm font-semibold text-blue-400">{outcomeA} {chancePercent}%</span>
             </div>
-          )}
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-rose-400">{outcomeB} {100 - chancePercent}%</span>
+              <span className="w-3 h-3 rounded-sm bg-rose-500" />
+            </div>
+          </div>
+          <div className="flex h-2.5 rounded-full overflow-hidden gap-0.5">
+            <div className="bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${chancePercent}%` }} />
+            <div className="bg-rose-500 rounded-full transition-all duration-500" style={{ width: `${100 - chancePercent}%` }} />
+          </div>
         </div>
 
-        <TokenDetails />
+        <MarketDetails />
       </div>
     );
   }
 
-  return <TokenDetails />;
+  return <MarketDetails />;
 };
 
 const InfoItem: React.FC<{
-  label: string;
-  value?: string;
-  link?: string;
-  isExternal?: boolean;
-  copyValue?: string;
+  label: string; value?: string; link?: string; isExternal?: boolean; copyValue?: string;
 }> = ({ label, value, link, isExternal, copyValue }) => (
   <div className="bg-[var(--card2)] p-3 rounded-lg border-thin">
     <div className="text-xs text-gray-400 mb-1">{label}</div>
     <div className="text-sm text-white flex items-center gap-2">
       {link ? (
         <div className="flex items-center gap-2 flex-grow">
-          <a
-            href={link}
-            target={isExternal ? '_blank' : undefined}
-            rel={isExternal ? 'noopener noreferrer' : undefined}
-            className="hover:text-[var(--primary)] transition-colors flex items-center gap-1"
-          >
-            {value}
-            {isExternal && <ExternalLinkIcon size={12} />}
+          <a href={link} target={isExternal ? '_blank' : undefined} rel={isExternal ? 'noopener noreferrer' : undefined}
+            className="hover:text-[var(--primary)] transition-colors flex items-center gap-1">
+            {value}{isExternal && <ExternalLinkIcon size={12} />}
           </a>
-
           {copyValue && (
-            <button
-              onClick={() => copyToClipboard(copyValue)}
-              className="text-gray-400 hover:text-[var(--primary)] transition-colors"
-              title="Copy"
-              type="button"
-            >
+            <button onClick={() => copyToClipboard(copyValue)} className="text-gray-400 hover:text-[var(--primary)] transition-colors" title="Copy" type="button">
               <Copy size={12} />
             </button>
           )}
         </div>
-      ) : (
-        <span>{value}</span>
-      )}
+      ) : (<span>{value}</span>)}
     </div>
   </div>
 );
@@ -344,28 +220,13 @@ const copyToClipboard = async (text: string) => {
     if (navigator?.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
     } else {
-      // fallback
       const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
     }
-
-    toast.success('Copied!', {
-      position: 'top-right',
-      autoClose: 1200,
-      hideProgressBar: true,
-      closeOnClick: true,
-      pauseOnHover: false,
-      draggable: true,
-    });
-  } catch {
-    toast.error('Copy failed');
-  }
+    toastSuccess('Copied!');
+  } catch { toastError('Copy failed'); }
 };
 
 export default TokenInfo;

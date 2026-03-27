@@ -8,6 +8,7 @@ import {
   getTokenHolders,
 } from '@/utils/api.index';
 import type { Token, TokenHolder } from '@/interface/types';
+import { getMarketByAddress } from '@/data/markets';
 
 export function useTokenDetail(initialTokenInfo: Token | null) {
   const router = useRouter();
@@ -34,8 +35,14 @@ export function useTokenDetail(initialTokenInfo: Token | null) {
   // Race condition guard
   const reqIdRef = useRef(0);
 
+  // Check if this is a mock prediction market — skip real API calls
+  const isMockMarket = useMemo(() => {
+    if (!tokenAddr) return false;
+    return !!getMarketByAddress(tokenAddr);
+  }, [tokenAddr]);
+
   const fetchTokenInfo = useCallback(async () => {
-    if (!tokenAddr) return;
+    if (!tokenAddr || isMockMarket) return;
     const myReq = ++reqIdRef.current;
     try {
       const info = await getTokenInfo(tokenAddr);
@@ -44,10 +51,10 @@ export function useTokenDetail(initialTokenInfo: Token | null) {
     } catch (e) {
       console.error('Error fetching /token/info:', e);
     }
-  }, [tokenAddr]);
+  }, [tokenAddr, isMockMarket]);
 
   const fetchLiquidity = useCallback(async () => {
-    if (!tokenAddr) return;
+    if (!tokenAddr || isMockMarket) return;
     const myReq = ++reqIdRef.current;
     try {
       const lq = await getTokenLiquidity(tokenAddr);
@@ -58,11 +65,11 @@ export function useTokenDetail(initialTokenInfo: Token | null) {
       if (myReq !== reqIdRef.current) return;
       setLiquidityEvents([]);
     }
-  }, [tokenAddr]);
+  }, [tokenAddr, isMockMarket]);
 
   const fetchHolders = useCallback(
     async (opts?: { reset?: boolean }) => {
-      if (!tokenAddr) return;
+      if (!tokenAddr || isMockMarket) return;
       const reset = !!opts?.reset;
       const cursor = reset ? null : holdersNextCursor;
       if (!reset && cursor === null) return;
@@ -86,7 +93,7 @@ export function useTokenDetail(initialTokenInfo: Token | null) {
         setHoldersLoading(false);
       }
     },
-    [tokenAddr, holdersNextCursor]
+    [tokenAddr, holdersNextCursor, isMockMarket]
   );
 
   // Initial fetch when token changes

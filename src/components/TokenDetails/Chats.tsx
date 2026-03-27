@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { getChatMessages, addChatMessage } from '@/utils/api.index';
-import { toast } from 'react-toastify';
+import { toastError } from '@/utils/customToast';
 import { formatTimestamp, getRandomAvatarImage, shortenAddress } from '@/utils/chatUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { TokenWithTransactions, ChatMessage as BeChatMessage } from '@/interface/types';
@@ -10,6 +10,7 @@ import { Reply, X } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { COMMON, CHAT } from '@/constants/ui-text';
+import { getMarketByAddress } from '@/data/markets';
 
 type UiChatMessage = {
   messageId: string;
@@ -48,6 +49,9 @@ const Chats: React.FC<ChatsProps> = ({ tokenAddress, tokenInfo }) => {
 
   const walletAddress = useMemo(() => publicKey?.toBase58() || '', [publicKey]);
 
+  // Skip real API calls for mock prediction markets
+  const isMockMarket = useMemo(() => !!getMarketByAddress(tokenAddress), [tokenAddress]);
+
   const [messages, setMessages] = useState<UiChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [replyingTo, setReplyingTo] = useState<UiChatMessage | null>(null);
@@ -68,7 +72,7 @@ const Chats: React.FC<ChatsProps> = ({ tokenAddress, tokenInfo }) => {
 
   const fetchMessages = useCallback(
     async (isLoadMore = false) => {
-      if (!tokenAddress) return;
+      if (!tokenAddress || isMockMarket) return;
 
       try {
         if (isLoadMore) setLoadingMore(true);
@@ -85,30 +89,36 @@ const Chats: React.FC<ChatsProps> = ({ tokenAddress, tokenInfo }) => {
         setHasMore(Boolean(res?.nextCursor));
       } catch (error: any) {
         console.error('Error fetching messages:', error);
-        toast.error(error?.message || 'Failed to load chat');
+        toastError(error?.message || 'Failed to load chat');
         setHasMore(false);
       } finally {
         if (isLoadMore) setLoadingMore(false);
       }
     },
-    [tokenAddress, cursor]
+    [tokenAddress, cursor, isMockMarket]
   );
 
   // reset + initial load when token changes
   useEffect(() => {
     setMessages([]);
     setCursor(null);
-    setHasMore(true);
     setReplyingTo(null);
     setNewMessage('');
 
+    if (isMockMarket) {
+      setHasMore(false);
+      return;
+    }
+
+    setHasMore(true);
     fetchMessages(false);
 
     const interval = setInterval(() => {
       if (!document.hidden) fetchMessages(false);
     }, 30000);
     return () => clearInterval(interval);
-  }, [tokenAddress, fetchMessages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tokenAddress, isMockMarket]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,12 +126,12 @@ const Chats: React.FC<ChatsProps> = ({ tokenAddress, tokenInfo }) => {
     if (loading) return;
 
     if (!connected || !walletAddress) {
-      toast.error('Connect Solana wallet to chat');
+      toastError('Connect Solana wallet to chat');
       return;
     }
 
     if (!authenticated) {
-      toast.error('Please authenticate to chat');
+      toastError('Please authenticate to chat');
       return;
     }
 
@@ -150,7 +160,7 @@ const Chats: React.FC<ChatsProps> = ({ tokenAddress, tokenInfo }) => {
       fetchMessages(false);
     } catch (error: any) {
       console.error('Error sending message:', error);
-      toast.error(error?.message || 'Failed to send message');
+      toastError(error?.message || 'Failed to send message');
     }
   };
 
@@ -162,19 +172,11 @@ const Chats: React.FC<ChatsProps> = ({ tokenAddress, tokenInfo }) => {
     [tokenInfo]
   );
 
-  // Auth gating UI (no SiweAuth)
+  // Auth gating UI — only require wallet connection to view chat
   if (!connected || !walletAddress) {
     return (
       <div className="flex flex-col items-center justify-center p-4 text-sm text-gray-400">
         Connect your Solana wallet to view & send chat messages.
-      </div>
-    );
-  }
-
-  if (!authenticated) {
-    return (
-      <div className="flex flex-col items-center justify-center p-4 text-sm text-gray-400">
-        Please Connect Wallet
       </div>
     );
   }

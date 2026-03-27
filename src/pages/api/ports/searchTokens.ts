@@ -5,7 +5,7 @@ import { checkRateLimit } from '@/utils/apiSecurity';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ||
-  'https://dev.pumpfunclone2025.win';
+  'https://dev.zugar.app';
 
 type TokenSearchBE<T> = {
   items: T[];

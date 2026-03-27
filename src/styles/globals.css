@@ -66,13 +66,13 @@
 /* =========================
    Global / Body
 ========================= */
-html { color-scheme: dark; background-color: #1B1D1A; }
+html { color-scheme: dark; background-color: #120810; }
 body {
   background-color: var(--background);
   background-image:
-    radial-gradient(900px 600px at 12% 18%, rgba(201,142,107,0.18), transparent 60%),
-    radial-gradient(1000px 700px at 85% 12%, rgba(76,139,100,0.16), transparent 60%),
-    linear-gradient(180deg, #1B1D1A 0%, #171915 55%, #141613 100%);
+    radial-gradient(900px 600px at 12% 18%, rgba(244,114,182,0.15), transparent 60%),
+    radial-gradient(1000px 700px at 85% 12%, rgba(251,113,133,0.12), transparent 60%),
+    linear-gradient(180deg, #120810 0%, #1A0A14 55%, #0E0608 100%);
   background-blend-mode: screen, screen, normal;
   background-attachment: fixed;
   color: var(--foreground);
@@ -129,4 +129,26 @@ html:not(.dark) .btn-secondary{color:var(--on-secondary)!important;}
   animation: bell-shake 0.8s ease-in-out infinite;
   animation-delay: 2s;
   transform-origin: top center;
+}
+
+/* Solana wallet adapter modal — force center */
+.wallet-adapter-modal-wrapper {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.wallet-adapter-modal-container {
+  margin: 0 auto !important;
+  inset: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* Candy logo bounce */
+@keyframes candy-bounce {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-3px) rotate(-3deg); }
+  50% { transform: translateY(0) rotate(0deg); }
+  75% { transform: translateY(-2px) rotate(3deg); }
 }

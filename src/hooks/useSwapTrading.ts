@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDebounce } from 'use-debounce';
-import { toast } from 'react-toastify';
+import { toastSuccess, toastError } from '@/utils/customToast';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { LAMPORTS_PER_SOL, PublicKey, VersionedTransaction } from '@solana/web3.js';
 import { Buffer } from 'buffer';
@@ -188,22 +188,22 @@ export function useSwapTrading({
 
   const handleAction = useCallback(async () => {
     if (!tokenAddr || !tokenInfo || !fromToken.amount) {
-      toast.error('Missing required information');
+      toastError('Missing required information');
       return;
     }
     if (!wallet?.connected || !wallet.publicKey) {
-      toast.error('Connect wallet to trade');
+      toastError('Connect wallet to trade');
       return;
     }
     if (!wallet.sendTransaction) {
-      toast.error('Wallet does not support sendTransaction');
+      toastError('Wallet does not support sendTransaction');
       return;
     }
 
     const rawIn = String(fromToken.amount).trim();
     const inNum = parseNumberInput(rawIn);
     if (!Number.isFinite(inNum) || inNum <= 0) {
-      toast.error(isSwapped ? 'Invalid TOKEN amount' : 'Invalid SOL amount');
+      toastError(isSwapped ? 'Invalid TOKEN amount' : 'Invalid SOL amount');
       return;
     }
 
@@ -253,36 +253,36 @@ export function useSwapTrading({
       const rawTx = Buffer.from(String(quote.txBase64), 'base64');
       const tx = VersionedTransaction.deserialize(rawTx);
 
-      toast.info(isSwapped ? 'Sending SELL transaction...' : 'Sending BUY transaction...');
+      toastSuccess(isSwapped ? 'Sending SELL transaction...' : 'Sending BUY transaction...');
 
       const txSignature = await wallet.sendTransaction(tx, connection, {
         preflightCommitment: 'processed',
       });
 
-      toast.info('Submitting signature to backend...');
+      toastSuccess('Submitting signature to backend...');
       await submitSignature(submitEp, { id: txId, txSignature } as any);
 
       connection.confirmTransaction(txSignature, 'processed').catch(() => {});
 
       if (!statusEp) {
-        toast.success('Submitted (no status endpoint).');
+        toastSuccess('Submitted (no status endpoint).');
         onTradeSuccess();
         fetchLiquidity();
         return;
       }
 
-      toast.info('Checking backend status...');
+      toastSuccess('Checking backend status...');
       const st = await pollStatus(statusEp);
       const finalStatus = String((st as any)?.status ?? '').toUpperCase();
 
       if (finalStatus === 'CONFIRMED') {
-        toast.success(isSwapped ? 'Sell confirmed' : 'Buy confirmed');
+        toastSuccess(isSwapped ? 'Sell confirmed' : 'Buy confirmed');
         onTradeSuccess();
         fetchLiquidity();
       } else if (finalStatus === 'FAILED') {
-        toast.error(`Trade failed${(st as any)?.error ? `: ${(st as any).error}` : ''}`);
+        toastError(`Trade failed${(st as any)?.error ? `: ${(st as any).error}` : ''}`);
       } else {
-        toast.success('Submitted. Status pending.');
+        toastSuccess('Submitted. Status pending.');
       }
     } catch (e: any) {
       console.error('Trade flow error:', e);
@@ -294,11 +294,11 @@ export function useSwapTrading({
       const status = e?.response?.status;
 
       if (status === 400 || /insufficient|not enough|balance/i.test(apiMsg)) {
-        toast.error(apiMsg || 'Insufficient balance to complete this trade.');
+        toastError(apiMsg || 'Insufficient balance to complete this trade.');
       } else if (status === 500) {
-        toast.error(apiMsg || 'Server error. Please try again later.');
+        toastError(apiMsg || 'Server error. Please try again later.');
       } else {
-        toast.error(apiMsg || 'Trade failed');
+        toastError(apiMsg || 'Trade failed');
       }
     } finally {
       setIsTransacting(false);
